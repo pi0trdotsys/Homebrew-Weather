@@ -302,3 +302,64 @@ nie doda widgetu ponownie (lub go nie przeskaluje).
 `WidgetPreviewDebugActivity` rozszerzony o 4. kontener (250×240dp, "generous")
 testujący zachowanie przy grantcie większym niż deklarowane minimum.
 
+**REALNY BUG #3 — wiersz PoP dalej ucinany (2026-09-18):** mimo poprzedniej
+naprawy (177dp natural minimum / 182dp `minHeight`) user zgłosił, że na jego
+już-umieszczonej instancji widgetu wiersz `▽ X%` w gridzie wciąż jest
+niewidoczny. `adb shell run-as … cat shared_prefs/widget_city_prefs.xml`
+potwierdził, że ten konkretny widget ma przyznane tylko **175dp** — mniej niż
+poprzednie 177dp natural minimum, więc dalej się nie mieścił. Naprawione
+kolejnym, celowanym ścięciem budżetu wierszy w `weather_widget.xml` do
+**~159dp natural minimum**: `padding 6dp · header 14 · gapA 3 · hero 48 ·
+gapB 2 [1dp rule] · grid 0dp+weight (kolumna: label 10 + icon 20 + temp 14 +
+pop 9 = 53dp) · gapC 3 · meta 11+1marginBottom · footer 12`. Przy okazji
+naprawiono błąd we własnym skrypcie do masowej edycji XML (Python
+`str.replace` z `count=4` — nowa wartość jednego pola trafiła przypadkiem na
+starą wartość szukaną przez kolejne `replace`, więc 2 z 4 kolumn gridu
+dostały niespójne dp; naprawione precyzyjnymi `re.sub` per-`@+id`).
+`weather_widget_info.xml` → `minHeight` 182→165dp, `COMPACT_HEIGHT_THRESHOLD_DP`
+172→150 (`WidgetPrefs.kt`'s `DEFAULT_MIN_HEIGHT_DP` zsynchronizowany na 165).
+Zweryfikowane zrzutem ekranu z tej samej, realnej instancji widgetu na POCO
+F8 Ultra — wszystkie 4 wartości PoP w gridzie widoczne (`▽18% ▽0% ▽68% ▽54%`).
+
+**Martwy endpoint reverse-geocode → `DeviceGeocoder` (2026-09-18):** user
+zgłosił, że widget w trybie "użyj mojej lokalizacji" na stałe pokazuje
+literalny placeholder `"current location"` zamiast prawdziwej nazwy miasta.
+Przyczyna: `WeatherApi.reverseGeocode()` (Open-Meteo `/v1/reverse`) zwraca
+twardy HTTP 404 dla *każdej* testowanej współrzędnej (potwierdzone `curl`-em
+bezpośrednio, także dla znanych-dobrych współrzędnych Warszawy) — endpoint
+jest po prostu martwy, nie brakuje mu danych dla konkretnego miejsca.
+Naprawione nowym `widget/DeviceGeocoder.kt`, który używa natywnego,
+działającego offline `android.location.Geocoder` (obecny praktycznie na
+każdym realnym urządzeniu z Google Play Services) zamiast/przed martwym
+Open-Meteo. Podłączony w obu miejscach, gdzie wcześniej był `"current
+location"`/martwy fallback: `WidgetConfigureActivity.reverseGeocodeAndSelect()`
+(pierwsza konfiguracja "użyj mojej lokalizacji") i
+`WeatherWidgetProvider.resolveEffectiveCity()` (każde kolejne odświeżenie w
+trybie live). Łańcuch fallbacków: `DeviceGeocoder` → stary
+`WeatherApi.reverseGeocode` (zostawiony na wypadek, gdyby kiedyś ożył) →
+poprzednia zapamiętana nazwa (przy odświeżeniu) / czytelna etykieta
+współrzędnych `51.23°N 17.05°E` (przy pierwszej konfiguracji, żeby nigdy nie
+wrócić do bezużytecznego statycznego placeholdera). Przy okazji: user zwrócił
+uwagę, że sam placeholder "current location" nie mówi, które miejsce faktycznie
+się synchronizuje — stąd decyzja, żeby *zawsze* wyświetlać realną nazwę
+miasta (z prefiksem `◎ ` gdy tryb live), nigdy generyczny tekst trybu.
+Zweryfikowane na realnym urządzeniu: współrzędne (51.10972897, 17.04785219)
+poprawnie rozwiązane do prawdziwej miejscowości "Piekoszów".
+
+**Bardziej chamskie powiadomienia — `RudeNotifications.kt` (2026-09-18):**
+na wyraźną prośbę użytkownika ("chamskie, bad-boyowe, złośliwe, mogą być z
+przekleństwami i slangiem") wszystkie 5 typów push-powiadomień (deszcz/burza,
+wysoka temp, niska temp, duży skok dzień-do-dnia, AQI) w
+`WeatherNotifier.kt` przełączone z generycznego angielskiego tekstu na nowy
+`widget/RudeNotifications.kt` — pula kilku polskich wariantów na typ (losowany
+seedem), utrzymana w tym samym rejestrze co istniejący `SigmaJokes.kt`
+(kurwa/chuj-owa rodzina słów, kpina "sigma vs beta"), skierowana w samego
+użytkownika/aplikację, nie w realną osobę. Tytuły powiadomień (`"Homebrew
+Weather — ${city.name}"`) zostały bez zmian — cały charakter przeniesiony do
+treści. Zweryfikowane pojedynczym realnym powiadomieniem wywołanym na
+urządzeniu (tymczasowo obniżony próg wysokiej temperatury, potem przywrócony):
+`dumpsys notification --noredact` potwierdził jednoczesnie poprawną nazwę
+miasta i chamski tekst — `android.title="Homebrew Weather — Piekoszów"`,
+`android.text="Piekoszów: 18°C, mózg ci się gotuje jak twoje pomysły na
+życie"`.
+

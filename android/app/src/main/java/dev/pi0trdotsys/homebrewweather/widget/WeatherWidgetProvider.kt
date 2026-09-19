@@ -140,18 +140,18 @@ class WeatherWidgetProvider : AppWidgetProvider() {
         // res/layout/weather_widget_compact.xml instead (RemoteViews can't
         // resize a fixed-dp row at runtime; there's no setViewLayoutHeight
         // pre-API 31). weather_widget.xml's natural minimum content height is
-        // ~177dp (see its header comment's row-by-row math, tightened after a
-        // real-device check found an *already-placed* widget instance was
-        // still sitting at its old ~186dp granted height — Android doesn't
-        // retroactively re-measure an existing placement just because a later
-        // app update raises the declared minHeight, so the default layout
-        // has to comfortably fit within what real launchers were already
-        // granting at the *previous*, smaller declared minimum, not just the
-        // new one). 182dp is the new declared default minHeight
-        // (weather_widget_info.xml). 172dp gives a small buffer below the
-        // 177dp natural minimum before falling back to compact; 90dp (the
+        // now ~159dp (tightened AGAIN after a real, already-placed widget on
+        // the reporting user's own device was measured at exactly 175dp
+        // granted — 2dp short of the previous ~177dp natural minimum, still
+        // silently squeezing the PoP row to nothing; see that file's header
+        // comment for the full history). 165dp is the new declared default
+        // minHeight (weather_widget_info.xml) — deliberately modest, real
+        // launchers have repeatedly been observed granting noticeably more
+        // than whatever's declared here anyway. 150dp gives real margin
+        // below the 159dp natural minimum before falling back to compact,
+        // not just a couple dp like the last two attempts; 90dp (the
         // declared minResizeHeight) is compact.
-        private const val COMPACT_HEIGHT_THRESHOLD_DP = 172
+        private const val COMPACT_HEIGHT_THRESHOLD_DP = 150
 
         // Below this granted width (dp), the AQI text (in either layout) is
         // dropped and the day-grid temp pair collapses to a single figure
@@ -261,15 +261,20 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             if (!storedCity.isLive) return storedCity
             val location = bestEffortLastKnownLocation(context) ?: return storedCity
 
-            val geo = try {
-                WeatherApi.reverseGeocode(location.latitude, location.longitude)
-            } catch (e: Exception) {
-                null
-            }
+            // DeviceGeocoder (on-device, no network) first — see its doc comment:
+            // WeatherApi.reverseGeocode (Open-Meteo's `/v1/reverse`) is a dead
+            // endpoint, kept only as a last-ditch fallback. If both fail this
+            // refresh, keep whatever name was already known (storedCity.name)
+            // rather than regressing a real, previously-resolved name back to a
+            // coordinate label over one transient miss — [DeviceGeocoder] only
+            // gets used as the *initial* name in WidgetConfigureActivity.
+            val name = DeviceGeocoder.cityName(context, location.latitude, location.longitude)
+                ?: try { WeatherApi.reverseGeocode(location.latitude, location.longitude)?.name } catch (e: Exception) { null }
+                ?: storedCity.name
             val updated = WidgetCity(
                 lat = location.latitude,
                 lon = location.longitude,
-                name = geo?.name ?: storedCity.name,
+                name = name,
                 isLive = true,
             )
             WidgetPrefs.setCity(context, appWidgetId, updated)

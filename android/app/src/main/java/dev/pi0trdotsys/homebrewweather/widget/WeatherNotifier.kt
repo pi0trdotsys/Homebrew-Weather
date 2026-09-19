@@ -118,13 +118,12 @@ object WeatherNotifier {
         // Edge-triggered: only notify on the transition into rain, not on every
         // refresh while it keeps raining.
         if (isRainingNow && !wasRaining) {
-            val what = if (kind == "thunder") "thunderstorm" else "rain"
             notify(
                 context,
                 notificationId = appWidgetId * 100 + 1,
                 channelId = CHANNEL_RAIN,
                 title = "Homebrew Weather — ${city.name}",
-                text = "${city.name}: $what incoming, grab a jacket",
+                text = RudeNotifications.rain(city.name, isThunder = kind == "thunder"),
             )
         }
     }
@@ -143,7 +142,7 @@ object WeatherNotifier {
                     notificationId = appWidgetId * 100 + 2,
                     channelId = CHANNEL_TEMP_EXTREME,
                     title = "Homebrew Weather — ${city.name}",
-                    text = "${city.name}: ${temp.roundToInt()}°C, heat's no joke today",
+                    text = RudeNotifications.highTemp(city.name, temp.roundToInt()),
                 )
             }
         }
@@ -157,7 +156,7 @@ object WeatherNotifier {
                     notificationId = appWidgetId * 100 + 3,
                     channelId = CHANNEL_TEMP_EXTREME,
                     title = "Homebrew Weather — ${city.name}",
-                    text = "${city.name}: ${temp.roundToInt()}°C, bundle up out there",
+                    text = RudeNotifications.lowTemp(city.name, temp.roundToInt()),
                 )
             }
         }
@@ -176,15 +175,17 @@ object WeatherNotifier {
         if (NotifStatePrefs.lastSwingNotifiedDate(context, appWidgetId) == isoDate) return
         NotifStatePrefs.setSwingNotifiedDate(context, appWidgetId, isoDate)
 
-        val direction = if (delta > 0) "warming up" else "cooling down"
-        val text = "${city.name}: $direction from ${today.tempMax.roundToInt()}° to " +
-            "${tomorrow.tempMax.roundToInt()}° tomorrow — dress accordingly"
         notify(
             context,
             notificationId = appWidgetId * 100 + 4,
             channelId = CHANNEL_TEMP_SWING,
             title = "Homebrew Weather — ${city.name}",
-            text = text,
+            text = RudeNotifications.swing(
+                city.name,
+                todayMax = today.tempMax.roundToInt(),
+                tomorrowMax = tomorrow.tempMax.roundToInt(),
+                warming = delta > 0,
+            ),
         )
     }
 
@@ -213,7 +214,7 @@ object WeatherNotifier {
             notificationId = appWidgetId * 100 + 5,
             channelId = CHANNEL_AQI,
             title = "Homebrew Weather — ${city.name}",
-            text = "${city.name}: AQI $aqi ($label) — maybe skip the outdoor workout",
+            text = RudeNotifications.aqi(city.name, aqi, label),
         )
     }
 }

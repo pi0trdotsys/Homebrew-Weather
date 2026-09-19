@@ -244,17 +244,20 @@ class WidgetConfigureActivity : Activity() {
         val lat = location.latitude
         val lon = location.longitude
         bgExecutor.execute {
-            val geo = try {
-                WeatherApi.reverseGeocode(lat, lon)
-            } catch (e: Exception) {
-                null
-            }
+            // DeviceGeocoder (on-device, no network) first — WeatherApi.reverseGeocode
+            // (Open-Meteo's `/v1/reverse`) is a dead endpoint (confirmed hard 404 for
+            // every coordinate, not just this one) kept only as a last-ditch fallback
+            // in case that ever changes. If both fail, an honest coordinate label
+            // beats a static "current location" placeholder that never self-heals.
+            val name = DeviceGeocoder.cityName(applicationContext, lat, lon)
+                ?: try { WeatherApi.reverseGeocode(lat, lon)?.name } catch (e: Exception) { null }
+                ?: DeviceGeocoder.coordinateLabel(lat, lon)
             // "Use my location" always saves live/follow mode, not a one-time
             // snapshot — see WidgetCity.isLive doc + WeatherWidgetProvider's
             // refresh path, which re-acquires the location on every refresh
             // from here on. Searching a city by name (buildResultRow /
             // suggestionBtn) stays a plain fixed point (isLive defaults false).
-            val city = WidgetCity(lat, lon, geo?.name ?: "current location", isLive = true)
+            val city = WidgetCity(lat, lon, name, isLive = true)
             mainHandler.post { selectCity(city) }
         }
     }

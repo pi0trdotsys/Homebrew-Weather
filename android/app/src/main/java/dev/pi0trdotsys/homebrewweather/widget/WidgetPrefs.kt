@@ -61,7 +61,7 @@ object WidgetPrefs {
     // widget instance renders at until the host first reports real granted
     // options via onAppWidgetOptionsChanged (see WeatherWidgetProvider).
     const val DEFAULT_MIN_WIDTH_DP = 250
-    const val DEFAULT_MIN_HEIGHT_DP = 182
+    const val DEFAULT_MIN_HEIGHT_DP = 165
 
     fun getCity(context: Context, appWidgetId: Int): WidgetCity? {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

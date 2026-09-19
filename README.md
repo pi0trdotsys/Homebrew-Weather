@@ -39,7 +39,7 @@ PLATFORM web (PWA) + native Android widget
 
 - Pixel-art icons, CRT phosphor glow, typewriter forecast output
 - Native Android home-screen widget (4×2) — refresh, city picker, own background worker
-- Rain / high / low / swing notifications, thresholds set in `./settings`
+- Rain / high / low / swing / AQI notifications with attitude, thresholds set in `./settings`
 - Zero backend — talks to [Open-Meteo](https://open-meteo.com/) directly, on-device
 
 ## Stack
