@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Faint highlight behind the "dziś" column of the 4-day grid. The grid's
+     four columns are otherwise identical, so the one that answers "what is it
+     doing today" had no more visual weight than the one three days out. A ~6%
+     cyan wash is enough to anchor it without turning into a button. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#1055FFFF" />
+    <corners android:radius="3dp" />
+</shape>

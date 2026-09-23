@@ -1,28 +1,38 @@
 package dev.pi0trdotsys.homebrewweather.widget
 
 import android.app.Activity
+import android.graphics.Color
 import android.os.Bundle
+import android.util.TypedValue
+import android.view.Gravity
 import android.view.View
+import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
 import dev.pi0trdotsys.homebrewweather.R
 
 /**
- * DEV-ONLY verification harness. Lives entirely under src/debug/ (this file,
- * its manifest registration, and its layout), so it is only ever compiled
- * into debug builds — absent from release, and never reachable from the
- * launcher (no LAUNCHER intent-filter is declared for it anywhere).
+ * DEV-ONLY verification harness. Lives entirely under src/debug/ (this file and
+ * its manifest registration), so it is only ever compiled into debug builds —
+ * absent from release, and never reachable from the launcher (no LAUNCHER
+ * intent-filter is declared for it anywhere).
  *
- * Exists because dragging a widget onto a home screen to eyeball a layout
- * change is fragile/impractical to automate. Instead this seeds fake
+ * Exists because dragging a widget onto a home screen to eyeball a layout change
+ * is fragile to automate and only ever proves one size. This seeds fake
  * (deliberately worst-case) weather data into [WidgetPrefs]' cache for a
- * throwaway appWidgetId, flips [WeatherWidgetProvider.debugForceOfflineCache]
- * so [WeatherWidgetProvider.buildRemoteViews] skips the live network fetch
- * and reads that cache instead, then inflates the *actual* returned
- * RemoteViews tree (via [android.widget.RemoteViews.apply]) into two
- * containers sized to exactly match the widget's guaranteed-minimum,
- * true-4x2 (250x110dp) and minimum-resize (180x90dp) footprints declared in
- * res/xml/weather_widget_info.xml — the same real code path production
- * uses, not a hand-copied approximation.
+ * throwaway appWidgetId, flips [WeatherWidgetProvider.debugForceOfflineCache] so
+ * [WeatherWidgetProvider.buildRemoteViews] skips the live network fetch and reads
+ * that cache instead, then inflates the *actual* returned RemoteViews tree into
+ * a container per entry in [SIZES] — the same real code path production uses,
+ * not a hand-copied approximation.
+ *
+ * [SIZES] is the point: the widget is now sized continuously from its granted
+ * footprint (see [WidgetMetrics]), so the thing worth checking is the *range*,
+ * not one blessed size. The list deliberately spans from the declared
+ * minResize up past what real launchers grant, and includes the exact
+ * 368x176dp a real device was measured at.
  *
  * Launch with:
  *   adb shell am start -n dev.pi0trdotsys.homebrewweather/.widget.WidgetPreviewDebugActivity
@@ -33,65 +43,133 @@ class WidgetPreviewDebugActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_widget_preview_debug)
 
         seedFakeData(FAKE_WIDGET_ID)
 
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+        }
+        root.addView(caption("DEBUG: widget size matrix (dev-only, not shipped)", Color.parseColor("#ff5555")))
+        addIconSheet(root)
+
         WeatherWidgetProvider.debugForceOfflineCache = true
         try {
-            // Simulate the host reporting the widget's *default* footprint via
-            // onAppWidgetOptionsChanged (see WidgetPrefs.setLastKnownMin{Width,Height}Dp)
-            // before building — same persisted values buildRemoteViews() always
-            // reads, just written directly here instead of via a real AppWidgetManager
-            // resize callback (which a throwaway, never-actually-placed fake widget id
-            // can't receive).
-            WidgetPrefs.setLastKnownMinWidthDp(this, FAKE_WIDGET_ID, WidgetPrefs.DEFAULT_MIN_WIDTH_DP)
-            WidgetPrefs.setLastKnownMinHeightDp(this, FAKE_WIDGET_ID, WidgetPrefs.DEFAULT_MIN_HEIGHT_DP)
-            val rvDefault = WeatherWidgetProvider.buildRemoteViews(applicationContext, FAKE_WIDGET_ID)
-            val defaultContainer = findViewById<FrameLayout>(R.id.preview_default_container)
-            defaultContainer.addView(rvDefault.apply(applicationContext, defaultContainer))
+            SIZES.forEach { (label, w, h, hideBanner) ->
+                root.addView(caption("${w}x${h}dp — $label", Color.parseColor("#33ff66")))
 
-            // Now simulate the host reporting a resize down to minResizeWidth/Height.
-            WidgetPrefs.setLastKnownMinWidthDp(this, FAKE_WIDGET_ID, 180)
-            WidgetPrefs.setLastKnownMinHeightDp(this, FAKE_WIDGET_ID, 90)
-            val rvMinResize = WeatherWidgetProvider.buildRemoteViews(applicationContext, FAKE_WIDGET_ID)
-            val minResizeContainer = findViewById<FrameLayout>(R.id.preview_minresize_container)
-            minResizeContainer.addView(rvMinResize.apply(applicationContext, minResizeContainer))
+                // Stand in for the host's onAppWidgetOptionsChanged: a fake id
+                // that was never really placed can't receive one, and
+                // WidgetSize.resolve falls back to exactly these prefs when the
+                // host has no live options for an id.
+                WidgetPrefs.setLastKnownMinWidthDp(this, FAKE_WIDGET_ID, w)
+                WidgetPrefs.setLastKnownMinHeightDp(this, FAKE_WIDGET_ID, h)
 
-            // A third default-size render with the status banner force-hidden: the
-            // banner is a real content-overlay by design (see WidgetMock4x2.tsx),
-            // so the "stale · retrying" render above deliberately covers part of
-            // the hero row — this one verifies the hero row itself (icon/temp/
-            // condition/sparkline/AQI/sync) has no *independent* clipping once
-            // that overlay is out of the way.
-            WidgetPrefs.setLastKnownMinWidthDp(this, FAKE_WIDGET_ID, WidgetPrefs.DEFAULT_MIN_WIDTH_DP)
-            WidgetPrefs.setLastKnownMinHeightDp(this, FAKE_WIDGET_ID, WidgetPrefs.DEFAULT_MIN_HEIGHT_DP)
-            val rvOk = WeatherWidgetProvider.buildRemoteViews(applicationContext, FAKE_WIDGET_ID)
-            rvOk.setViewVisibility(R.id.widget_status_banner, View.GONE)
-            val okContainer = findViewById<FrameLayout>(R.id.preview_ok_container)
-            okContainer.addView(rvOk.apply(applicationContext, okContainer))
+                val rv = WeatherWidgetProvider.buildRemoteViews(applicationContext, FAKE_WIDGET_ID)
+                // The status banner is a real content overlay by design, so one
+                // render per size with it hidden proves the rows underneath have
+                // no independent clipping.
+                if (hideBanner) rv.setViewVisibility(R.id.widget_status_banner, View.GONE)
 
-            // A fourth render at a "generous" size bigger than the declared
-            // minimum (250x240dp vs. the declared 250x200dp) — real launchers
-            // have been observed granting noticeably more than the declared
-            // minimum (see weather_widget.xml's header comment), so this
-            // verifies the flexible grid row actually centers nicely in the
-            // extra room instead of leaving it as dead space.
-            WidgetPrefs.setLastKnownMinWidthDp(this, FAKE_WIDGET_ID, WidgetPrefs.DEFAULT_MIN_WIDTH_DP)
-            WidgetPrefs.setLastKnownMinHeightDp(this, FAKE_WIDGET_ID, 240)
-            val rvGenerous = WeatherWidgetProvider.buildRemoteViews(applicationContext, FAKE_WIDGET_ID)
-            rvGenerous.setViewVisibility(R.id.widget_status_banner, View.GONE)
-            val generousContainer = findViewById<FrameLayout>(R.id.preview_generous_container)
-            generousContainer.addView(rvGenerous.apply(applicationContext, generousContainer))
+                val container = FrameLayout(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(dp(w), dp(h)).apply {
+                        topMargin = dp(6)
+                        bottomMargin = dp(10)
+                    }
+                    setBackgroundColor(Color.parseColor("#181818"))
+                }
+                container.addView(rv.apply(applicationContext, container))
+                root.addView(container)
+            }
         } finally {
             // Don't leave the process-wide debug seam flipped on beyond this screen.
             WeatherWidgetProvider.debugForceOfflineCache = false
         }
+
+        setContentView(
+            ScrollView(this).apply {
+                setBackgroundColor(Color.BLACK)
+                isFillViewport = true
+                addView(
+                    root,
+                    ViewGroup.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ),
+                )
+            },
+        )
     }
 
     /**
-     * Deliberately worst-case-ish sample data (long-ish city name, a mix of
-     * icon kinds across the 4 days including a below-zero day, a max-length
+     * Every pixel-icon kind, at the two sizes the widget actually draws them
+     * and across all four animation frames.
+     *
+     * The size matrix below only ever exercises whichever kinds the fake
+     * forecast happens to contain, at whatever frame the blink tick left
+     * persisted — so before this existed there was no way to look at, say,
+     * the fog icon, or to see a sun's twinkle frame next to its full frame.
+     * That is exactly how the previous grids shipped with a storm cloud
+     * almost the same colour as the widget background.
+     *
+     * Left column is the 4-day grid size, right column the hero size.
+     */
+    private fun addIconSheet(root: LinearLayout) {
+        root.addView(caption("pixel icons — grid size (20dp) / hero size (30dp), frames 0-3", Color.parseColor("#55ffff")))
+        PixelIcons.ICONS.keys.forEach { kind ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                layoutParams = LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                ).apply { topMargin = dp(4) }
+                setBackgroundColor(Color.parseColor("#0a0f0a"))
+                setPadding(dp(4), dp(3), dp(4), dp(3))
+            }
+            row.addView(
+                TextView(this).apply {
+                    text = kind.padEnd(8)
+                    setTextColor(Color.parseColor("#4a6a4a"))
+                    typeface = android.graphics.Typeface.MONOSPACE
+                    setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+                },
+            )
+            listOf(20, 30).forEach { sizeDp ->
+                for (frame in 0 until 4) {
+                    row.addView(
+                        android.widget.ImageView(this).apply {
+                            setImageBitmap(WidgetGraphics.icon(context, kind, dp(sizeDp), frame))
+                            layoutParams = LinearLayout.LayoutParams(
+                                ViewGroup.LayoutParams.WRAP_CONTENT,
+                                ViewGroup.LayoutParams.WRAP_CONTENT,
+                            ).apply { marginEnd = dp(5) }
+                        },
+                    )
+                }
+            }
+            root.addView(row)
+        }
+    }
+
+    private fun caption(text: String, color: Int) = TextView(this).apply {
+        this.text = text
+        setTextColor(color)
+        typeface = android.graphics.Typeface.MONOSPACE
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+        gravity = Gravity.START
+        layoutParams = LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT,
+            ViewGroup.LayoutParams.WRAP_CONTENT,
+        ).apply { topMargin = dp(10) }
+    }
+
+    private fun dp(value: Int): Int =
+        Math.round(value * resources.displayMetrics.density)
+
+    /**
+     * Deliberately worst-case-ish sample data (long-ish city name, a mix of icon
+     * kinds across the 4 days including a below-zero day, a max-length
      * "unhealthy (sensitive)" AQI label, 100% PoP) so the layout gets
      * stress-tested against real content widths, not best-case short strings.
      */
@@ -120,7 +198,24 @@ class WidgetPreviewDebugActivity : Activity() {
         WidgetPrefs.setCachedWeather(this, fakeWidgetId, fakeWeather)
     }
 
+    private data class Preview(
+        val label: String,
+        val widthDp: Int,
+        val heightDp: Int,
+        val hideBanner: Boolean = true,
+    )
+
     companion object {
         private const val FAKE_WIDGET_ID = -777
+
+        private val SIZES = listOf(
+            Preview("real device: Lawnchair 4x2 on a 400dp-wide screen", 368, 176),
+            Preview("same, with the status-banner overlay showing", 368, 176, hideBanner = false),
+            Preview("declared default (minWidth x minHeight)", 250, 165),
+            Preview("wide and short — a squashed resize", 368, 110),
+            Preview("declared minResize", 180, 90),
+            Preview("narrow square — a 2x2-ish placement", 170, 170),
+            Preview("generous — taller than anything declared", 300, 260),
+        )
     }
 }

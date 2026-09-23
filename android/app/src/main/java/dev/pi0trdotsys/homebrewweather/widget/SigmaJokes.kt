@@ -3,13 +3,36 @@ package dev.pi0trdotsys.homebrewweather.widget
 import kotlin.math.abs
 
 /**
- * Direct Kotlin port of src/lib/sigma-jokes.ts — same joke pools, same
- * pick-by-seed logic (pool is night + kind when isNight, else just kind;
- * pick index = |seed| % pool.size). Lines are kept under ~50 chars in the
- * source file so the widget's single-line footer joke doesn't truncate
- * mid-sentence — keep this file byte-for-byte in sync with the .ts source.
+ * Footer copy for the widget, in the app's "sigma" voice — this is the user's
+ * own personal app mocking its own user, never a real person.
+ *
+ * Direct Kotlin port of src/lib/sigma-jokes.ts: same pools, same pick-by-seed
+ * logic (pool is night + kind when isNight, else just kind; index =
+ * |seed| % pool.size). Keep the two byte-identical; the .ts side is generated
+ * from this file.
+ *
+ * ## Line length
+ *
+ * Hard ceiling of 50 characters, and it is a real constraint rather than a
+ * style preference. The footer is one ellipsized line, and the narrowest
+ * width the widget still renders it at leaves room for roughly 48 monospace
+ * characters — past that the punchline is what gets replaced by "…". There is
+ * a test for this; see SigmaJokesTest.
+ *
+ * ## What this pass changed
+ *
+ * Pools roughly doubled (8 kinds x ~24 lines). The previous set leaned hard on
+ * one joke — some variation of "the weather is doing something and you are
+ * doing nothing" — which appeared in over a dozen of its ~110 lines, so on a
+ * widget that reseeds hourly it read as the same gag on repeat. The rewrite
+ * keeps the voice but varies the shape: imperatives, comparisons, flat
+ * observations, and a few that are almost encouraging, so the pool has some
+ * range rather than one note at different volumes.
  */
 object SigmaJokes {
+
+    /** Hard ceiling on a footer line, see the class doc. */
+    const val MAX_LINE_LENGTH = 50
 
     private val SIGMA: Map<String, List<String>> = mapOf(
         "sun" to listOf(
@@ -18,20 +41,26 @@ object SigmaJokes {
             "grindset weather. wychodzisz albo zostajesz nikim",
             "ładna pogoda, a ty siedzisz w chacie jak cuck",
             "słońce świeci mocniej niż twoja kariera",
-            "słońce jak twoja ambicja — raz w miesiącu",
             "UV index wyższy niż twoja pewność siebie",
-            "słonecznie. w końcu ogarnij to CV",
             "sigma się opala i planuje imperium, ty drzemkę",
-            "zajebista pogoda, szkoda że nic w niej nie robisz",
             "+30°C na dworze, +2 na koncie, based",
-            "słońce nie bierze L9, a ty bierzesz sick day",
-            "piękny dzień żeby przestać być swoim hejterem",
-            "słońce non-stop, ty w łóżku, kto tu kogo grzeje",
             "witamina D za darmo, silnej woli nie rozdają",
             "idealna pogoda na cardio, wybierasz kanapę",
-            "sigma łapie kontrakty, beta tylko powiadomienia",
             "słońce w zenicie, ambicje w fazie planowania",
             "giga słonecznie, zero wymówek, ogarnij się",
+            "cień też trzeba zasłużyć. najpierw wyjdź",
+            "słońce nie pyta czy masz humor. wstawaj",
+            "piękny dzień na bycie kimś. spróbuj",
+            "klimatyzacja to cope. zahartuj się",
+            "opalenizna gratis, charakter w abonamencie",
+            "słońce non stop, a ty w trybie oszczędzania",
+            "taki dzień zdarza się rzadziej niż twój plan",
+            "gorąco. wypij wodę zanim padniesz na patio",
+            "SPF 50 na skórę, zero SPF na wymówki",
+            "dzień idealny. wymówka też musi być idealna",
+            "słońce w kalendarzu, ty w powiadomieniach",
+            "sigma łapie promienie, beta łapie doomscroll",
+            "ciepło jak w piekle, ale piekło ma lepszy plan",
         ),
         "partly" to listOf(
             "chmury się nie mogą zdecydować, jak twoja ex",
@@ -39,61 +68,103 @@ object SigmaJokes {
             "pół-jasno, pół-gówno, klasyk",
             "pogoda mid, jak twój bench press",
             "częściowe zachmurzenie, jak motywacja po 10",
-            "niebo waha się jak ty przed 'dzień dobry'",
             "50% szans na deszcz, 100% że nic nie zrobisz",
-            "pogoda w sam raz na 'jeszcze pięć minut'",
             "chmury przelotne, plany życiowe jeszcze bardziej",
-            "połowicznie słonecznie, połowicznie jak twój set",
             "niebo w trybie demo, pełna wersja płatna",
-            "częściowo zachmurzone, w pełni no cap nieokreślone",
             "pogoda 'może', jak twoje 'jutro na siłkę'",
+            "niebo nie wie czego chce. macie coś wspólnego",
+            "słońce wychodzi, chowa się, wychodzi. relatable",
+            "pogoda na 'zobaczymy'. twój ulubiony tryb",
+            "trochę słońca, trochę chmur, zero decyzji",
+            "niebo gra na zwłokę tak jak ty z tym mailem",
+            "mid weather, mid dzień, mid ty. napraw jedno",
+            "chmury przychodzą i idą. deadline zostaje",
+            "połowa nieba zajęta, połowa planów też",
+            "raz cień, raz słońce. jak twoja dyscyplina",
+            "pogoda kompromisowa. życie nie musi być",
+            "ani ładnie, ani brzydko. jak twój tydzień",
+            "niebo w kratkę, grafik w kratkę, spójnie",
+            "50% chmur, 100% potencjału zmarnowanego",
+            "zmienne zachmurzenie, niezmienne wymówki",
+            "słońce zagląda i ucieka jak twoja pewność",
         ),
         "cloud" to listOf(
             "szaro-buro, idealnie pod depresję i redbulla",
             "niebo zachmurzone jak myśli o poniedziałku",
             "pochmurno. beta w domu, sigma i tak wychodzi",
             "chmury gęste jak wymówki kumpla",
-            "szaro jak boxy nieprane od tygodnia",
             "zachmurzenie jak brak planu na przyszłość",
             "szaro jak twój Discord status od trzech dni",
-            "pochmurnie, ale jaśniej niż bez rutyny",
             "niebo w kolorze nastroju o 6 rano",
             "chmury nisko, standardy jeszcze niżej",
-            "szaro jak Excel z budżetem co go nie otwierasz",
             "zachmurzenie jak motywacja — teoretycznie jest",
             "niebo bez słońca, ty bez planu, wtorek rel",
+            "szaro. idealna pogoda żeby nikt cię nie widział",
+            "chmury nie przepuszczają światła ani wymówek",
+            "pochmurno, ale siłka ma dach. żadnej litości",
+            "niebo ma filtr grayscale. twój dzień też",
+            "bez słońca, bez cienia, bez charakteru",
+            "beżowy dzień. dodaj kontrast albo zostań tłem",
+            "chmury na całość. ty na pół gwizdka",
+            "szaro jak Excel którego nie otwierasz",
+            "pogoda bez opinii. w przeciwieństwie do ciebie",
+            "niebo zamknięte na klucz, jak siłownia w głowie",
+            "pochmurnie. świat ci nie kibicuje, i dobrze",
+            "chmury po horyzont, wymówki po sufit",
+            "szary dzień to nie wyrok, to tło pod robotę",
+            "niebo dziś na minimalizmie. ty na minimum",
         ),
         "fog" to listOf(
             "mgła gęstsza niż twój wywód po piątym piwie",
             "visibility 10m, jak twoje plany życiowe",
             "mgła. idealna na zniknięcie bez tłumaczenia",
             "nic nie widać, jak przyszłość bez planu B",
-            "mgła gęsta jak wymówka czemu olałeś trening",
-            "widoczność zero, motywacja też, nogi jeszcze idą",
+            "widoczność zero, motywacja też, nogi idą",
             "mgła jak twój umysł przed kawą — i po niej",
-            "nic nie widać, więc nikt nie widzi że olałeś dzień",
             "gęsto jak po 'od jutra zaczynam' po raz setny",
             "mgła zasłania horyzont, wymówki resztę",
-            "widoczność ograniczona jak tolerancja na poranki",
             "gęsta mgła, rzadkie postanowienia noworoczne",
+            "mgła. jedziesz wolniej, myślisz tak samo",
+            "nie widać dalej niż na tydzień. jak w planach",
+            "mgła zjadła horyzont. ambicje już wcześniej",
+            "biała ściana. za nią dalej twoje obowiązki",
+            "widać 10 metrów, wystarczy na pierwszy krok",
+            "mgła nie trwa wiecznie. twoje odkładanie może",
+            "świat na rozmyciu 20px. ładne, bezużyteczne",
+            "mgła, cisza, zero wymówek. idealne na bieg",
+            "nic nie widać, więc nikt nie oceni twojej formy",
+            "mgła gęsta jak twój wątek myślowy o 3 w nocy",
+            "we mgle każdy wygląda tajemniczo. korzystaj",
+            "widoczność jak twoja wizja na pięć lat",
+            "mgła rozejdzie się sama. reszta nie",
+            "szara zupa. wejdź w nią zanim ostygnie",
+            "we mgle GPS ci nie pomoże. charakter tak",
         ),
         "rain" to listOf(
             "leje jak w mordę. bierz kurtkę albo bądź twardy",
             "deszcz. sigma i tak biega, beta pisze do mamy",
             "mokro jak w komentach pod twoim postem",
-            "leje. dobra pogoda żeby ogarnąć się",
             "kropi. weź parasol albo weź się w garść",
             "pada. świat płacze zamiast ciebie",
             "deszcz zmywa błoto, szkoda że nie wymówki",
-            "leje jak z cebra, a ty 'dziś se odpuszczę'",
             "mokro na zewnątrz, sucho w portfelu, klasyk",
-            "burza się zbliża, ty nie zbliżasz się do siłki",
             "deszcz nie pyta o zgodę, szef też nie będzie",
-            "pada jak diably, rusz dupsko zanim się rozmyślisz",
-            "leje od rana, ty leżysz od rana, coincidence?",
+            "pada jak diabli, rusz się zanim się rozmyślisz",
             "krople na szybie, wymówki w głowie, no cap",
             "deszczowo, kaptur na głowę i chodu, sigma flow",
             "parasol zapomniany, charakter też",
+            "deszcz to nie znak. to po prostu deszcz. idź",
+            "mokro. buty wyschną, dzień nie wróci",
+            "leje. dobra, bierz to na klatę i kurtkę",
+            "kałuże omijasz, obowiązki też. sprytnie",
+            "pada od rana. twoja dyscyplina od nigdy",
+            "deszcz zmywa wszystko oprócz zaległości",
+            "krople walą w dach głośniej niż twój budzik",
+            "mokro jak w twoich planach na sobotę",
+            "deszcz nie odwołał świata. siebie też nie",
+            "parasol to nie tarcza charakteru, ale pomaga",
+            "leje jak z cebra. najlepszy dzień na skupienie",
+            "woda z nieba gratis. wymówki też, ale drożej",
         ),
         "snow" to listOf(
             "śnieg. zimno jak serce twojej ex",
@@ -101,28 +172,51 @@ object SigmaJokes {
             "śnieg, mróz, wymówki się nie liczą",
             "sypie. beta odwołuje plany, sigma pompki",
             "minus na termometrze, minus na koncie, spójność",
-            "śnieg pada, standardy nie — te wysoko",
             "zimno jak relacje z rodziną od świąt",
-            "biało wszędzie jak brak pomysłu na życie",
             "śnieg sypie, ty śpisz, klasyczny beta scenariusz",
-            "mróz szczypie mocniej niż ostatni wyciąg z konta",
+            "mróz szczypie mocniej niż wyciąg z konta",
             "biały puch, biała flaga twojego treningu",
             "zimno jak komentarze pod twoim biznesplanem",
             "śnieg pada równo, motywacja nierówno, idziemy",
+            "zima nie negocjuje. ubierz się i wyjdź",
+            "śnieg pokrywa wszystko. zaległości nie",
+            "mróz testuje charakter. oblewasz co roku",
+            "biało i cicho. idealne na myślenie, nie na sen",
+            "zimno hartuje. o ile wyjdziesz z domu",
+            "śnieg skrzypi pod butami. rusz te buty",
+            "minus 5 na dworze, minus 10 w dyscyplinie",
+            "łopata czeka. to też trening, nie narzekaj",
+            "zimą widać kto ma plan, a kto ma koc",
+            "śnieg pada na wszystkich równo. reszta zależy",
+            "biało jak strona z twoimi osiągnięciami",
+            "mróz. kawa gorąca, decyzje niech będą też",
+            "zima trwa trzy miesiące. wymówki cały rok",
         ),
         "thunder" to listOf(
             "burza. bogowie się jarają, ty się nie chowaj",
             "grzmi mocniej niż ego po jednej serii",
             "piorun i tak celuje w tego pod drzewem",
-            "burza. wyłącz kompa albo giga się module",
             "grzmot głośniejszy niż wymówki na czacie",
             "błyskawica szybsza niż twoja decyzja",
-            "piorun bije, adrenalina bije, coś w tobie bije",
             "burza na niebie, chaos w planie dnia, standard",
-            "grzmi jak żołądek po fast foodzie zamiast obiadu",
             "błyskawica na niebie, zero w twoich decyzjach",
             "burza się zbliża, deadline też, oba ignorujesz",
-            "grzmoty głośne, twoje 'zaraz zaczynam' głośniejsze",
+            "grzmoty głośne, twoje 'zaraz zaczynam' głośniej",
+            "burza. zamknij okno, otwórz laptopa, rób swoje",
+            "piorun robi w sekundę tyle co ty w tydzień",
+            "grzmi. natura ma więcej energii niż ty",
+            "burza nie pyta o pozwolenie. ty pytasz o wszystko",
+            "błysk, huk, trzy sekundy. tyle trwa twój zapał",
+            "niebo się drze. ty się ogarnij",
+            "burza przejdzie. twoje odkładanie zostanie",
+            "piorun uderza raz. ty próbujesz piąty raz",
+            "grzmot to nie wymówka, to soundtrack",
+            "burza z gradem. idealnie na plan awaryjny",
+            "elektryczność gratis, energia własna deficyt",
+            "grzmi jak żołądek po fast foodzie zamiast obiadu",
+            "burza czyści powietrze. ty poczyść grafik",
+            "niebo ma więcej charakteru niż twój poniedziałek",
+            "po burzy wychodzi słońce. po scrollu nie",
         ),
         "night" to listOf(
             "noc. sigma trenuje, beta scrolluje reelsy",
@@ -138,8 +232,22 @@ object SigmaJokes {
             "gwiazd nie widać w mieście, planów też nigdzie",
             "noc jak sumienie po piątym odcinku zamiast spać",
             "śpiulkolot się szykuje, jutro znów zaspane rel",
+            "noc to nie wymówka na kolejny odcinek",
+            "księżyc pracuje na nocną. ty na żadną",
+            "o tej porze dobre decyzje już poszły spać",
+            "2:00. jutrzejszy ty już cię nienawidzi",
+            "cisza, ciemność, zero wymówek. śpij albo rób",
+            "noc sprzyja myśleniu. nie scrollowaniu",
+            "gwiazdy są dalej niż twoje cele. ale mają plan",
+            "ciemno. najlepszy filtr na twoje odkładanie",
+            "sen to nie słabość, to serwis. idź na przegląd",
+            "północ minęła. ambicje poszły spać pierwsze",
+            "noc kryje wszystko oprócz nieprzeczytanych maili",
         ),
     )
+
+    /** All pools, exposed for the line-length test. */
+    internal val pools: Map<String, List<String>> get() = SIGMA
 
     /** kind is one of the WeatherKind strings from [Wmo.wmoToKind] (not "night"). */
     fun pick(kind: String, isNight: Boolean = false, seed: Int = 0): String {

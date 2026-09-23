@@ -16,4 +16,7 @@
             android:src="@drawable/widget_hud_grid_tile"
             android:tileMode="repeat" />
     </item>
+    <!-- HUD corner brackets (see widget_hud_corners.xml) - composed in rather
+         than duplicated into each alpha variant. -->
+    <item android:drawable="@drawable/widget_hud_corners" />
 </layer-list>

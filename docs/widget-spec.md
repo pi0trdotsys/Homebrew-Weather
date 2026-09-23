@@ -363,3 +363,268 @@ miasta i chamski tekst — `android.title="Homebrew Weather — Piekoszów"`,
 `android.text="Piekoszów: 18°C, mózg ci się gotuje jak twoje pomysły na
 życie"`.
 
+
+## 8. Skalowanie adaptacyjne — koniec z dwoma sztywnymi layoutami (2026-09-23)
+
+User: „rozmiar elementów zawsze dostosowany do wielkości widgetu, widget ma
+wyglądać znacznie atrakcyjniej, ta sama idea, bez utraty funkcjonalności".
+
+### 8.1 Realna przyczyna: widget nie wiedział, jak jest duży
+
+Cztery opcje rozmiaru `AppWidgetManager` **nie są** parą (min, max) na oś — są
+parą portret/pejzaż, rozrzuconą po nazwach, które czyta się na odwrót:
+
+| opcja | znaczenie |
+|---|---|
+| `OPTION_APPWIDGET_MIN_WIDTH` | szerokość w **portrecie** |
+| `OPTION_APPWIDGET_MAX_WIDTH` | szerokość w **pejzażu** |
+| `OPTION_APPWIDGET_MIN_HEIGHT` | wysokość w **pejzażu** |
+| `OPTION_APPWIDGET_MAX_HEIGHT` | wysokość w **portrecie** |
+
+Czyli realny rozmiar w portrecie to (`MIN_WIDTH`, `MAX_HEIGHT`) — dwie opcje,
+których nazwy do siebie nie pasują. Dotychczasowy kod czytał
+(`MIN_WIDTH`, `MIN_HEIGHT`). Na urządzeniu usera widget renderujący się
+faktycznie jako **368×176dp** był mierzony jako 368×**96**dp (96 to jego
+wysokość w pejzażu), więc wpadał poniżej progu `COMPACT_HEIGHT_THRESHOLD_DP` i
+rysował okrojony `weather_widget_compact.xml`: tekst 7–10sp, ikony 10dp,
+sparkline/AQI/sync/meta całkowicie ukryte — a pod spodem ~70dp pustej siatki
+HUD. To nie był problem stylistyczny: widget po prostu nigdy nie znał swojego
+rozmiaru. Potwierdzone `run-as … cat shared_prefs/widget_city_prefs.xml`
+(`min_width_225=367`, `min_height_225=96`) zestawione ze zmierzonym zrzutem
+ekranu (368×176dp).
+
+Naprawione w nowym `widget/WidgetSize.kt`. Rozmiar czytany jest teraz **na
+żywo** z `getAppWidgetOptions()` przy każdym renderze (prefs zostały tylko jako
+fallback dla harnessu debugowego), więc nie zależy już od tego, czy ten proces
+dostał w ogóle callback `onAppWidgetOptionsChanged`.
+
+### 8.2 Jeden layout, rozmiary liczone w runtime
+
+Oba pliki layoutu zniknęły jako para — `weather_widget_compact.xml` **usunięty**,
+a `weather_widget.xml` nie deklaruje już **żadnej wysokości wiersza ani żadnego
+docelowego `textSize`**. Powód, dla którego ten podział w ogóle istniał
+(„RemoteViews nie zmieni wysokości sztywnego wiersza w runtime,
+`setViewLayoutHeight` to API 31+") przestaje obowiązywać, gdy żaden wiersz nie
+ma sztywnej wysokości: wszystkie są `wrap_content`, więc wysokości wierszy
+wynikają z rozmiarów tekstu, które provider ustawia przez
+`setTextViewTextSize()` (API 16+) — na każdym API, przy każdym rozmiarze.
+
+Ikony skalują się przez `WidgetGraphics.sized()`: `ImageView` z `wrap_content`
+mierzy się do *intrinsic* rozmiaru drawable'a, a `BitmapDrawable` ma intrinsic
+= `bitmap.width * targetDensity / bitmap.density` — więc bitmapa otagowana
+gęstością docelową mierzy się dokładnie na swoją liczbę pikseli. Generujemy
+bitmapę w takim rozmiarze, jaki chcemy, i widok sam się dopasowuje. Zero
+`setViewLayoutHeight`.
+
+`widget/WidgetMetrics.kt` to cała drabinka rozmiarów. Projekt referencyjny
+(scale 1.0) to kolumna wierszy, z których każdy wnosi wysokość **skalowalną**
+(linie tekstu, ikony) i **stałą** (marginesy zapisane w layoutcie);
+`scale = FILL * (budget - fixed) / scalable`. Rozdzielenie tych dwóch części
+czyni solver dokładnym zamiast przybliżonym: zwinięcie marginesów do jednej sumy
+i przeskalowanie całości przestrzeliwuje dokładnie o sumę marginesów — czyli o
+te kilka dp, które w tym widgetcie już nieraz po cichu ścinały dolny wiersz.
+
+Szerokość jest **drugim, niezależnym** ograniczeniem: nigdy nie napędza skali
+pionowej (szeroki i niski widget nie może rosnąć tekstem aż zacznie się ciąć w
+pionie), tylko ogranicza tekst w kolumnach i bramkuje opcjonalne bloki.
+
+### 8.3 Współczynniki linii i szerokości znaków — zmierzone, nie zgadnięte
+
+Wszystkie odczytane z realnych renderów (`uiautomator dump`: wysokość / rozmiar
+tekstu, szerokość / liczba znaków), nie założone:
+
+- wysokość linii **nie jest jedną liczbą**: monospace łaciński z
+  `includeFontPadding="false"` to ~**1.16×**, ale wiersz zawierający glif z
+  fontu zastępczego (`▽` w PoP, `┌─ ─┐` w nagłówku) skacze do ~**1.35×**, bo
+  fallback przynosi własne, wyższe metryki. Wcześniejsze płaskie „1.25"
+  jednocześnie prze-rezerwowywało większość wierszy i nie-do-rezerwowywało dwa.
+- szerokość znaku: łacina **0.62em**, `▽` **0.68em**, bloki `▁▂▃▅▇` **0.78em**.
+  Założenie, że bloki mają szerokość łacińską, to dokładnie powód, dla którego
+  „▽ 100%" obok sparkline'u ścinało się do „▽ 10…" na szerokim widgetcie.
+
+`FILL = 0.97` zostawia 3% zapasu — fonty zaokrąglają do pełnych pikseli,
+`LinearLayout` zaokrągla drugi raz, a nazwa miasta może wciągnąć do nagłówka
+fallback z własnymi metrykami. Bycie 1dp ponad nie degraduje się łagodnie: ścina
+dolny wiersz na pół.
+
+### 8.4 Tiery — co znika i w jakiej kolejności
+
+Poniżej `MIN_SCALE` (0.70) uczciwszy handel to „pokaż mniej, czytelnie" niż
+„pokaż wszystko, nieczytelnie". Kolejność odwrotna do tego, jak często się na to
+patrzy: linia meta (feels/hum/wind) → żart sigma → PoP + paski zakresu → linia
+warunków w hero → etykiety dni. **Nagłówek nie znika nigdy** — to jedyny wiersz
+z kontrolkami (wybór miasta, refresh).
+
+`XXS` istnieje, bo deklarowane `minResizeHeight` (90dp) naprawdę nie mieściło
+`XS`: solver dobijał do `MIN_SCALE` i wciąż przekraczał o ~9dp, co na urządzeniu
+wyglądało jak temperatury 4 dni ścięte w pół wzdłuż dolnej krawędzi.
+
+### 8.5 Warstwa wizualna (ta sama idea, mocniej postawiona)
+
+- **Narożne nawiasy HUD** — `widget_hud_corners.xml`. Prosił o nie §3 pkt 3 od
+  początku i każde poprzednie podejście je pomijało („nice-to-have", 4 dodatkowe
+  `ImageView` to realny budżet RemoteViews). Jako drawable kosztują zero:
+  `<item android:width/height/gravity>` (API 23+) stawia pasek w rogu bez
+  znajomości rozmiaru widgetu, więc to jeden `layer-list`, który tła składają w
+  siebie — zero dodatkowych widoków, zero pracy w runtime.
+- **Paski zakresu temperatur** w siatce (`WidgetGraphics.rangeBar`) — gdzie
+  min..max danego dnia leży w zakresie całych 4 dni. Czytanie czterech par
+  „24°/14°" i rankowanie ich w głowie to praca; cztery odcinki na wspólnej osi to
+  nie. To jedyna informacja, którą siatka już miała, ale nigdy nie *pokazywała*.
+  Oś to kreska 1px, nie wypełniony pasek — wypełniony czytał się jak drugi słupek
+  konkurujący z odcinkiem na nim i cały wiersz zamieniał się w nieczytelne paski.
+- **Podświetlenie kolumny „dziś"** (`widget_today_col.xml`) — ~6% cyan. Cztery
+  kolumny były identyczne, więc ta odpowiadająca na „co jest dzisiaj" nie miała
+  większej wagi wizualnej niż ta sprzed trzech dni.
+- Sparkline i jego „▽ max%" dzielą teraz jeden wiersz. To jeden odczyt, a jako
+  cztery osobne linie kolumna statystyk mierzyła się wyżej niż stos
+  temp+warunki obok — wiersz hero przerastał swój budżet i ścinał stopkę.
+- `aqiShortLabel()` — dwie z sześciu kategorii US AQI są na tyle długie, że
+  „AQI 142 · unhealthy (sensitive)" nie zmieści się w kolumnie statystyk przy
+  żadnym realnym rozmiarze, a odczyt AQI z uciętą kategorią to tylko liczba.
+  Świadomie osobna funkcja, nie zmiana w `aqiLabelAndColor()` — na tamtych
+  dokładnych stringach dopasowuje się `aqiComfortPenalty()` i używa ich
+  `WeatherNotifier`, a żadne z nich nie ma problemu z szerokością.
+
+### 8.6 Weryfikacja
+
+`WidgetPreviewDebugActivity` przepisany na **macierz rozmiarów** zamiast czterech
+zaszytych kontenerów — skoro rozmiary są ciągłe, sprawdzać trzeba *zakres*, nie
+jeden błogosławiony rozmiar. Renderuje 368×176 (zmierzony realny 4×2 na tym
+urządzeniu), 250×165 (deklarowane minimum), 368×110, 180×90 (deklarowany
+minResize), 170×170 i 300×260.
+
+Sprawdzenie przepełnienia jest **zmierzone, nie ocenione okiem**: `uiautomator
+dump` → dla każdego kontenera najniższa krawędź dowolnego `TextView` kontra dolna
+krawędź kontenera. Wszystkie sześć rozmiarów: 5–18dp zapasu góra i dół,
+symetrycznie (czyli `center_vertical` działa).
+
+Przy okazji: `/mockups` **crashowało na `main`** (`fitReport`, `PREVIEW`, `ROWS`,
+`dp` używane w `src/routes/mockups.tsx`, ale nie zaimportowane) — naprawione, bo
+to podgląd akurat tej rzeczy, którą ta zmiana rusza.
+
+### 8.7 `src/lib/widget-tokens.ts` nie jest już źródłem prawdy dla rozmiarów
+
+I mówi to teraz wprost. Deklarował `250×110dp` w czasie, gdy
+`weather_widget_info.xml` deklarował 250×165, natywny layout zdryfował do
+trzeciej liczby, a realny launcher przyznawał 368×176 — ta „jedna prawda" była
+fikcją od kilku iteracji. Rozmiary natywne liczy `WidgetMetrics.kt` z realnie
+przyznanego footprintu. W tokenach został **projekt referencyjny** (wiersze przy
+scale 1.0), z którego drabinka się skaluje — natywny widget w innym rozmiarze to
+te proporcje razy współczynnik, nie inny layout. **Kolory zostają ścisłym
+kontraktem 1:1 z `widget_colors.xml`.** Web mockup (`WidgetMock4x2.tsx`) nie
+dostał pasków zakresu ani narożników — od tej pory to natyw jest z przodu.
+
+## 9. Ikony pixel-art i baza sigma (2026-09-23)
+
+### 9.1 Ikony — przeprojektowane pod rozmiar, w jakim naprawdę się rysują
+
+Siatki renderują się przy 13–20dp (grid) i 26–30dp (hero). Na xxhdpi to ~2.4–3.8
+piksela urządzenia na komórkę siatki, więc pojedyncza komórka jest widoczną
+kropką, ale drobny naprzemienny detal zamienia się w papkę. Poprzednie siatki
+były projektowane „na oko" w edytorze, nie w tym rozmiarze — obejrzane na
+realnym urządzeniu przez nowy arkusz ikon (§9.3) pokazały cztery konkretne wady:
+
+| ikona | było | jest |
+|---|---|---|
+| `sun` | tarcza na prawie całą siatkę + odklejone 1-pikselowe kikuty promieni → czytało się jak ameba | mniejsza tarcza (rzędy 5–10) + osiem wyraźnie **oddzielonych** promieni 2×2; przerwa między tarczą a promieniami jest celowa, stykające się zlewają się w jedną kulę przy 13dp |
+| `rain` | jednolita szachownica pojedynczych niebieskich kropek przez 5 rzędów → czytało się jak niebieski szum | dwie przesunięte rangi **pionowych kresek** 2px w dwóch odcieniach niebieskiego → czyta się jak spadające strugi |
+| `snow` | gęste plus-kształty w 6 rzędach | rzadkie **pojedyncze kropki** — i to jest właśnie powód, dla którego deszcz dostał kreski: przy identycznej chmurze powyżej i ~50px szerokości to jedyne, co odróżnia te dwie ikony na pierwszy rzut oka |
+| `thunder` | chmura `#2a3a2a` na tle widgetu `#0a0f0a` → praktycznie niewidoczna smuga | łupkowy szaro-niebieski `#6b7c84`/`#45545b`, który realnie odcina się od tła, a wciąż czyta się jako „ciemniejsza niż zwykła chmura" |
+
+Poza tym: każda ikona z objętością jest teraz **dwutonowa** (wielka litera = ton
+oświetlony, mała = cieniowany: `W`/`w` chmura, `D`/`d` chmura burzowa, `Y`/`o`
+słońce, `B`/`b` deszcz, `G`/`g` mgła). Płaskie jednotonowe wypełnienie czyta się
+jak ziemniak w tych rozmiarach.
+
+- `moon` — księżyc rysował „ugryzienie" sierpa jako nieprzezroczysty ciemny
+  kształt, co na przezroczystym tle widgetu wyglądało jak brudna plama; teraz
+  ugryzienie po prostu nie jest rysowane. Doszły dwie cyjanowe gwiazdki.
+- `fog` — zamiast identycznych słupków w przygaszonej zieleni: przesunięte
+  słupki w dwóch szarościach, które **dryfują w bok** (`FOG_DRIFT`) zamiast
+  podskakiwać w pionie jak chmury. Mgła się przesuwa, nie podskakuje.
+
+### 9.2 Piorun przygasa, nie znika
+
+Osobna, realna usterka znaleziona przy okazji: klatka „bez błysku" dla
+`thunder` blankowała cały piorun (`blankChar(grid, 'L')`). Ponieważ klatkę
+przełącza ~60-sekundowy `BlinkAlarm`, przez **połowę każdego cyklu** ikona burzy
+była zwykłą szarą chmurą — nieodróżnialną od `cloud`, na ikonie, której jedynym
+zadaniem jest powiedzieć „burza". Teraz piorun jest przekolorowany na przygaszony
+bursztyn (`recolor(grid, 'L', 'l')`, `l` = `#7a5300`): kształt zostaje zawsze
+widoczny, a błysk dalej działa.
+
+Przy okazji `SUN_RAY_TIPS` przeliczone pod nową tarczę i ograniczone do **czubka**
+każdego promienia. Poprzednia lista blankowała tyle, że klatka „retracted"
+zwijała słońce w zwykły romb.
+
+### 9.3 Arkusz ikon w harnessie
+
+`WidgetPreviewDebugActivity` renderuje teraz na górze **wszystkie rodzaje ikon ×
+oba rozmiary (20/30dp) × wszystkie 4 klatki animacji**. Macierz rozmiarów poniżej
+pokazuje tylko te rodzaje, które akurat zawiera fejkowa prognoza, przy tej klatce,
+którą akurat zostawił blink tick — więc wcześniej nie było *żadnego* sposobu, żeby
+obejrzeć np. ikonę mgły albo zestawić klatkę błysku z klatką pełną. Dokładnie tak
+poprzednie siatki weszły na produkcję z chmurą burzową w kolorze tła.
+
+### 9.4 Baza sigma — 111 → 193 linii
+
+Pule mniej więcej podwojone (8 rodzajów × ~24 linie, 193 unikalne). Poprzedni
+zestaw opierał się mocno na jednym żarcie — wariacji „pogoda coś robi, a ty nic" —
+który pojawiał się w kilkunastu ze ~110 linii, więc na widgecie przesiewanym co
+godzinę czytało się to jak ten sam gag w kółko. Przepisane pule trzymają ten sam
+głos, ale różnicują formę: tryb rozkazujący, porównania, suche obserwacje i kilka
+wręcz zachęcających — żeby pula miała rozpiętość, a nie jedną nutę na różnej
+głośności.
+
+Rejestr bez zmian: to aplikacja użytkownika kpiąca z własnego użytkownika, nigdy
+z realnej osoby. Twardsze przekleństwa zostają tam, gdzie były — w
+`RudeNotifications.kt` (powiadomienia push), nie w stopce, która stoi na ekranie
+głównym na widoku.
+
+**Twardy limit 50 znaków** na linię jest teraz egzekwowany, nie tylko opisany:
+footer to jedna elipsowana linia, a najwęższa szerokość, przy której widget ją
+jeszcze rysuje, mieści ~48 znaków monospace — dłuższe i puenta jest właśnie tym,
+co zamienia się w „…".
+
+### 9.5 Testy i synchronizacja
+
+Nowy `app/src/test/.../WidgetContentTest.kt` (5 testów, zwykły JVM JUnit — moduł
+dostał `testOptions { unitTests.returnDefaultValues = true }`, bo mapa kolorów
+`PixelIcons` woła `android.graphics.Color.parseColor` przy inicjalizacji obiektu):
+
+- każda linia sigma mieści się w limicie footera,
+- linie sigma są unikalne we wszystkich pulach,
+- każdy `WeatherKind` ma swoją pulę,
+- każda ikona to siatka 16×16 wyłącznie ze znanych znaków kolorów,
+- deszcz i śnieg trzymają opady **wewnątrz** animowanego pasma (rzędy 9–15) —
+  piksel opadu wyżej stałby nieruchomo, podczas gdy wszystko wokół spada.
+
+Obie webowe kopie (`src/components/PixelIcon.tsx`, `src/lib/sigma-jokes.ts`) są
+od teraz **generowane ze źródeł Kotlin** i zdiffowane po wygenerowaniu (128
+wierszy siatek, 193 linie żartów — zgodne co do bajtu), zamiast przepisywane
+ręcznie i rozjeżdżane po cichu.
+
+### 9.6 Weryfikacja na żywo i pusty sparkline
+
+Wszystko powyżej było sprawdzane w harnessie na wymuszonych, celowo
+najgorszych danych offline. Widget postawiony z powrotem na realnym ekranie
+głównym (Lawnchair, id 233, „Tolox, Spain", przyznane **367×175dp**) domknął to,
+czego harness pokazać nie mógł:
+
+- `min_height_233 = 175` — nowy `WidgetSize` poprawnie odczytuje wysokość w
+  portrecie. Stary kod zapisałby tu 96 (wysokość w pejzażu) i zjechałby na
+  layout compact, dokładnie jak w §8.1.
+- Ścieżka **świeżych danych**: hero w jasnym cyanie z glow (nie przygaszony
+  `widget_cyan_dim`), zero bannera stanu, prawdziwa nazwa miasta. Harness
+  wymusza `debugForceOfflineCache`, więc renderował wyłącznie stan „stale".
+- Przycisk refresh działa end-to-end (broadcast `ACTION_REFRESH` → fetch →
+  `sync` przeskoczyło 10:44:00 → 10:44:19, temperatura 24° → 25°).
+
+**Usterka widoczna tylko na realnych danych:** prognoza bez opadów mapuje każdy
+słupek sparkline'u na najkrótszy blok, więc „wykres" to cztery znaki `▁` obok
+siebie — co czyta się jak przypadkowa pozioma kreska wisząca nad linią AQI, nie
+jak płaski trend. Dane testowe harnessu miały PoP 12/88/100/45, więc ten
+przypadek nigdy się w nim nie pojawił; w suchym klimacie to stan domyślny.
+Naprawione: przy `maxPop == 0` sparkline jest ukrywany — nie ma czego rysować, a
+stojące obok „▽ 0%" i tak mówi, że nie popada.

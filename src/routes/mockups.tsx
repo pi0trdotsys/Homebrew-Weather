@@ -4,10 +4,14 @@ import { WidgetMock4x2 } from "@/components/mockups/WidgetMock4x2";
 import { WidgetStates } from "@/components/mockups/WidgetStates";
 import {
   METRICS,
+  PREVIEW,
+  ROWS,
   STATE_VARIANTS,
   TRANSPARENCY_LEVELS,
   TYPE_SCALE,
   WIDGET_COLORS,
+  dp,
+  fitReport,
   type WidgetState,
 } from "@/lib/widget-tokens";
 

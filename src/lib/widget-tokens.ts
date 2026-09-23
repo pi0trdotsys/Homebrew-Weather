@@ -60,18 +60,33 @@ export function withAlpha(hex: string, alpha: number): string {
 }
 
 // ---------------------------------------------------------------------------
-// Metrics — native 4×2 footprint is 250×110dp; preview renders it at 2.4×.
-// Every size in this file is authored in dp/sp first and converted to preview
-// px with dp(), so the web mockup can never claim more room than RemoteViews has.
+// Metrics — the REFERENCE design (scale 1.0); preview renders it at 1.8×.
+//
+// These numbers no longer dictate what the native widget draws, and saying so
+// here is the point. The native widget derives every dp and sp at render time
+// from the footprint the launcher actually granted that instance
+// (WidgetMetrics.kt), because a fixed ladder was only ever correct at one size:
+// a real 4×2 placement on the reporting device measured 368×176dp, while this
+// file asserted 250×110 and the native layout had separately drifted to a third
+// number. Chasing one blessed footprint is what this stopped doing.
+//
+// What survives here is the reference design the native ladder scales from —
+// its rows at scale 1.0, which is what the mockup renders. Native at some other
+// size is these proportions times a scale factor, not a different layout. Keep
+// them in sync with WidgetMetrics.kt's REF_* constants; the colours below
+// remain a strict 1:1 contract with widget_colors.xml.
 // ---------------------------------------------------------------------------
 export const METRICS = {
   cells: [4, 2] as const,
-  dp: { width: 250, height: 110 },
-  scale: 2.4,
-  padDp: 5,
+  /** Footprint at which WidgetMetrics solves to scale 1.0. */
+  dp: { width: 368, height: 192 },
+  scale: 1.8,
+  padDp: 6,
   radiusDp: 5,
-  cornerDp: 4,
-  gridCellDp: 7,
+  /** Arm length of the HUD corner brackets (widget_hud_corners.xml). */
+  cornerDp: 11,
+  /** HUD background grid pitch (widget_hud_grid_tile.png). */
+  gridCellDp: 16,
 };
 
 /** dp/sp → preview px */
@@ -87,15 +102,19 @@ export const PREVIEW = {
 // 8sp is the hard floor: anything smaller is unreadable on a home screen.
 // ---------------------------------------------------------------------------
 export const SP_SCALE = {
-  header: 9,
-  hero: 22,
-  heroUnit: 9,
-  condition: 8,
-  dayLabel: 9,
-  temp: 11,
-  pop: 8,
-  meta: 8,
-  footer: 9,
+  header: 11,
+  hero: 28,
+  heroUnit: 12,
+  condition: 11,
+  dayLabel: 11,
+  temp: 14,
+  pop: 10,
+  meta: 10,
+  footer: 11,
+  /** Hero stat column: AQI, sync clock, "▽ max%". */
+  stat: 10,
+  /** Hero PoP sparkline (▁▂▃▅▇ blocks). */
+  spark: 14,
 } as const;
 
 export type TypeToken = keyof typeof SP_SCALE;
@@ -105,37 +124,49 @@ export const TYPE_SCALE = Object.fromEntries(
 ) as Record<TypeToken, number>;
 
 // ---------------------------------------------------------------------------
-// Vertical budget — the whole point: 110dp minus padding must contain every row.
-// Values are dp and are consumed verbatim by the mockup and by weather_widget.xml.
+// Vertical budget at scale 1.0 — must fit METRICS.dp.height minus padding.
+//
+// Text rows are the sp size times their measured line factor, and that factor
+// is not constant: Latin monospace with includeFontPadding="false" measures
+// ~1.16×, but a row containing a fallback-font glyph (the `▽` PoP marker, the
+// header's `┌─ ─┐` box drawing) measures ~1.35× because the fallback font
+// carries its own taller metrics. Both factors were read off real device
+// renders. Assuming a single factor is what made earlier budgets simultaneously
+// over- and under-reserve rows, and silently shear the bottom one.
 // ---------------------------------------------------------------------------
 export const ROWS = {
-  header: 12,
-  gapA: 2,
-  hero: 28,
+  header: 14.7, // 11sp × 1.34 (box drawing)
+  gapA: 3,
+  hero: 46, // temp 28sp × 1.17 + condition 11sp × 1.16
   rule: 1,
-  gapB: 2,
-  grid: 40,
-  gapC: 2,
-  footer: 11,
+  gapB: 8, // the rule's margins, 4dp either side
+  grid: 74.9, // GRID_ROWS + 7dp of column padding and icon margins
+  gapC: 4,
+  meta: 11.7, // 10sp × 1.17
+  gapD: 3,
+  footer: 12.8, // 11sp × 1.16
 } as const;
 
-/** Inner rows of one forecast column — must sum to ROWS.grid. */
+/** Inner rows of one forecast column — must sum to at most ROWS.grid. */
 export const GRID_ROWS = {
-  label: 9,
-  icon: 13,
-  temp: 10,
-  pop: 8,
+  label: 13, // 11sp × 1.16
+  icon: 20,
+  temp: 16.3, // 14sp × 1.16
+  /** Temperature range bar (WidgetGraphics.rangeBar). */
+  bar: 5,
+  pop: 13.6, // 10sp × 1.36 (▽ glyph)
 } as const;
 
 export const LAYOUT = {
-  heroIconDp: 22,
-  gridIconDp: 13,
+  heroIconDp: 30,
+  gridIconDp: 20,
   sparkBarDp: 3,
-  sparkGapDp: 2,
-  sparkHeightDp: 18,
-  refreshHitDp: 12,
-  dotDp: 4,
-  columnGapDp: 3,
+  sparkGapDp: 1,
+  sparkHeightDp: 17.5, // 14sp × 1.25, block glyphs
+  refreshHitDp: 13,
+  dotDp: 8,
+  columnGapDp: 1,
+  barHeightDp: 5,
 } as const;
 
 export type FitReport = {

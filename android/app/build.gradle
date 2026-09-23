@@ -8,8 +8,8 @@ android {
         applicationId "dev.pi0trdotsys.homebrewweather"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 10
-        versionName "0.6.0-beta.6"
+        versionCode 11
+        versionName "0.6.0-beta.7"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -32,6 +32,16 @@ android {
     }
     kotlinOptions {
         jvmTarget = "21"
+    }
+    testOptions {
+        unitTests {
+            // PixelIcons' colour map calls android.graphics.Color.parseColor when
+            // the object initialises, so touching its grids from a plain JVM test
+            // would otherwise throw "not mocked". The grids under test are plain
+            // strings; the stubbed colour value is irrelevant to them.
+            // See src/test/.../WidgetContentTest.kt.
+            returnDefaultValues = true
+        }
     }
 }
 

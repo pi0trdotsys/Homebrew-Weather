@@ -1,44 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Terminal 2.0 default layout — space-filling redesign (2026-08-27).
-     Real launchers grant noticeably more than the declared minHeight: a
-     real device (POCO F8 Ultra, Xiaomi global launcher) measured ~185dp
-     actually granted for a "2 cell" placement when this file only declared
-     130dp/used ~120dp of it — the remaining ~55-65dp rendered as a large,
-     visibly empty HUD-grid-textured gap below the footer, reported by the
-     user as "half the widget is wasted space". This pass grows every row
-     to genuinely use that space (bigger hero icon/temp, bigger day-grid
-     icons/text, the feels-like/humidity/wind meta line brought back) and
-     makes the 4-day grid row flexible (0dp height + layout_weight="1", its
-     column content wrapped with gravity="center_vertical") so any *extra*
-     height beyond this file's own natural minimum centers the grid nicely
-     instead of leaving dead space at the bottom on launchers that grant
-     even more than the ~182dp this file now declares as minHeight (see
-     weather_widget_info.xml) — the layout adapts up, it doesn't just
-     assume one exact number. font_scale safety (android:autoSizeTextType
-     on every text row) from the previous real-device bug fix is untouched
-     — every text element that had it still does, just with bigger nominal
-     sizes.
+<!-- Terminal 2.0 — single adaptive layout.
 
-     Two more real-device iterations happened on top of the first pass
-     (still the same session, same bug report): (1) the hero row's left
-     cluster (icon/temp/condition) was initially given only 1/3 of the hero
-     row's width via `layout_weight`, which squeezed widget_now_line down to
-     a fully BLANK line on-device — fixed by rebalancing to explicit 6:5
-     weights (see that LinearLayout's own comment) after confirming visually
-     it wasn't just "small text", it was genuinely empty. (2) this file's
-     natural minimum content height (~197dp in the first pass) turned out to
-     exceed what an *already-placed* real widget instance was still granted
-     (186dp, persisted from before this update — Android doesn't
-     retroactively re-measure an existing placement just because a later app
-     update raises the declared minHeight) — confirmed via
-     `adb shell run-as … cat shared_prefs/widget_city_prefs.xml`, which
-     silently squeezed the day-grid's PoP row down to zero height. Every row
-     was tightened again (~177dp natural minimum now) specifically so it
-     comfortably fits within what this real, already-placed instance already
-     had, not just a fresh one. Used whenever the host has NOT granted less
-     than WeatherWidgetProvider.COMPACT_HEIGHT_THRESHOLD_DP (172dp) — the
-     smaller/tighter res/layout/weather_widget_compact.xml is swapped in
-     below that, unchanged by this pass. See docs/widget-spec.md §7. -->
+     THIS FILE DECLARES NO ROW HEIGHTS AND NO FINAL TEXT SIZES. Every textSize
+     here is a layout-editor placeholder that WeatherWidgetProvider overwrites on
+     every render via setTextViewTextSize(), and every icon sizes itself to the
+     bitmap it is given (see WidgetGraphics.sized()). Structure lives here; sizes
+     live in WidgetMetrics.kt. Do not "fix" a size by editing this file — change
+     the reference ladder in WidgetMetrics instead, or it will only be right at
+     one widget size again.
+
+     ## What this replaced
+
+     Two files: this one with hard-coded dp rows tuned for 250x165dp, plus
+     weather_widget_compact.xml for anything shorter, chosen by a height
+     threshold. Both are gone as a pair. The reason the split existed —
+     "RemoteViews can't resize a fixed-dp row at runtime, setViewLayoutHeight is
+     API 31+" — stops applying once no row has a fixed dp height: every row here
+     is wrap_content, so row heights follow the text sizes the provider sets, on
+     every API level, at any size the host grants. See WidgetMetrics' header for
+     the size model and WidgetSize' header for the options-reading bug that made
+     a 368x176dp widget render as if it were 96dp tall.
+
+     ## Vertical slack
+
+     widget_content is gravity="center_vertical" with wrap_content rows, so
+     whatever the scale solver leaves over (it targets an exact fill, but clamps
+     at both ends) splits evenly above and below the content instead of pooling
+     as dead space under the footer — the "half the widget is empty" complaint
+     that the old flexible-grid-row trick was meant to solve and didn't. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
@@ -49,365 +38,307 @@
         android:id="@+id/widget_content"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
+        android:gravity="center_vertical"
         android:orientation="vertical"
         android:padding="6dp">
 
-        <!-- row: header — 14dp -->
+        <!-- ══ header: city · cursor · online dot · refresh ══════════════ -->
         <LinearLayout
+            android:id="@+id/widget_header_row"
             android:layout_width="match_parent"
-            android:layout_height="14dp"
+            android:layout_height="wrap_content"
+            android:baselineAligned="false"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
             <FrameLayout
                 android:id="@+id/widget_city_btn"
                 android:layout_width="0dp"
-                android:layout_height="match_parent"
+                android:layout_height="wrap_content"
                 android:layout_weight="1">
 
                 <TextView
                     android:id="@+id/widget_header_label"
                     android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:layout_gravity="center_vertical"
+                    android:layout_height="wrap_content"
                     android:ellipsize="end"
                     android:fontFamily="monospace"
-                    android:gravity="center_vertical"
                     android:includeFontPadding="false"
                     android:singleLine="true"
                     android:text="┌─ homebrew weather ─┐"
                     android:textColor="@color/widget_green_dim"
-                    android:textSize="10sp" />
+                    android:textSize="11sp" />
             </FrameLayout>
 
-            <!-- Blinking terminal cursor, toggled VISIBLE/GONE roughly once a
-                 minute by BlinkAlarm/WeatherWidgetProvider — see BlinkAlarm.kt
-                 for why a widget can't do a real smooth blink. -->
             <TextView
                 android:id="@+id/widget_cursor"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
+                android:layout_marginStart="3dp"
                 android:layout_marginEnd="4dp"
                 android:fontFamily="monospace"
                 android:includeFontPadding="false"
                 android:text="_"
                 android:textColor="@color/widget_green"
-                android:textSize="10sp"
+                android:textSize="11sp"
                 android:textStyle="bold" />
 
             <ImageView
                 android:id="@+id/widget_online_dot"
-                android:layout_width="9dp"
-                android:layout_height="9dp"
-                android:layout_marginEnd="4dp"
+                android:layout_width="8dp"
+                android:layout_height="8dp"
+                android:layout_marginEnd="5dp"
                 android:src="@drawable/widget_dot_online" />
 
-            <!-- Bordered hit-box; the spinner overlays the icon in-place
-                 while a refresh is in flight. -->
             <FrameLayout
-                android:layout_width="14dp"
-                android:layout_height="14dp">
+                android:id="@+id/widget_refresh_box"
+                android:layout_width="13dp"
+                android:layout_height="13dp">
 
                 <ImageButton
                     android:id="@+id/widget_refresh_btn"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
                     android:background="@drawable/widget_refresh_hitbox"
-                    android:padding="2dp"
+                    android:padding="1dp"
                     android:scaleType="fitCenter"
                     android:src="@drawable/ic_widget_refresh" />
 
                 <ProgressBar
                     android:id="@+id/widget_refresh_spinner"
                     style="?android:attr/progressBarStyleSmall"
-                    android:layout_width="9dp"
-                    android:layout_height="9dp"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
                     android:layout_gravity="center"
                     android:indeterminateTint="@color/widget_cyan"
                     android:visibility="gone" />
             </FrameLayout>
         </LinearLayout>
 
-        <!-- row: gapA — 3dp -->
-        <FrameLayout
-            android:layout_width="match_parent"
-            android:layout_height="3dp" />
-
-        <!-- row: hero — 52dp (grown from 44dp: bigger icon/temp now that
-             there's genuinely room, see file header comment) -->
+        <!-- ══ hero: icon · big temp + condition · stat column ═══════════ -->
         <LinearLayout
+            android:id="@+id/widget_hero_row"
             android:layout_width="match_parent"
-            android:layout_height="48dp"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:baselineAligned="false"
             android:gravity="center_vertical"
             android:orientation="horizontal">
 
-            <!-- weight=6 (vs. the right block's weight=5 below): a real-device
-                 screenshot showed widget_now_line rendering fully blank —
-                 diagnosed as this cluster being squeezed to ~70dp by the right
-                 block's unconstrained wrap_content width (sparkline text + AQI
-                 label), leaving no real room for the condition line even at
-                 autoSize's 7sp floor. Explicit weights on both sides replace
-                 that "whatever's left over" arithmetic with a guaranteed,
-                 predictable split (6:5 rather than an earlier, too-aggressive
-                 3:2 attempt that starved the *right* block instead — see
-                 widget_pop_max/widget_sync_line's own comments for that
-                 second real-device iteration). -->
+            <ImageView
+                android:id="@+id/widget_now_icon"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="6dp" />
+
+            <!-- Explicit 6:5 weights, not "whatever is left over": a previous
+                 real-device bug had this cluster sharing a row with a
+                 wrap_content stat column that ate enough width to render
+                 widget_now_line completely blank. When widget_hero_stats is
+                 GONE its weight drops out and this takes the full row. -->
             <LinearLayout
                 android:layout_width="0dp"
-                android:layout_height="match_parent"
+                android:layout_height="wrap_content"
                 android:layout_weight="6"
-                android:gravity="center_vertical"
-                android:orientation="horizontal">
-
-                <ImageView
-                    android:id="@+id/widget_now_icon"
-                    android:layout_width="30dp"
-                    android:layout_height="30dp"
-                    android:layout_marginEnd="5dp" />
+                android:orientation="vertical">
 
                 <LinearLayout
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:orientation="vertical">
-
-                    <LinearLayout
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal">
-
-                        <TextView
-                            android:id="@+id/widget_hero_temp"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:fontFamily="monospace"
-                            android:includeFontPadding="false"
-                            android:shadowColor="@color/widget_hud_glow"
-                            android:shadowDx="0"
-                            android:shadowDy="0"
-                            android:shadowRadius="6"
-                            android:textColor="@color/widget_cyan"
-                            android:textSize="28sp"
-                            android:textStyle="bold" />
-
-                        <TextView
-                            android:id="@+id/widget_hero_unit"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_gravity="bottom"
-                            android:layout_marginStart="1dp"
-                            android:layout_marginBottom="3dp"
-                            android:fontFamily="monospace"
-                            android:includeFontPadding="false"
-                            android:text="C"
-                            android:textColor="@color/widget_cyan_dim"
-                            android:textSize="11sp" />
-                    </LinearLayout>
-
-                    <!-- Fixed height (rather than wrap_content) is load-bearing, not
-                         decorative: autoSizeTextType only has an effect when the view
-                         has a bounded height to shrink into — with wrap_content it
-                         would just grow with the font instead, which is exactly the
-                         overlap bug this exists to prevent. -->
-                    <TextView
-                        android:id="@+id/widget_now_line"
-                        android:layout_width="match_parent"
-                        android:layout_height="15dp"
-                        android:autoSizeMaxTextSize="10sp"
-                        android:autoSizeMinTextSize="7sp"
-                        android:autoSizeStepGranularity="1sp"
-                        android:autoSizeTextType="uniform"
-                        android:ellipsize="end"
-                        android:fontFamily="monospace"
-                        android:gravity="center_vertical"
-                        android:includeFontPadding="false"
-                        android:singleLine="true"
-                        android:textColor="@color/widget_cyan_dim"
-                        android:textSize="10sp" />
-                </LinearLayout>
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="match_parent"
-                android:layout_weight="5"
-                android:gravity="center_vertical|end"
-                android:orientation="horizontal">
-
-                <!-- 16sp (down from an earlier 20sp real-device iteration that
-                     left too little room for the info column beside it — see
-                     the left cluster's weight comment for the first-iteration
-                     bug this whole hero row went through). -->
-                <TextView
-                    android:id="@+id/widget_sparkline"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginEnd="4dp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/widget_hero_temp"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="monospace"
+                        android:includeFontPadding="false"
+                        android:shadowColor="@color/widget_hud_glow"
+                        android:shadowDx="0"
+                        android:shadowDy="0"
+                        android:shadowRadius="7"
+                        android:singleLine="true"
+                        android:textColor="@color/widget_cyan"
+                        android:textSize="28sp"
+                        android:textStyle="bold" />
+
+                    <!-- Baseline-aligned by the parent's default
+                         baselineAligned, so the unit sits on the temp's
+                         baseline at any scale without a magic bottom margin. -->
+                    <TextView
+                        android:id="@+id/widget_hero_unit"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="2dp"
+                        android:fontFamily="monospace"
+                        android:includeFontPadding="false"
+                        android:singleLine="true"
+                        android:text="C"
+                        android:textColor="@color/widget_cyan_dim"
+                        android:textSize="12sp" />
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/widget_now_line"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
                     android:ellipsize="end"
                     android:fontFamily="monospace"
                     android:includeFontPadding="false"
-                    android:letterSpacing="0.15"
                     android:singleLine="true"
-                    android:textColor="@color/widget_cyan"
-                    android:textSize="13sp" />
+                    android:textColor="@color/widget_cyan_dim"
+                    android:textSize="11sp" />
+            </LinearLayout>
 
+            <LinearLayout
+                android:id="@+id/widget_hero_stats"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="5"
+                android:gravity="end"
+                android:orientation="vertical">
+
+                <!-- Sparkline and its "max" figure share one row. They're one
+                     reading (the 4-day rain trend and its peak), and stacking
+                     them cost the hero row a whole line it didn't have: four
+                     stacked stat lines measured taller than the temp +
+                     condition stack beside them, so the hero row grew past its
+                     budget and clipped the footer off the bottom of the widget.
+                     See WidgetMetrics.REF_HERO — that budget assumes this
+                     column is at most three lines. -->
                 <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:gravity="end"
-                    android:orientation="vertical">
+                    android:gravity="bottom"
+                    android:orientation="horizontal">
 
-                    <!-- singleLine+ellipsize: without them, a wrap_content TextView
-                         that doesn't fit its allotted (weighted, not unlimited)
-                         width WRAPS onto multiple lines by default instead of
-                         truncating — confirmed on a real device as "▽ 100%"
-                         breaking across 2-3 lines once this column stopped being
-                         unconstrained wrap_content. -->
+                    <TextView
+                        android:id="@+id/widget_sparkline"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="monospace"
+                        android:includeFontPadding="false"
+                        android:letterSpacing="0.06"
+                        android:singleLine="true"
+                        android:textColor="@color/widget_cyan"
+                        android:textSize="14sp" />
+
                     <TextView
                         android:id="@+id/widget_pop_max"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:layout_marginStart="4dp"
                         android:ellipsize="end"
                         android:fontFamily="monospace"
-                        android:gravity="end"
                         android:includeFontPadding="false"
-                        android:maxWidth="72dp"
                         android:singleLine="true"
                         android:textColor="@color/widget_cyan"
-                        android:textSize="9sp" />
-
-                    <!-- maxWidth sized to what this column's real parent width (the
-                         right block, weight=5 of 11 — see the left cluster's weight
-                         comment) actually leaves after the sparkline: matching, not
-                         exceeding, that real budget so all 3 stacked lines truncate
-                         consistently instead of aqi_line claiming more than the
-                         column it's actually inside. -->
-                    <TextView
-                        android:id="@+id/widget_aqi_line"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:ellipsize="end"
-                        android:fontFamily="monospace"
-                        android:gravity="end"
-                        android:includeFontPadding="false"
-                        android:maxWidth="72dp"
-                        android:singleLine="true"
-                        android:textSize="9sp"
-                        android:visibility="gone" />
-
-                    <TextView
-                        android:id="@+id/widget_sync_line"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:ellipsize="end"
-                        android:fontFamily="monospace"
-                        android:gravity="end"
-                        android:includeFontPadding="false"
-                        android:maxWidth="72dp"
-                        android:singleLine="true"
-                        android:textColor="@color/widget_cyan_dim"
-                        android:textSize="9sp" />
+                        android:textSize="10sp" />
                 </LinearLayout>
+
+                <TextView
+                    android:id="@+id/widget_aqi_line"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:fontFamily="monospace"
+                    android:includeFontPadding="false"
+                    android:singleLine="true"
+                    android:textSize="10sp" />
+
+                <TextView
+                    android:id="@+id/widget_sync_line"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:fontFamily="monospace"
+                    android:includeFontPadding="false"
+                    android:singleLine="true"
+                    android:textColor="@color/widget_green_dim"
+                    android:textSize="10sp" />
             </LinearLayout>
         </LinearLayout>
 
-        <!-- row: gapB — 2dp, the 1dp hairline rule nests inside it. -->
+        <!-- ══ hairline rule ═════════════════════════════════════════════ -->
         <FrameLayout
+            android:id="@+id/widget_rule"
             android:layout_width="match_parent"
-            android:layout_height="2dp">
+            android:layout_height="1dp"
+            android:layout_marginTop="4dp"
+            android:layout_marginBottom="4dp"
+            android:background="@color/widget_hud_line" />
 
-            <FrameLayout
-                android:layout_width="match_parent"
-                android:layout_height="1dp"
-                android:layout_gravity="center_vertical"
-                android:background="@color/widget_hud_line" />
-        </FrameLayout>
-
-        <!-- row: 4-day grid — FLEXIBLE (0dp + weight=1): absorbs whatever
-             vertical space is left over after every other (fixed-height) row,
-             instead of a hardcoded dp guess. Each column's label/icon/temp/pop
-             cluster is wrapped in an inner vertical LinearLayout with
-             wrap_content height + gravity="center_vertical" so on launchers
-             that grant even more than this file's own natural minimum, the
-             grid content centers nicely in the extra room rather than sitting
-             pinned to the top with dead space below it (see file header
-             comment — this is the fix for the exact "wasted space" the user
-             reported). -->
+        <!-- ══ 4-day grid ════════════════════════════════════════════════ -->
         <LinearLayout
+            android:id="@+id/widget_grid"
             android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
+            android:layout_height="wrap_content"
+            android:baselineAligned="false"
             android:orientation="horizontal">
 
             <LinearLayout
+                android:id="@+id/widget_col0"
                 android:layout_width="0dp"
-                android:layout_height="match_parent"
+                android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:gravity="center"
-                android:orientation="vertical">
+                android:background="@drawable/widget_today_col"
+                android:gravity="center_horizontal"
+                android:orientation="vertical"
+                android:paddingTop="1dp"
+                android:paddingBottom="1dp">
 
-                <LinearLayout
+                <TextView
+                    android:id="@+id/widget_day0_label"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_gravity="center_vertical"
-                    android:gravity="center_horizontal"
-                    android:orientation="vertical">
+                    android:ellipsize="end"
+                    android:fontFamily="monospace"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:singleLine="true"
+                    android:textColor="@color/widget_green"
+                    android:textSize="11sp" />
 
-                    <TextView
-                        android:id="@+id/widget_day0_label"
-                        android:layout_width="match_parent"
-                        android:layout_height="10dp"
-                        android:autoSizeMaxTextSize="9sp"
-                        android:autoSizeMinTextSize="7sp"
-                        android:autoSizeStepGranularity="1sp"
-                        android:autoSizeTextType="uniform"
-                        android:ellipsize="end"
-                        android:fontFamily="monospace"
-                        android:gravity="center"
-                        android:includeFontPadding="false"
-                        android:singleLine="true"
-                        android:textColor="@color/widget_green"
-                        android:textSize="11sp" />
+                <ImageView
+                    android:id="@+id/widget_icon0"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_horizontal"
+                    android:layout_marginTop="1dp"
+                    android:layout_marginBottom="1dp" />
 
-                    <ImageView
-                        android:id="@+id/widget_icon0"
-                        android:layout_width="20dp"
-                        android:layout_height="20dp"
-                        android:layout_gravity="center_horizontal"
-                        android:layout_marginTop="2dp"
-                        android:layout_marginBottom="2dp" />
+                <TextView
+                    android:id="@+id/widget_temp0"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:fontFamily="monospace"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:singleLine="true"
+                    android:textSize="14sp" />
 
-                    <TextView
-                        android:id="@+id/widget_temp0"
-                        android:layout_width="match_parent"
-                        android:layout_height="14dp"
-                        android:autoSizeMaxTextSize="12sp"
-                        android:autoSizeMinTextSize="9sp"
-                        android:autoSizeStepGranularity="1sp"
-                        android:autoSizeTextType="uniform"
-                        android:ellipsize="end"
-                        android:fontFamily="monospace"
-                        android:gravity="center"
-                        android:includeFontPadding="false"
-                        android:singleLine="true"
-                        android:textSize="14sp" />
+                <ImageView
+                    android:id="@+id/widget_bar0"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:layout_marginBottom="1dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginEnd="4dp"
+                    android:scaleType="fitXY" />
 
-                    <TextView
-                        android:id="@+id/widget_pop0"
-                        android:layout_width="match_parent"
-                        android:layout_height="9dp"
-                        android:autoSizeMaxTextSize="8sp"
-                        android:autoSizeMinTextSize="6sp"
-                        android:autoSizeStepGranularity="1sp"
-                        android:autoSizeTextType="uniform"
-                        android:ellipsize="end"
-                        android:fontFamily="monospace"
-                        android:gravity="center"
-                        android:includeFontPadding="false"
-                        android:singleLine="true"
-                        android:textColor="@color/widget_cyan"
-                        android:textSize="10sp" />
-                </LinearLayout>
+                <TextView
+                    android:id="@+id/widget_pop0"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:fontFamily="monospace"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:singleLine="true"
+                    android:textColor="@color/widget_cyan"
+                    android:textSize="10sp" />
             </LinearLayout>
 
             <FrameLayout
@@ -416,74 +347,67 @@
                 android:background="@drawable/widget_grid_divider" />
 
             <LinearLayout
+                android:id="@+id/widget_col1"
                 android:layout_width="0dp"
-                android:layout_height="match_parent"
+                android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:gravity="center"
-                android:orientation="vertical">
+                android:gravity="center_horizontal"
+                android:orientation="vertical"
+                android:paddingTop="1dp"
+                android:paddingBottom="1dp">
 
-                <LinearLayout
+                <TextView
+                    android:id="@+id/widget_day1_label"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_gravity="center_vertical"
-                    android:gravity="center_horizontal"
-                    android:orientation="vertical">
+                    android:ellipsize="end"
+                    android:fontFamily="monospace"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:singleLine="true"
+                    android:textColor="@color/widget_green"
+                    android:textSize="11sp" />
 
-                    <TextView
-                        android:id="@+id/widget_day1_label"
-                        android:layout_width="match_parent"
-                        android:layout_height="10dp"
-                        android:autoSizeMaxTextSize="9sp"
-                        android:autoSizeMinTextSize="7sp"
-                        android:autoSizeStepGranularity="1sp"
-                        android:autoSizeTextType="uniform"
-                        android:ellipsize="end"
-                        android:fontFamily="monospace"
-                        android:gravity="center"
-                        android:includeFontPadding="false"
-                        android:singleLine="true"
-                        android:textColor="@color/widget_green"
-                        android:textSize="11sp" />
+                <ImageView
+                    android:id="@+id/widget_icon1"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_horizontal"
+                    android:layout_marginTop="1dp"
+                    android:layout_marginBottom="1dp" />
 
-                    <ImageView
-                        android:id="@+id/widget_icon1"
-                        android:layout_width="20dp"
-                        android:layout_height="20dp"
-                        android:layout_gravity="center_horizontal"
-                        android:layout_marginTop="2dp"
-                        android:layout_marginBottom="2dp" />
+                <TextView
+                    android:id="@+id/widget_temp1"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:fontFamily="monospace"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:singleLine="true"
+                    android:textSize="14sp" />
 
-                    <TextView
-                        android:id="@+id/widget_temp1"
-                        android:layout_width="match_parent"
-                        android:layout_height="14dp"
-                        android:autoSizeMaxTextSize="12sp"
-                        android:autoSizeMinTextSize="9sp"
-                        android:autoSizeStepGranularity="1sp"
-                        android:autoSizeTextType="uniform"
-                        android:ellipsize="end"
-                        android:fontFamily="monospace"
-                        android:gravity="center"
-                        android:includeFontPadding="false"
-                        android:singleLine="true"
-                        android:textSize="14sp" />
+                <ImageView
+                    android:id="@+id/widget_bar1"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:layout_marginBottom="1dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginEnd="4dp"
+                    android:scaleType="fitXY" />
 
-                    <TextView
-                        android:id="@+id/widget_pop1"
-                        android:layout_width="match_parent"
-                        android:layout_height="9dp"
-                        android:autoSizeMaxTextSize="8sp"
-                        android:autoSizeMinTextSize="6sp"
-                        android:autoSizeStepGranularity="1sp"
-                        android:autoSizeTextType="uniform"
-                        android:ellipsize="end"
-                        android:fontFamily="monospace"
-                        android:gravity="center"
-                        android:includeFontPadding="false"
-                        android:singleLine="true"
-                        android:textColor="@color/widget_cyan"
-                        android:textSize="10sp" />
-                </LinearLayout>
+                <TextView
+                    android:id="@+id/widget_pop1"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:fontFamily="monospace"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:singleLine="true"
+                    android:textColor="@color/widget_cyan"
+                    android:textSize="10sp" />
             </LinearLayout>
 
             <FrameLayout
@@ -492,74 +416,67 @@
                 android:background="@drawable/widget_grid_divider" />
 
             <LinearLayout
+                android:id="@+id/widget_col2"
                 android:layout_width="0dp"
-                android:layout_height="match_parent"
+                android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:gravity="center"
-                android:orientation="vertical">
+                android:gravity="center_horizontal"
+                android:orientation="vertical"
+                android:paddingTop="1dp"
+                android:paddingBottom="1dp">
 
-                <LinearLayout
+                <TextView
+                    android:id="@+id/widget_day2_label"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_gravity="center_vertical"
-                    android:gravity="center_horizontal"
-                    android:orientation="vertical">
+                    android:ellipsize="end"
+                    android:fontFamily="monospace"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:singleLine="true"
+                    android:textColor="@color/widget_green"
+                    android:textSize="11sp" />
 
-                    <TextView
-                        android:id="@+id/widget_day2_label"
-                        android:layout_width="match_parent"
-                        android:layout_height="10dp"
-                        android:autoSizeMaxTextSize="9sp"
-                        android:autoSizeMinTextSize="7sp"
-                        android:autoSizeStepGranularity="1sp"
-                        android:autoSizeTextType="uniform"
-                        android:ellipsize="end"
-                        android:fontFamily="monospace"
-                        android:gravity="center"
-                        android:includeFontPadding="false"
-                        android:singleLine="true"
-                        android:textColor="@color/widget_green"
-                        android:textSize="11sp" />
+                <ImageView
+                    android:id="@+id/widget_icon2"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_horizontal"
+                    android:layout_marginTop="1dp"
+                    android:layout_marginBottom="1dp" />
 
-                    <ImageView
-                        android:id="@+id/widget_icon2"
-                        android:layout_width="20dp"
-                        android:layout_height="20dp"
-                        android:layout_gravity="center_horizontal"
-                        android:layout_marginTop="2dp"
-                        android:layout_marginBottom="2dp" />
+                <TextView
+                    android:id="@+id/widget_temp2"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:fontFamily="monospace"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:singleLine="true"
+                    android:textSize="14sp" />
 
-                    <TextView
-                        android:id="@+id/widget_temp2"
-                        android:layout_width="match_parent"
-                        android:layout_height="14dp"
-                        android:autoSizeMaxTextSize="12sp"
-                        android:autoSizeMinTextSize="9sp"
-                        android:autoSizeStepGranularity="1sp"
-                        android:autoSizeTextType="uniform"
-                        android:ellipsize="end"
-                        android:fontFamily="monospace"
-                        android:gravity="center"
-                        android:includeFontPadding="false"
-                        android:singleLine="true"
-                        android:textSize="14sp" />
+                <ImageView
+                    android:id="@+id/widget_bar2"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:layout_marginBottom="1dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginEnd="4dp"
+                    android:scaleType="fitXY" />
 
-                    <TextView
-                        android:id="@+id/widget_pop2"
-                        android:layout_width="match_parent"
-                        android:layout_height="9dp"
-                        android:autoSizeMaxTextSize="8sp"
-                        android:autoSizeMinTextSize="6sp"
-                        android:autoSizeStepGranularity="1sp"
-                        android:autoSizeTextType="uniform"
-                        android:ellipsize="end"
-                        android:fontFamily="monospace"
-                        android:gravity="center"
-                        android:includeFontPadding="false"
-                        android:singleLine="true"
-                        android:textColor="@color/widget_cyan"
-                        android:textSize="10sp" />
-                </LinearLayout>
+                <TextView
+                    android:id="@+id/widget_pop2"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:fontFamily="monospace"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:singleLine="true"
+                    android:textColor="@color/widget_cyan"
+                    android:textSize="10sp" />
             </LinearLayout>
 
             <FrameLayout
@@ -568,152 +485,123 @@
                 android:background="@drawable/widget_grid_divider" />
 
             <LinearLayout
+                android:id="@+id/widget_col3"
                 android:layout_width="0dp"
-                android:layout_height="match_parent"
+                android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:gravity="center"
-                android:orientation="vertical">
+                android:gravity="center_horizontal"
+                android:orientation="vertical"
+                android:paddingTop="1dp"
+                android:paddingBottom="1dp">
 
-                <LinearLayout
+                <TextView
+                    android:id="@+id/widget_day3_label"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_gravity="center_vertical"
-                    android:gravity="center_horizontal"
-                    android:orientation="vertical">
+                    android:ellipsize="end"
+                    android:fontFamily="monospace"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:singleLine="true"
+                    android:textColor="@color/widget_green"
+                    android:textSize="11sp" />
 
-                    <TextView
-                        android:id="@+id/widget_day3_label"
-                        android:layout_width="match_parent"
-                        android:layout_height="10dp"
-                        android:autoSizeMaxTextSize="9sp"
-                        android:autoSizeMinTextSize="7sp"
-                        android:autoSizeStepGranularity="1sp"
-                        android:autoSizeTextType="uniform"
-                        android:ellipsize="end"
-                        android:fontFamily="monospace"
-                        android:gravity="center"
-                        android:includeFontPadding="false"
-                        android:singleLine="true"
-                        android:textColor="@color/widget_green"
-                        android:textSize="11sp" />
+                <ImageView
+                    android:id="@+id/widget_icon3"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_horizontal"
+                    android:layout_marginTop="1dp"
+                    android:layout_marginBottom="1dp" />
 
-                    <ImageView
-                        android:id="@+id/widget_icon3"
-                        android:layout_width="20dp"
-                        android:layout_height="20dp"
-                        android:layout_gravity="center_horizontal"
-                        android:layout_marginTop="2dp"
-                        android:layout_marginBottom="2dp" />
+                <TextView
+                    android:id="@+id/widget_temp3"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:fontFamily="monospace"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:singleLine="true"
+                    android:textSize="14sp" />
 
-                    <TextView
-                        android:id="@+id/widget_temp3"
-                        android:layout_width="match_parent"
-                        android:layout_height="14dp"
-                        android:autoSizeMaxTextSize="12sp"
-                        android:autoSizeMinTextSize="9sp"
-                        android:autoSizeStepGranularity="1sp"
-                        android:autoSizeTextType="uniform"
-                        android:ellipsize="end"
-                        android:fontFamily="monospace"
-                        android:gravity="center"
-                        android:includeFontPadding="false"
-                        android:singleLine="true"
-                        android:textSize="14sp" />
+                <ImageView
+                    android:id="@+id/widget_bar3"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:layout_marginBottom="1dp"
+                    android:layout_marginStart="4dp"
+                    android:layout_marginEnd="4dp"
+                    android:scaleType="fitXY" />
 
-                    <TextView
-                        android:id="@+id/widget_pop3"
-                        android:layout_width="match_parent"
-                        android:layout_height="9dp"
-                        android:autoSizeMaxTextSize="8sp"
-                        android:autoSizeMinTextSize="6sp"
-                        android:autoSizeStepGranularity="1sp"
-                        android:autoSizeTextType="uniform"
-                        android:ellipsize="end"
-                        android:fontFamily="monospace"
-                        android:gravity="center"
-                        android:includeFontPadding="false"
-                        android:singleLine="true"
-                        android:textColor="@color/widget_cyan"
-                        android:textSize="10sp" />
-                </LinearLayout>
+                <TextView
+                    android:id="@+id/widget_pop3"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:fontFamily="monospace"
+                    android:gravity="center"
+                    android:includeFontPadding="false"
+                    android:singleLine="true"
+                    android:textColor="@color/widget_cyan"
+                    android:textSize="10sp" />
             </LinearLayout>
         </LinearLayout>
 
-        <!-- row: gapC — 3dp -->
-        <FrameLayout
-            android:layout_width="match_parent"
-            android:layout_height="3dp" />
-
-        <!-- current-conditions meta row (feels/hum/wind) — brought back now that
-             the layout has genuine room for it; GONE when no field is known
-             (see WeatherWidgetProvider.metaLine()). Never shown in the compact
-             layout, which stays deliberately minimal. -->
+        <!-- ══ meta + footer ═════════════════════════════════════════════ -->
         <TextView
             android:id="@+id/widget_meta_line"
             android:layout_width="match_parent"
-            android:layout_height="11dp"
-            android:layout_marginBottom="1dp"
-            android:autoSizeMaxTextSize="9sp"
-            android:autoSizeMinTextSize="6sp"
-            android:autoSizeStepGranularity="1sp"
-            android:autoSizeTextType="uniform"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
             android:ellipsize="end"
             android:fontFamily="monospace"
-            android:gravity="center_vertical"
             android:includeFontPadding="false"
             android:singleLine="true"
-            android:textColor="@color/widget_cyan_dim"
-            android:textSize="9sp"
-            android:visibility="gone" />
+            android:textColor="@color/widget_green_dim"
+            android:textSize="10sp" />
 
-        <!-- decorative "// sigma.forecast()" comment line — dropped from the
-             row budget to match WidgetMock4x2.tsx exactly; id kept for
-             compatibility but never shown (see WeatherWidgetProvider — no
-             longer written to). -->
+        <TextView
+            android:id="@+id/widget_footer_joke"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:ellipsize="end"
+            android:fontFamily="monospace"
+            android:includeFontPadding="false"
+            android:singleLine="true"
+            android:textColor="@color/widget_amber"
+            android:textSize="11sp" />
+
+        <!-- Kept only so RemoteViews actions referencing it stay valid; the
+             Terminal 2.0 mockup never had a separate comment line. -->
         <TextView
             android:id="@+id/widget_footer_comment"
             android:layout_width="0dp"
             android:layout_height="0dp"
             android:visibility="gone" />
-
-        <!-- row: footer — 12dp -->
-        <TextView
-            android:id="@+id/widget_footer_joke"
-            android:layout_width="match_parent"
-            android:layout_height="12dp"
-            android:autoSizeMaxTextSize="11sp"
-            android:autoSizeMinTextSize="7sp"
-            android:autoSizeStepGranularity="1sp"
-            android:autoSizeTextType="uniform"
-            android:ellipsize="end"
-            android:fontFamily="monospace"
-            android:gravity="center_vertical"
-            android:includeFontPadding="false"
-            android:singleLine="true"
-            android:textColor="@color/widget_amber"
-            android:textSize="11sp" />
     </LinearLayout>
 
-    <!-- Terminal 2.0 status banner (stale / offline / refreshing) — floats
-         over the hero row instead of pushing rows down, so it never breaks
-         the row budget above. Positioned just below the header (padding +
-         header + gapA = 7+16+6). -->
+    <!-- Status overlay (stale / offline / refreshing). Deliberately floats over
+         the content rather than taking a row of its own — it is transient, and
+         a row would change the layout budget every time connectivity blipped. -->
     <TextView
         android:id="@+id/widget_status_banner"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="top|center_horizontal"
-        android:layout_marginTop="29dp"
+        android:layout_marginTop="2dp"
         android:background="@drawable/widget_status_banner_bg"
         android:ellipsize="end"
         android:fontFamily="monospace"
-        android:gravity="center"
         android:includeFontPadding="false"
-        android:paddingStart="4dp"
-        android:paddingTop="1dp"
-        android:paddingEnd="4dp"
-        android:paddingBottom="1dp"
+        android:paddingStart="5dp"
+        android:paddingTop="2dp"
+        android:paddingEnd="5dp"
+        android:paddingBottom="2dp"
         android:singleLine="true"
+        android:textColor="@color/widget_amber"
         android:textSize="9sp"
         android:visibility="gone" />
 </FrameLayout>

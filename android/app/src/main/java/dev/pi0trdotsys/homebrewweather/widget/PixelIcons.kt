@@ -8,60 +8,98 @@ import android.graphics.Paint
 /**
  * Direct Kotlin port of src/components/PixelIcon.tsx — same 16x16 character
  * grids and the same color map, rendered into a chunky, nearest-neighbor
- * scaled Bitmap instead of a CSS grid of divs.
+ * scaled Bitmap instead of a CSS grid of divs. Keep both in sync.
+ *
+ * ## Reading the grids
+ *
+ * Uppercase is the lit/front tone, lowercase the shaded tone of the same
+ * material: `W`/`w` cloud, `D`/`d` storm cloud, `Y`/`o` sun, `B`/`b` rain,
+ * `G`/`g` fog. Every icon that has volume is drawn in two tones rather than
+ * one, because a single flat fill reads as a blob at the sizes these actually
+ * render at — see below.
+ *
+ * ## The size these are really drawn at
+ *
+ * The grid icons render around 13-20dp and the hero icon around 26-30dp. At
+ * xxhdpi that is roughly 2.4-3.8 device pixels per grid cell, so a single cell
+ * is a visible dot but fine alternating detail turns to mush. That constraint
+ * drove this pass's redesign, after the previous grids were checked on a real
+ * device at real size:
+ *
+ * - the sun was a near-full-grid disc with detached single-pixel ray stubs,
+ *   which read as an amoeba; it is now a smaller disc with clearly separated
+ *   2x2 rays, so both the body and the rays survive.
+ * - rain was a uniform checkerboard of single blue dots across five rows,
+ *   which read as blue static; it is now two staggered ranks of 2-tall
+ *   vertical dashes, which read as falling streaks. Snow keeps single dots
+ *   precisely so the two are distinguishable at a glance.
+ * - the storm cloud was `#2a3a2a` against a `#0a0f0a` widget background —
+ *   nearly invisible, a dark smudge with a bolt under it. It is now a slate
+ *   grey-blue that actually separates from the background while still
+ *   reading as "darker than a normal cloud".
+ * - fog was a stack of identical bars in a dim green; it is now offset bars
+ *   in two grey tones that drift sideways rather than bobbing, which is what
+ *   fog does.
  */
 object PixelIcons {
 
     val ICONS: Map<String, List<String>> = mapOf(
+        // Disc rows 5-10, lit on top (Y) and shaded underneath (o), with eight
+        // separated rays. The gap between disc and rays is deliberate: rays
+        // touching the body merge into one round blob at 13dp.
         "sun" to listOf(
             "................",
-            "......YYYY......",
-            "..Y...YYYY...Y..",
-            ".YY..YYYYYY..YY.",
-            "..Y.YYYYYYYY.Y..",
+            ".......YY.......",
+            ".......YY.......",
+            "..YY........YY..",
+            "..YY........YY..",
+            ".....YYYYYY.....",
             "....YYYYYYYY....",
-            "..YYYYYYYYYYYY..",
-            "YYYYYYYYYYYYYYYY",
-            "YYYYYYYYYYYYYYYY",
-            "..YYYYYYYYYYYY..",
-            "....YYYYYYYY....",
-            "..Y.YYYYYYYY.Y..",
-            ".YY..YYYYYY..YY.",
-            "..Y...YYYY...Y..",
-            "......YYYY......",
+            ".YY.YYYYYYYY.YY.",
+            ".YY.YYYYYYYY.YY.",
+            "....oooooooo....",
+            ".....oooooo.....",
+            "..YY........YY..",
+            "..YY........YY..",
+            ".......YY.......",
+            ".......YY.......",
             "................",
         ),
+        // Crescent opening right, shaded along the inner edge, with two cyan
+        // stars. The old moon drew its crescent bite as an opaque dark shape,
+        // which on a transparent widget background looked like a dirty patch
+        // instead of a gap — here the bite is simply not drawn.
         "moon" to listOf(
             "................",
             "......WWWW......",
-            "....WWWWWWWW....",
-            "...WWWWWDDDDW...",
-            "..WWWWWDD..DDW..",
-            "..WWWWWD....DW..",
-            ".WWWWWWD....DW..",
-            ".WWWWWWWDDDDW...",
-            ".WWWWWWWWWWW....",
-            ".WWWWWWWWWW.....",
-            "..WWWWWWWW......",
-            "..WWWWWWWW......",
-            "...WWWWWW.......",
-            "....WWWW........",
-            "................",
+            "....WWWWWWW.....",
+            "...WWWWww....C..",
+            "..WWWWWw........",
+            "..WWWWw.........",
+            ".WWWWWw.........",
+            ".WWWWWw.........",
+            ".WWWWWw.....C...",
+            ".WWWWWw.........",
+            "..WWWWw.........",
+            "..WWWWWw........",
+            "...WWWWww.......",
+            "....WWWWWWW.....",
+            "......WWWW......",
             "................",
         ),
         "partly" to listOf(
             "................",
             ".....YYYY.......",
             "..Y..YYYY..Y....",
-            "...YYYYYYY......",
+            "...YYYYYYYY.....",
             "..YYYYYYYYYY....",
-            "..YYYY.WWWWWW...",
-            "....Y.WWWWWWWW..",
-            "....WWWWWWWWWWW.",
+            "..YYYYY.WWWW....",
+            "...YYY.WWWWWWW..",
+            ".....WWWWWWWWWW.",
+            "...WWWWWWWWWWWWW",
             "..WWWWWWWWWWWWWW",
-            ".WWWWWWWWWWWWWWW",
-            ".WWWWWWWWWWWWWW.",
-            "..WWWWWWWWWWWW..",
+            "..wwwwwwwwwwwwww",
+            "...wwwwwwwwwwww.",
             "................",
             "................",
             "................",
@@ -70,105 +108,118 @@ object PixelIcons {
         "cloud" to listOf(
             "................",
             "................",
-            ".....WWWWW......",
-            "...WWWWWWWWW....",
-            "..WWWWWWWWWWW...",
-            ".WWWWWWWWWWWWW..",
-            "WWWWWWWWWWWWWWW.",
-            "WWWWWWWWWWWWWWWW",
-            "WWWWWWWWWWWWWWWW",
-            ".WWWWWWWWWWWWWW.",
-            "..WWWWWWWWWWWW..",
-            "....WWWWWWWW....",
+            "................",
+            ".......WWWW.....",
+            ".....WWWWWWWW...",
+            "....WWWWWWWWWW..",
+            "..WWWWWWWWWWWWW.",
+            ".WWWWWWWWWWWWWWW",
+            ".WWWWWWWWWWWWWWW",
+            ".WWWWWWWWWWWWWWW",
+            ".wwwwwwwwwwwwwww",
+            "..wwwwwwwwwwwww.",
             "................",
             "................",
             "................",
             "................",
         ),
+        // Offset bars in two tones. Drifts horizontally (see FOG_DRIFT), not
+        // vertically like the cloud kinds — fog moves sideways.
         "fog" to listOf(
             "................",
             "................",
-            "..GGGGGGGGGGGG..",
-            "...GGGGGGGGGG...",
+            "..GGGGGGGGGG....",
+            "....gggggggggg..",
             "................",
-            ".GGGGGGGGGGGGGG.",
-            "..GGGGGGGGGGGG..",
+            ".GGGGGGGGGGGG...",
+            "...gggggggggggg.",
             "................",
-            "GGGGGGGGGGGGGGGG",
-            "..GGGGGGGGGGGG..",
+            "GGGGGGGGGGGGGG..",
+            "..gggggggggggggg",
             "................",
-            ".GGGGGGGGGGGGGG.",
-            "...GGGGGGGGGG...",
+            ".GGGGGGGGGGGG...",
+            "...gggggggggg...",
             "................",
-            "..GGGGGGGGGGGG..",
+            "..GGGGGGGGGG....",
             "................",
         ),
+        // Compact cloud in rows 1-8 so the whole precipitation band (rows
+        // 9-15, see PRECIP_BAND_*) is free for the animated streaks.
         "rain" to listOf(
             "................",
-            "....WWWWWW......",
-            "..WWWWWWWWWW....",
-            ".WWWWWWWWWWWWW..",
-            "WWWWWWWWWWWWWWW.",
-            "WWWWWWWWWWWWWWWW",
-            ".WWWWWWWWWWWWWW.",
-            "..WWWWWWWWWWWW..",
+            ".......WWWW.....",
+            ".....WWWWWWWW...",
+            "....WWWWWWWWWW..",
+            "..WWWWWWWWWWWWW.",
+            ".WWWWWWWWWWWWWWW",
+            ".WWWWWWWWWWWWWWW",
+            ".wwwwwwwwwwwwwww",
+            "..wwwwwwwwwwwww.",
+            "..B...B...B...B.",
+            "..B...B...B...B.",
             "................",
-            "..B..B..B..B..B.",
-            ".B..B..B..B..B..",
-            "..B..B..B..B..B.",
-            ".B..B..B..B..B..",
-            "..B..B..B..B..B.",
+            "....b...b...b...",
+            "....b...b...b...",
             "................",
             "................",
         ),
+        // Single dots, not the 2-tall dashes rain uses — that difference is
+        // the whole reason the two icons are still distinguishable once the
+        // cloud above them is identical and only ~50px wide.
         "snow" to listOf(
             "................",
-            "....WWWWWW......",
-            "..WWWWWWWWWW....",
-            ".WWWWWWWWWWWWW..",
-            "WWWWWWWWWWWWWWW.",
-            "WWWWWWWWWWWWWWWW",
-            ".WWWWWWWWWWWWWW.",
-            "..WWWWWWWWWWWW..",
+            ".......WWWW.....",
+            ".....WWWWWWWW...",
+            "....WWWWWWWWWW..",
+            "..WWWWWWWWWWWWW.",
+            ".WWWWWWWWWWWWWWW",
+            ".WWWWWWWWWWWWWWW",
+            ".wwwwwwwwwwwwwww",
+            "..wwwwwwwwwwwww.",
+            "..S...S...S...S.",
             "................",
-            "..S....S....S...",
-            ".SSS..SSS..SSS..",
-            "..S....S....S...",
-            "....S....S....S.",
-            "...SSS..SSS..SSS",
-            "....S....S....S.",
+            "....S...S...S...",
+            "................",
+            "..S...S...S...S.",
+            "................",
             "................",
         ),
         "thunder" to listOf(
             "................",
-            "....DDDDDD......",
-            "..DDDDDDDDDD....",
-            ".DDDDDDDDDDDDD..",
-            "DDDDDDDDDDDDDDD.",
-            "DDDDDDDDDDDDDDDD",
-            ".DDDDDDDDDDDDDD.",
-            "..DDDDDDDDDDDD..",
-            "................",
-            ".....LLLL.......",
-            "....LLLL........",
-            "...LLLLLLLL.....",
-            ".....LLLL.......",
-            "....LLL.........",
-            "...LL...........",
-            "................",
+            ".......DDDD.....",
+            ".....DDDDDDDD...",
+            "....DDDDDDDDDD..",
+            "..DDDDDDDDDDDDD.",
+            ".DDDDDDDDDDDDDDD",
+            ".DDDDDDDDDDDDDDD",
+            ".ddddddddddddddd",
+            "..ddddddddddddd.",
+            "........LLL.....",
+            ".......LLL......",
+            "......LLL.......",
+            "....LLLLLLL.....",
+            "......LLL.......",
+            ".....LLL........",
+            "....LL..........",
         ),
     )
 
     private val COLORS: Map<Char, Int> = mapOf(
-        'Y' to Color.parseColor("#ffd23f"),
-        'W' to Color.parseColor("#e0e6e0"),
-        'G' to Color.parseColor("#4a6a4a"),
-        'D' to Color.parseColor("#2a3a2a"),
-        'B' to Color.parseColor("#55aaff"),
-        'C' to Color.parseColor("#55ffff"),
+        'Y' to Color.parseColor("#ffd23f"), // sun, lit
+        'o' to Color.parseColor("#f2a81c"), // sun, shaded underside
+        'W' to Color.parseColor("#e8eeea"), // cloud, lit
+        'w' to Color.parseColor("#9fb0aa"), // cloud, shaded underside
+        'D' to Color.parseColor("#6b7c84"), // storm cloud, lit
+        'd' to Color.parseColor("#45545b"), // storm cloud, shaded underside
+        'B' to Color.parseColor("#6fbaff"), // rain, near streaks
+        'b' to Color.parseColor("#3d86cc"), // rain, far streaks
+        'S' to Color.parseColor("#eaf6ff"), // snow
+        'G' to Color.parseColor("#9aada4"), // fog, near bars
+        'g' to Color.parseColor("#5d6f66"), // fog, far bars
+        'L' to Color.parseColor("#ffb000"), // lightning, struck (widget amber)
+        'l' to Color.parseColor("#7a5300"), // lightning, between strikes
+        'C' to Color.parseColor("#55ffff"), // stars (widget cyan)
         'K' to Color.parseColor("#000000"),
-        'L' to Color.parseColor("#ffb000"),
-        'S' to Color.parseColor("#e0f0ff"),
     )
 
     private const val BLANK_ROW = "................"
@@ -179,22 +230,26 @@ object PixelIcons {
     private const val PRECIP_BAND_START = 9
     private const val PRECIP_BAND_END = 15
 
-    /** Sun-ray-tip cells (row, col) — the isolated 'Y' pixels furthest from
-     * the core disc (the diagonal/corner ray tips), dropped on the
-     * "retracted" twinkle frame. Hand-picked once against the "sun" grid
-     * above since they're inherently specific to that grid's exact shape. */
+    /** Outermost pixel of each of the sun's eight rays, dropped on the
+     * "retracted" twinkle frame so the rays pulse in and out. Only the tip of
+     * each ray, not the whole ray: blanking more collapsed the icon into a
+     * plain diamond, which is what the previous grid's twinkle frame did.
+     * Hand-picked against the "sun" grid above, so they move with it. */
     private val SUN_RAY_TIPS: List<Pair<Int, Int>> = listOf(
-        2 to 2, 2 to 13,
-        3 to 1, 3 to 2, 3 to 13, 3 to 14,
-        4 to 2, 4 to 13,
-        11 to 2, 11 to 13,
-        12 to 1, 12 to 2, 12 to 13, 12 to 14,
-        13 to 2, 13 to 13,
+        1 to 7, 1 to 8, // top
+        14 to 7, 14 to 8, // bottom
+        7 to 1, 8 to 1, // left
+        7 to 14, 8 to 14, // right
+        3 to 2, 3 to 13, // upper diagonals
+        12 to 2, 12 to 13, // lower diagonals
     )
 
     /** 4-frame vertical-bob offset cycle (source-grid pixels) used by the
-     * static-shaped kinds (cloud/partly/fog/moon): 0, -1, 0, +1. */
+     * static-shaped kinds (cloud/partly/moon): 0, -1, 0, +1. */
     private val BOB_OFFSETS = intArrayOf(0, -1, 0, 1)
+
+    /** 4-frame horizontal drift for "fog": 0, +1, 0, -1. */
+    private val FOG_DRIFT = intArrayOf(0, 1, 0, -1)
 
     /** Shifts the rows in [start..end] (inclusive) of [grid] down by [shift]
      * rows, wrapping within that band only — used for the falling-rain /
@@ -217,6 +272,19 @@ object PixelIcons {
             if (src in grid.indices) grid[src] else BLANK_ROW
         }
 
+    /** Shifts every row left/right by [offset] columns, wrapping around the
+     * row — the bars are full-width-ish, so wrapping reads as continuous
+     * drift rather than as pixels falling off an edge. */
+    private fun shiftCols(grid: List<String>, offset: Int): List<String> =
+        grid.map { row ->
+            val n = row.length
+            val chars = CharArray(n)
+            for (i in 0 until n) {
+                chars[i] = row[((i - offset) % n + n) % n]
+            }
+            String(chars)
+        }
+
     /** Returns [grid] with the given (row, col) cells blanked out. */
     private fun blankCells(grid: List<String>, cells: List<Pair<Int, Int>>): List<String> {
         val byRow = cells.groupBy({ it.first }, { it.second })
@@ -228,9 +296,9 @@ object PixelIcons {
         }
     }
 
-    /** Returns [grid] with every occurrence of [ch] replaced by '.'. */
-    private fun blankChar(grid: List<String>, ch: Char): List<String> =
-        grid.map { row -> row.replace(ch, '.') }
+    /** Returns [grid] with every occurrence of [from] recoloured to [to]. */
+    private fun recolor(grid: List<String>, from: Char, to: Char): List<String> =
+        grid.map { row -> row.replace(from, to) }
 
     /**
      * Applies this render's per-frame animation transform to the base 16x16
@@ -245,13 +313,18 @@ object PixelIcons {
             // one row per frame, wrapping within that band. Cloud-body rows
             // above the band are part of the untouched prefix and never move.
             "rain", "snow" -> shiftBand(grid, PRECIP_BAND_START, PRECIP_BAND_END, f)
-            // Twinkle: alternate full rays / retracted rays every other frame.
+            // Twinkle: alternate full rays / retracted ray tips every other frame.
             "sun" -> if (f % 2 == 1) blankCells(grid, SUN_RAY_TIPS) else grid
-            // Flash: alternate the lightning bolt on/off every other frame;
-            // the storm-cloud body ('D' pixels) is untouched.
-            "thunder" -> if (f % 2 == 1) blankChar(grid, 'L') else grid
+            // Flash: the bolt dims between strikes rather than disappearing.
+            // Blanking it outright (what this used to do) meant that for half
+            // of every ~60s blink cycle the thunder icon was a plain grey
+            // cloud with nothing under it — indistinguishable from "cloud" at
+            // a glance, on an icon whose entire job is to say "storm".
+            "thunder" -> if (f % 2 == 1) recolor(grid, 'L', 'l') else grid
+            // Fog drifts sideways instead of bobbing.
+            "fog" -> shiftCols(grid, FOG_DRIFT[f])
             // Gentle 1px vertical bob over a 4-frame cycle (0, -1, 0, +1).
-            "cloud", "partly", "fog", "moon" -> shiftRows(grid, BOB_OFFSETS[f])
+            "cloud", "partly", "moon" -> shiftRows(grid, BOB_OFFSETS[f])
             else -> grid
         }
     }
