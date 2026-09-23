@@ -1,6 +1,27 @@
 apply plugin: 'com.android.application'
 apply plugin: 'org.jetbrains.kotlin.android'
 
+// Release signing key, loaded from android/keystore.properties (gitignored,
+// alongside the .jks itself — see android/.gitignore).
+//
+// Why this exists: every release up to v0.6.0-beta.7 shipped an APK signed with
+// the machine's *debug* keystore, which the Android SDK regenerates whenever it
+// is missing or expired. It did regenerate between beta.6 and beta.7, so the two
+// builds had different signing keys and Android refused to update one with the
+// other (INSTALL_FAILED_UPDATE_INCOMPATIBLE) — every user had to uninstall and
+// lose their widget configuration. A key that lives in a file we control, rather
+// than one the SDK recreates behind our back, is what makes in-place updates
+// possible at all.
+//
+// The config is optional on purpose: a fresh clone has no keystore.properties,
+// and `assembleRelease` must still work there (producing an unsigned APK) rather
+// than failing the build for anyone who isn't the release signer.
+def keystorePropsFile = rootProject.file('keystore.properties')
+def keystoreProps = new Properties()
+if (keystorePropsFile.exists()) {
+    keystorePropsFile.withInputStream { keystoreProps.load(it) }
+}
+
 android {
     namespace = "dev.pi0trdotsys.homebrewweather"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -17,10 +38,27 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (keystorePropsFile.exists()) {
+            release {
+                storeFile rootProject.file(keystoreProps['storeFile'])
+                storePassword keystoreProps['storePassword']
+                keyAlias keystoreProps['keyAlias']
+                keyPassword keystoreProps['keyPassword']
+                // Signature scheme versions are left to AGP. v2 arrived in API
+                // 24, which is this app's minSdk, so v1 (JAR signing) buys
+                // nothing here and AGP drops it — verified with
+                // `apksigner verify --print-certs` on the built APK.
+            }
+        }
+    }
     buildTypes {
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (keystorePropsFile.exists()) {
+                signingConfig signingConfigs.release
+            }
         }
     }
     compileOptions {

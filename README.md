@@ -65,6 +65,18 @@ bunx cap sync android
 cd android && ./gradlew assembleDebug
 ```
 
+Release builds are signed with a dedicated key rather than the SDK's debug
+keystore — the debug one gets regenerated whenever it goes missing, which
+silently changes the signature and makes Android refuse to update an installed
+build. Copy [`android/keystore.properties.example`](android/keystore.properties.example)
+to `android/keystore.properties`, point it at your own keystore, then:
+
+```bash
+cd android && ./gradlew assembleRelease
+```
+
+Without that file the build still works; it just produces an unsigned APK.
+
 Add the widget from your launcher's picker — pick a city, it runs on its own from there.
 Resize it however you like; it re-solves its own layout for the new footprint.
 Latest build: [Releases](https://github.com/pi0trdotsys/Homebrew-Weather/releases).
