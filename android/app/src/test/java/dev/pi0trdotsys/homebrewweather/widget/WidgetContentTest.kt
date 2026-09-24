@@ -37,6 +37,16 @@ class WidgetContentTest {
     }
 
     @Test
+    fun `every clean line fits the widget footer and is unique`() {
+        val lines = CleanJokes.pools.values.flatten()
+        val tooLong = lines.filter { it.length > SigmaJokes.MAX_LINE_LENGTH }
+        assertTrue("too long: $tooLong", tooLong.isEmpty())
+        val dupes = lines.groupingBy { it }.eachCount().filterValues { it > 1 }.keys
+        assertTrue("duplicated: $dupes", dupes.isEmpty())
+        assertEquals(SigmaJokes.pools.keys, CleanJokes.pools.keys)
+    }
+
+    @Test
     fun `every weather kind has a sigma pool`() {
         // "night" is the extra pool mixed in after dark, not a WeatherKind.
         val kinds = listOf("sun", "partly", "cloud", "fog", "rain", "snow", "thunder")

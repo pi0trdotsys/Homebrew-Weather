@@ -166,13 +166,18 @@ class WeatherWidgetProvider : AppWidgetProvider() {
                 // Same metrics the last full render used, so a tick's icons come
                 // back at the size they were — an ImageView sized by its bitmap
                 // (see WidgetGraphics.sized) would otherwise resize the row on
-                // every blink if this used a different ladder.
-                val m = WidgetSize.resolve(context, id).metrics()
+                // every blink if this used a different ladder. The ladder now
+                // depends on which rows the content shows, so rebuild that
+                // content from the same cached forecast the last render wrote.
+                val weather = WidgetPrefs.getCachedWeather(context, id)
+                val rows = weather?.let {
+                    WidgetContent.build(it, WidgetPrefs.getDensity(context, id), offline = false).rows()
+                } ?: WidgetMetrics.Rows.ALL
+                val m = WidgetSize.resolve(context, id).metrics(rows)
                 val iconPx = dpToPx(context, m.dayIconDp)
                 val nowIconPx = dpToPx(context, m.heroIconDp)
                 // Re-render each day's icon at the new frame from cached weather codes
                 // only — no network call, matching the "no new battery cost" tradeoff.
-                val weather = WidgetPrefs.getCachedWeather(context, id)
                 if (weather != null) {
                     for (i in 0 until 4) {
                         val entry = weather.daily.getOrNull(i) ?: continue
@@ -385,18 +390,6 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             }
         }
 
-        /** Short Polish condition label for the Terminal 2.0 hero's "now" line. */
-        private fun kindLabel(kind: String): String = when (kind) {
-            "sun" -> "słonecznie"
-            "partly" -> "częściowo"
-            "cloud" -> "pochmurno"
-            "fog" -> "mgła"
-            "rain" -> "deszcz"
-            "snow" -> "śnieg"
-            "thunder" -> "burza"
-            "moon" -> "noc"
-            else -> kind
-        }
 
         /** 4-day POP trend as Unicode block chars (Terminal 2.0 sparkline),
          * rendered into [R.id.widget_sparkline] — mirrors
@@ -414,8 +407,11 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             }
         }
 
-        /** HH:mm:ss at render time — [R.id.widget_sync_line]'s "sync ..." text. */
-        private fun currentTimeHms(): String = SimpleDateFormat("HH:mm:ss", Locale.US).format(Date())
+        /** HH:mm at render time — [R.id.widget_sync_line]'s "sync ..." text (full
+         * density only). Seconds were dropped: a widget that refreshes every
+         * 15-30 minutes has no use for them, and they were the widest thing in
+         * the stat column. */
+        private fun currentTimeHm(): String = SimpleDateFormat("HH:mm", Locale.US).format(Date())
 
         /** "24°/14°" — no spaces around the slash (matches WidgetMock4x2.tsx's
          * `{d.tempDay}°` / `/` / `{d.tempNight}°` spans exactly, and is what
@@ -455,30 +451,22 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             return span
         }
 
-        /** "feels like / humidity / wind" — real data for the reclaimed space in
-         * the default (non-compact) layout's widget_meta_line row. Only surfaces
-         * fields WeatherApi actually parsed; missing/unknown readings (NaN / -1
-         * sentinels, e.g. from an older offline cache) are simply omitted rather
-         * than shown as garbage. */
-        private fun metaLine(weather: WeatherApi.WeatherData): String {
-            val parts = mutableListOf<String>()
-            if (!weather.apparentTemperature.isNaN()) {
-                parts += "feels ${Math.round(weather.apparentTemperature)}°"
-            }
-            if (weather.humidityPercent >= 0) {
-                parts += "hum ${weather.humidityPercent}%"
-            }
-            if (!weather.windSpeedKmh.isNaN()) {
-                parts += "wind ${Math.round(weather.windSpeedKmh)}km/h"
-            }
-            return if (parts.isEmpty()) "" else parts.joinToString("  ·  ")
-        }
 
         private val DAY_LABEL_IDS = intArrayOf(R.id.widget_day0_label, R.id.widget_day1_label, R.id.widget_day2_label, R.id.widget_day3_label)
         private val ICON_IDS = intArrayOf(R.id.widget_icon0, R.id.widget_icon1, R.id.widget_icon2, R.id.widget_icon3)
         private val TEMP_IDS = intArrayOf(R.id.widget_temp0, R.id.widget_temp1, R.id.widget_temp2, R.id.widget_temp3)
         private val POP_IDS = intArrayOf(R.id.widget_pop0, R.id.widget_pop1, R.id.widget_pop2, R.id.widget_pop3)
         private val BAR_IDS = intArrayOf(R.id.widget_bar0, R.id.widget_bar1, R.id.widget_bar2, R.id.widget_bar3)
+
+        /** Rows the "no city yet" / "offline, nothing cached" placeholder states
+         * draw: the header and a one-line message in the footer slot. */
+        private val PLACEHOLDER_ROWS = WidgetMetrics.Rows(
+            meta = false,
+            footer = true,
+            pop = false,
+            bars = false,
+            stats = false,
+        )
 
         private fun sp(rv: RemoteViews, id: Int, size: Float) =
             rv.setTextViewTextSize(id, TypedValue.COMPLEX_UNIT_SP, size)
@@ -565,9 +553,17 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             // comes from WidgetSize, which reads the host's options correctly;
             // reading them the obvious way is what previously made this widget
             // render its small layout at full size.
-            val metrics = WidgetSize.resolve(context, appWidgetId).metrics()
+            //
+            // Sized twice. This first pass covers the early-return states below
+            // (no city yet, offline with nothing cached), which only ever show a
+            // header and a one-line message. Once real weather is in hand, the
+            // content decides which rows exist (WidgetContent) and the ladder is
+            // re-solved for exactly those rows and applied on top — RemoteViews
+            // replays its actions in order, so the later sizes and visibilities
+            // are the ones that stick.
+            val size = WidgetSize.resolve(context, appWidgetId)
             val rv = RemoteViews(context.packageName, R.layout.weather_widget)
-            applyMetrics(context, rv, metrics)
+            applyMetrics(context, rv, size.metrics(PLACEHOLDER_ROWS))
             val pendingFlags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
 
             // Tapping the body opens the app.
@@ -655,6 +651,22 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             val liveMarker = if (city.isLive) "◎ " else ""
             rv.setTextViewText(R.id.widget_header_label, "┌─ $liveMarker${city.name} ─┐")
 
+            // Tapping the widget opens the app *on this widget's city*. It used to
+            // open the app on whatever location the app had saved for itself —
+            // tap a widget showing Tolox and land on Málaga, with nothing linking
+            // the two. Same request code as the city-less intent set above, so
+            // FLAG_UPDATE_CURRENT replaces that one's extras with these.
+            val openCityIntent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                putExtra(MainActivity.EXTRA_CITY_LAT, city.lat)
+                putExtra(MainActivity.EXTRA_CITY_LON, city.lon)
+                putExtra(MainActivity.EXTRA_CITY_NAME, city.name)
+            }
+            rv.setOnClickPendingIntent(
+                R.id.widget_content,
+                PendingIntent.getActivity(context, appWidgetId * 10 + 0, openCityIntent, pendingFlags),
+            )
+
             var isFresh = false
             var weather = if (debugForceOfflineCache) {
                 WidgetPrefs.getCachedWeather(context, appWidgetId)
@@ -734,6 +746,19 @@ class WeatherWidgetProvider : AppWidgetProvider() {
                 applyThemeColors(healthTheme.primaryColorRes, healthTheme.dimColorRes)
             }
 
+            // Decide what to say first, then size the widget for exactly that —
+            // see WidgetContent for the "show the exceptions" rules and
+            // WidgetMetrics.Rows for why sizing has to follow content now.
+            val density = WidgetPrefs.getDensity(context, appWidgetId)
+            val content = WidgetContent.build(weather, density, offline = !online)
+            val metrics = size.metrics(content.rows())
+            applyMetrics(context, rv, metrics)
+
+            vis(rv, R.id.widget_online_dot, content.showOnlineDot)
+            vis(rv, R.id.widget_sync_line, metrics.showSync && content.showSync)
+            vis(rv, R.id.widget_sparkline, metrics.showStats && content.showSparkline)
+            vis(rv, R.id.widget_pop_max, metrics.showStats && content.showPopMax)
+
             val iconPx = dpToPx(context, metrics.dayIconDp)
             // Use whatever frame the blink tick last persisted so a manual
             // refresh / periodic re-fetch stays visually in sync with it
@@ -760,7 +785,10 @@ class WeatherWidgetProvider : AppWidgetProvider() {
                     if (metrics.showTempPair) tempSpannable(context, entry.tempMax, entry.tempMin)
                     else compactTempSpannable(context, entry.tempMax),
                 )
-                rv.setTextViewText(POP_IDS[i], "▽ ${entry.precipitationProbabilityMax}%")
+                // Blank rather than hidden for a day below the threshold: the
+                // row exists because *some* day merits a figure, and the four
+                // columns have to stay aligned with each other.
+                rv.setTextViewText(POP_IDS[i], content.dayPop[i].ifEmpty { " " })
 
                 if (metrics.showBars) {
                     rv.setImageViewBitmap(
@@ -778,22 +806,12 @@ class WeatherWidgetProvider : AppWidgetProvider() {
                 }
             }
 
-            // widget_footer_comment stays permanently GONE/0dp in both layouts
-            // (WidgetMock4x2.tsx never had it; id kept only for RemoteViews-
-            // action compatibility). widget_meta_line is back, though — real
-            // data (feels-like/humidity/wind) filling real reclaimed space in
-            // the default (non-compact) layout only; the compact layout stays
-            // deliberately minimal and never shows it.
-            if (metrics.showMeta) {
-                val meta = metaLine(weather)
-                rv.setTextViewText(R.id.widget_meta_line, meta)
-                vis(rv, R.id.widget_meta_line, meta.isNotEmpty())
-            }
+            // widget_footer_comment stays permanently GONE/0dp (WidgetMock4x2.tsx
+            // never had it; id kept only for RemoteViews-action compatibility).
+            content.metaLine?.let { rv.setTextViewText(R.id.widget_meta_line, it) }
 
-            // Terminal 2.0 hero: big current temp + condition + rain + AQI.
-            // kind0/isNight computed here (rather than further down where the footer
-            // joke also needs kind/isNight) so the pixel icon can reuse the same
-            // kind/frame the joke and day-grid icons use.
+            // Hero: icon, big current temperature, and one line under it — the
+            // rain sentence when there's rain coming, the condition otherwise.
             val kind0 = Wmo.wmoToKind(weather.currentWeatherCode)
             val isNight = !weather.isDay
             val nowIconKind = if (isNight && (kind0 == "sun" || kind0 == "partly")) "moon" else kind0
@@ -808,41 +826,25 @@ class WeatherWidgetProvider : AppWidgetProvider() {
                 R.id.widget_hero_temp,
                 context.getColor(if (dimmed) R.color.widget_cyan_dim else R.color.widget_cyan),
             )
+            rv.setTextViewText(R.id.widget_now_line, content.heroLine)
 
-            val nowParts = mutableListOf("now · ${kindLabel(nowIconKind)}")
-            if (weather.currentPrecipitationProbability >= 0) nowParts += "rain ${weather.currentPrecipitationProbability}%"
-            rv.setTextViewText(R.id.widget_now_line, nowParts.joinToString(" · "))
-
-            // Terminal 2.0 sparkline + PoP-max: the 4-day PoP trend, relocated
-            // out of the footer comment (see popSparkline()'s doc comment) into
-            // its own hero-row view. Color (amber if any day's PoP >= 50%, else
-            // cyan) matches WidgetMock4x2.tsx's spark.hasRain rule and is shared
-            // by the sparkline bars and the "▽ max%" figure beside them.
+            // Full density only: the 4-day rain sparkline and its maximum. Color
+            // (amber if any day's PoP >= 50%, else cyan) matches WidgetMock4x2.tsx's
+            // spark.hasRain rule and is shared by the bars and the "▽ max%" figure.
             val next4Pops = weather.daily.take(4).map { it.precipitationProbabilityMax }
             val maxPop = next4Pops.maxOrNull() ?: 0
             val hasRain = next4Pops.any { it >= 50 }
             val sparkColor = context.getColor(if (hasRain) R.color.widget_amber else R.color.widget_cyan)
-            // A forecast with no rain at all in it maps every bar to the
-            // shortest block, so the "chart" becomes four ▁ glyphs in a row —
-            // which reads as a stray horizontal rule floating above the AQI
-            // line, not as a flat trend. Nothing to plot, so plot nothing;
-            // "▽ 0%" beside it already says it isn't going to rain. (Spotted
-            // on the real widget, where a dry forecast is the common case.)
-            vis(rv, R.id.widget_sparkline, metrics.showStats && maxPop > 0)
             rv.setTextViewText(R.id.widget_sparkline, popSparkline(weather))
             rv.setTextColor(R.id.widget_sparkline, sparkColor)
             rv.setTextViewText(R.id.widget_pop_max, "▽ $maxPop%")
             rv.setTextColor(R.id.widget_pop_max, sparkColor)
-            rv.setTextViewText(R.id.widget_sync_line, "sync ${currentTimeHms()}")
+            rv.setTextViewText(R.id.widget_sync_line, "sync ${currentTimeHm()}")
 
-            // Compact width: the AQI text is the widest, least essential thing sharing
-            // the "now" row — at minResizeWidth (180dp) it would otherwise squeeze the
-            // actual now-temp/now-rain text down to nothing (0-width ellipsis). Hiding
-            // it here is the same "best-effort, drop it before you break something
-            // people actually rely on" idea as the AQI fetch's own error handling above.
-            if (weather.usAqi >= 0 && metrics.showAqi) {
-                val colorRes = aqiLabelAndColor(weather.usAqi).second
-                val text = "AQI ${weather.usAqi} · ${aqiShortLabel(weather.usAqi)}"
+            val aqi = content.aqi
+            if (aqi != null && metrics.showAqi) {
+                val colorRes = aqiLabelAndColor(aqi).second
+                val text = "AQI $aqi · ${aqiShortLabel(aqi)}"
                 val span = SpannableString(text)
                 span.setSpan(ForegroundColorSpan(context.getColor(colorRes)), 0, text.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
                 rv.setTextViewText(R.id.widget_aqi_line, span)
@@ -852,11 +854,14 @@ class WeatherWidgetProvider : AppWidgetProvider() {
                 rv.setViewVisibility(R.id.widget_aqi_line, View.GONE)
             }
 
-            // kind0/isNight computed above (right before the "now" icon render).
             // Seed by current hour so the joke is stable within a refresh cycle but
             // varies across refreshes/hours, matching pickSigma()'s intent.
             val seed = (System.currentTimeMillis() / (60 * 60 * 1000L)).toInt()
-            val joke = SigmaJokes.pick(kind0, isNight, seed)
+            // Footer voice follows the app-wide tone (see Tone).
+            val joke = when (CapacitorStorage.tone(context)) {
+                Tone.CLEAN -> CleanJokes.pick(kind0, isNight, seed)
+                Tone.SIGMA, Tone.RUDE -> SigmaJokes.pick(kind0, isNight, seed)
+            }
             rv.setTextViewText(R.id.widget_footer_joke, "> $joke")
 
             return rv

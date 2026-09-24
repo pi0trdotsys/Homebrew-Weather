@@ -43,7 +43,8 @@ import android.os.Bundle
  */
 data class WidgetSize(val widthDp: Int, val heightDp: Int) {
 
-    fun metrics(): WidgetMetrics = WidgetMetrics.forSize(widthDp, heightDp)
+    fun metrics(rows: WidgetMetrics.Rows = WidgetMetrics.Rows.ALL): WidgetMetrics =
+        WidgetMetrics.forSize(widthDp, heightDp, rows)
 
     companion object {
 

@@ -1,86 +1,67 @@
 <div align="center">
 
-# homebrew-weather
-
-<sub>pixel-art weather, terminal-native</sub>
-
 <br/>
 
-[![beta](https://img.shields.io/badge/status-beta-33ff66?style=flat-square&labelColor=0a0f0a)](https://github.com/pi0trdotsys/Homebrew-Weather/releases)
-[![stack](https://img.shields.io/badge/TanStack%20Start-%C2%B7-0a0f0a?style=flat-square&labelColor=000000&color=33ff66)](#stack)
-[![data](https://img.shields.io/badge/Open--Meteo-%C2%B7-0a0f0a?style=flat-square&labelColor=0a0f0a&color=ffb000)](https://open-meteo.com/)
-[![android](https://img.shields.io/badge/Android-native%20widget-0a0f0a?style=flat-square&labelColor=0a0f0a&color=33ff66)](#android-beta)
+# homebrew&#8209;weather
+
+**The forecast, minus the noise.**
+
+<sub>A pixel-art weather widget for Android that speaks up only when the sky has something to say.</sub>
+
+<br/><br/>
+
+<img src="docs/screenshot-widget.png" width="78%" alt="Homebrew Weather widget on a home screen: Málaga, 25°, sunny, four-day forecast" />
+
+<br/><br/>
+
+[![Download APK](https://img.shields.io/badge/download-APK-33ff66?style=for-the-badge&labelColor=0a0f0a)](https://github.com/pi0trdotsys/Homebrew-Weather/releases/latest)
+&nbsp;
+[![beta](https://img.shields.io/github/v/release/pi0trdotsys/Homebrew-Weather?include_prereleases&style=for-the-badge&label=&color=0a0f0a&labelColor=0a0f0a)](https://github.com/pi0trdotsys/Homebrew-Weather/releases)
 
 </div>
 
 <br/>
 
-<p align="center">
-  <img src="docs/screenshot-app.svg" width="100%" alt="homebrew-weather dashboard" />
-</p>
-
-<p align="center">
-  <img src="docs/screenshot-widget.png" width="72%" alt="native Android home-screen widget, shot on a real device at 368×176dp" />
-</p>
-
-<p align="center">
-  <img src="docs/screenshot-settings.svg" width="49.5%" alt="settings — notification thresholds" /><img src="docs/screenshot-about.svg" width="49.5%" alt="about — man page style" />
-</p>
+```
+01  ─  rain, in one sentence        "rain from 15:00 until about 19:00"
+02  ─  quiet on quiet days          a dry day is a number and four days, nothing more
+03  ─  one brief each morning       plus a heads-up about an hour before rain
+04  ─  fits whatever you give it    any size; a calmer day gets bigger type, not gaps
+05  ─  your tone                    clean · sigma · rude
+```
 
 <br/>
 
-```
-NAME     homebrew-weather — pixel-art weather forecast for developers
-DATA     open-meteo.com — no key, no tracking, no backend
-PLATFORM web (PWA) + native Android widget
-```
+<div align="center">
 
-## Features
+### Get it
 
-- Pixel-art icons, CRT phosphor glow, typewriter forecast output
-- Native Android home-screen widget — sizes every element to whatever footprint the
-  launcher actually grants it, from a 180×90dp squeeze up to a full-width tile, and
-  drops rows in a fixed order rather than shrinking everything into illegibility
-- 4-day grid with temperature range bars on a shared scale, live AQI, rain trend
-- Refresh button, per-instance city picker, themes, own background worker
-- Rain / high / low / swing / AQI notifications with attitude, thresholds set in `./settings`
-- Zero backend — talks to [Open-Meteo](https://open-meteo.com/) directly, on-device
+</div>
 
-## Stack
+1. Grab the **APK** from the [latest release](https://github.com/pi0trdotsys/Homebrew-Weather/releases/latest) and open it on your phone.
+2. Long-press your home screen → **Widgets** → **Homebrew Weather**.
+3. Pick a city and a density (*minimal*, *standard* or *full*). That's it. It refreshes on its own.
 
-`TanStack Start` `React 19` `Tailwind v4` `Capacitor` `Kotlin` — see [Android](#android-beta) for the native half.
+Tap the widget to open the full forecast for that city. Brief time, alert thresholds and
+tone are under **./settings**.
 
-## Run
+> **Updating from beta.7 or earlier?** Uninstall the old version once, then install. From
+> beta.8 onwards, new versions install right over the top and your widgets stay put.
 
-```bash
-bun install
-bun run dev
-```
+<br/>
 
-## Android (beta)
+<div align="center">
 
-```bash
-bun run build:capacitor
-bunx cap sync android
-cd android && ./gradlew assembleDebug
-```
+<sub>
 
-Release builds are signed with a dedicated key rather than the SDK's debug
-keystore — the debug one gets regenerated whenever it goes missing, which
-silently changes the signature and makes Android refuse to update an installed
-build. Copy [`android/keystore.properties.example`](android/keystore.properties.example)
-to `android/keystore.properties`, point it at your own keystore, then:
+**private by default**: no account, no ads, no tracking, no server of ours  
+weather straight from [Open-Meteo](https://open-meteo.com/) · location is optional, a city name works too  
+the widget speaks Polish, the app speaks English · still in beta, so rough edges are expected
 
-```bash
-cd android && ./gradlew assembleRelease
-```
+<br/>
 
-Without that file the build still works; it just produces an unsigned APK.
+[for developers →](docs/DEVELOPMENT.md)
 
-Add the widget from your launcher's picker — pick a city, it runs on its own from there.
-Resize it however you like; it re-solves its own layout for the new footprint.
-Latest build: [Releases](https://github.com/pi0trdotsys/Homebrew-Weather/releases).
+</sub>
 
-Widget internals — the size solver, the RemoteViews constraints it works around, and
-the real-device bugs that shaped both — are written up in
-[`docs/widget-spec.md`](docs/widget-spec.md).
+</div>

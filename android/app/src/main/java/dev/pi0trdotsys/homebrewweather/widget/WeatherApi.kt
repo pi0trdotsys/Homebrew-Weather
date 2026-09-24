@@ -29,6 +29,18 @@ object WeatherApi {
         val precipitationProbabilityMax: Int,
     )
 
+    /**
+     * One forecast hour, starting from the current hour. [time] is Open-Meteo's
+     * local ISO string ("2026-09-24T15:00"), in the location's own timezone —
+     * the same frame `current.time` uses, so no timezone math is needed to
+     * compare or display it.
+     */
+    data class HourlyEntry(
+        val time: String,
+        val precipitationProbability: Int,
+        val weatherCode: Int,
+    )
+
     data class WeatherData(
         val isDay: Boolean,
         val currentWeatherCode: Int,
@@ -58,7 +70,17 @@ object WeatherApi {
         // weather fetch. -1 sentinel = unknown/not fetched this refresh.
         val usAqi: Int = -1,
         val daily: List<DailyEntry>,
+        // The next [HOURLY_HORIZON] hours from the current one. This is what
+        // RainWindow reads to answer "when does it start raining, and when
+        // does it stop" — the question the widget used to leave to the user,
+        // spread across a current-hour figure, a 4-day sparkline and four
+        // daily maxima. Empty for caches written before this field existed.
+        val hourly: List<HourlyEntry> = emptyList(),
     )
+
+    /** How many forecast hours [WeatherData.hourly] keeps. RainWindow only looks
+     * ~12h ahead for a start, but needs room past that to find the end. */
+    const val HOURLY_HORIZON = 24
 
     private fun httpGetJson(urlStr: String): JSONObject {
         val conn = URL(urlStr).openConnection() as HttpURLConnection
@@ -174,6 +196,20 @@ object WeatherApi {
             (currentIdx..endIdx).mapNotNull { i -> hPops.optInt(i, -1).takeIf { it >= 0 } }.maxOrNull() ?: -1
         } else -1
 
+        val hCodes = hourly?.optJSONArray("weather_code")
+        val hourlyEntries = if (hTimes != null && hPops != null && currentIdx >= 0) {
+            val end = minOf(hTimes.length(), currentIdx + HOURLY_HORIZON)
+            (currentIdx until end).map { i ->
+                HourlyEntry(
+                    time = hTimes.optString(i),
+                    precipitationProbability = hPops.optInt(i, 0),
+                    weatherCode = hCodes?.optInt(i, 0) ?: 0,
+                )
+            }
+        } else {
+            emptyList()
+        }
+
         val daily = json.getJSONObject("daily")
         val times = daily.getJSONArray("time")
         val codes = daily.getJSONArray("weather_code")
@@ -201,6 +237,7 @@ object WeatherApi {
             currentPrecipitationProbability = currentPop,
             maxNext6hPop = maxNext6hPop,
             daily = entries,
+            hourly = hourlyEntries,
         )
     }
 

@@ -37,6 +37,10 @@ export type NotificationSettings = {
   swingThreshold: number; // °C, |today.max - yesterday.max| or day-to-day delta
   aqiEnabled: boolean;
   aqiThreshold: number; // US AQI (0-500), notify when crossed
+  // One morning summary instead of separate high/low/swing/AQI alerts; the
+  // thresholds above then decide what the brief mentions (MorningBrief.kt).
+  briefEnabled: boolean;
+  briefHour: number; // local hour, 0-23
 };
 
 export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
@@ -49,6 +53,8 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   swingThreshold: 8,
   aqiEnabled: true,
   aqiThreshold: 100,
+  briefEnabled: true,
+  briefHour: 7,
 };
 
 const NOTIF_KEYS: Record<keyof NotificationSettings, string> = {
@@ -61,7 +67,25 @@ const NOTIF_KEYS: Record<keyof NotificationSettings, string> = {
   swingThreshold: "settings:notif-swing-threshold",
   aqiEnabled: "settings:notif-aqi-enabled",
   aqiThreshold: "settings:notif-aqi-threshold",
+  briefEnabled: "settings:brief-enabled",
+  briefHour: "settings:brief-hour",
 };
+
+// The app's voice, applied to the widget footer, notifications and the
+// dashboard joke (Tone.kt on the native side reads this same key). "rude" is
+// what the app did before this setting existed, so it stays the default.
+export type Tone = "clean" | "sigma" | "rude";
+export const TONE_KEY = "settings:tone";
+export const DEFAULT_TONE: Tone = "rude";
+
+export async function loadTone(): Promise<Tone> {
+  const { value } = await Preferences.get({ key: TONE_KEY });
+  return value === "clean" || value === "sigma" || value === "rude" ? value : DEFAULT_TONE;
+}
+
+export async function saveTone(tone: Tone): Promise<void> {
+  await Preferences.set({ key: TONE_KEY, value: tone });
+}
 
 export async function loadRefreshInterval(): Promise<RefreshInterval> {
   const { value } = await Preferences.get({ key: REFRESH_INTERVAL_KEY });

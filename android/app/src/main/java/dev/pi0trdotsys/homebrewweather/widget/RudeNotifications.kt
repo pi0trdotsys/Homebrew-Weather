@@ -47,6 +47,31 @@ object RudeNotifications {
         return String.format(template, city)
     }
 
+    /**
+     * The same rain/storm lines without the leading "<city>: ", for appending
+     * under the factual rain-soon text ("deszcz w ciągu godziny, do ok. 19:00").
+     * The fact goes first in every tone — it's what you need to read at a
+     * glance on the lock screen — and the attitude comes after it.
+     */
+    fun rainTail(isThunder: Boolean, seed: Int = randomSeed()): String =
+        pick(if (isThunder) THUNDER else RAIN, seed).removePrefix("%s: ")
+
+    // ---------------------------------------------------------------------
+    // Morning brief closing line
+    // ---------------------------------------------------------------------
+    private val BRIEF_TAIL = listOf(
+        "masz prognozę, nie masz wymówek",
+        "przeczytałeś, to teraz rusz dupę",
+        "kawa, spodnie, wychodzisz. w tej kolejności",
+        "dzień sam się nie przeżyje, ogarnij się",
+        "wstawaj, kurwa, pogoda nie będzie czekać",
+        "tyle wiesz, reszta to twoje wymówki",
+        "nie marudź, inni mają gorzej i nie dostają briefów",
+        "prognoza jest, plan dnia jakoś nie bardzo",
+    )
+
+    fun briefTail(seed: Int = randomSeed()): String = pick(BRIEF_TAIL, seed)
+
     // ---------------------------------------------------------------------
     // High temperature
     // ---------------------------------------------------------------------

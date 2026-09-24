@@ -1,13 +1,17 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { NowPanel } from "@/components/NowPanel";
+import { HeroPanel } from "@/components/HeroPanel";
+import { StatusLine } from "@/components/StatusLine";
 import { HourlyStrip } from "@/components/HourlyStrip";
 import { DailyForecast } from "@/components/DailyForecast";
 import { TerminalOutput } from "@/components/TerminalOutput";
 import { LocationBar } from "@/components/LocationBar";
-import { JokeTicker } from "@/components/JokeTicker";
+import { pickJoke } from "@/lib/dev-jokes";
+import { pickSigma } from "@/lib/sigma-jokes";
+import { wmoToKind } from "@/lib/wmo";
+import { APP_VERSION } from "@/lib/version";
 import { fetchWeather, reverseGeocode, type GeoResult } from "@/lib/weather-api";
 import { loadWeatherCache, loadLastWeatherCache, saveWeatherCache } from "@/lib/weather-cache";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
@@ -16,6 +20,9 @@ import {
   saveRefreshInterval,
   loadCoords,
   saveCoords,
+  loadTone,
+  DEFAULT_TONE,
+  type Tone,
   type RefreshInterval,
   type Coords as SavedCoords,
 } from "@/lib/settings";
@@ -57,6 +64,22 @@ function Index() {
     if (coords) saveCoords(coords);
   }, [coords]);
 
+  // Tapping a home-screen widget while the app is already running: the native
+  // side (MainActivity.onNewIntent) has written the widget's city to storage,
+  // but this page read storage long ago, so it's told directly as well. A cold
+  // start needs none of this — the city is already in storage when we boot.
+  useEffect(() => {
+    const onOpenCity = (e: Event) => {
+      const c = (e as CustomEvent<SavedCoords>).detail;
+      if (c && Number.isFinite(c.lat) && Number.isFinite(c.lon)) {
+        setGeoError(null);
+        setCoords(c);
+      }
+    };
+    window.addEventListener("hbw:open-city", onOpenCity);
+    return () => window.removeEventListener("hbw:open-city", onOpenCity);
+  }, []);
+
   const locate = useCallback(() => {
     if (!("geolocation" in navigator)) {
       setGeoError("navigator.geolocation === undefined");
@@ -81,6 +104,8 @@ function Index() {
   }, []);
 
   const pickCity = useCallback((r: GeoResult) => {
+    // A city chosen by hand answers the geolocation error, so stop showing it.
+    setGeoError(null);
     setCoords({
       lat: r.latitude,
       lon: r.longitude,
@@ -154,6 +179,24 @@ function Index() {
   const isStale = !!dataUpdatedAt && Date.now() - dataUpdatedAt > interval * 60 * 1000;
   const fromCache = !online && !!data;
 
+  // One joke on the dashboard, stable per forecast refresh, in the app-wide
+  // tone. There used to be two at once — a scrolling ticker in the footer and
+  // a line in the terminal panel — competing with each other and the weather.
+  const [tone, setTone] = useState<Tone>(DEFAULT_TONE);
+  useEffect(() => {
+    loadTone().then(setTone);
+  }, []);
+  const joke = useMemo(() => {
+    if (!data) return "";
+    const kind = wmoToKind(data.current.weather_code);
+    const night = data.current.is_day === 0;
+    if (tone === "clean") return pickJoke(kind, night);
+    // Hourly seed, same as the widget footer, so the line doesn't reshuffle
+    // on every re-render.
+    return pickSigma(kind, night, Math.floor(Date.now() / 3_600_000));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data?.current.time, data?.current.weather_code, tone]);
+
   return (
     <div className="mx-auto flex min-h-screen max-w-5xl flex-col gap-4 px-4 pb-4 pt-6 sm:px-6">
       {/* Title bar */}
@@ -163,16 +206,21 @@ function Index() {
           <span className="blink">_</span>
         </h1>
         <nav className="flex items-center gap-4 text-xs uppercase tracking-widest text-[color:var(--phosphor-dim)]">
-          <span>v1.0.0</span>
+          <span>v{APP_VERSION}</span>
           <Link to="/settings" className="hover:text-[color:var(--phosphor)]">
             ./settings
           </Link>
           <Link to="/about" className="hover:text-[color:var(--phosphor)]">
             ./about
           </Link>
-          <Link to="/mockups" className="hover:text-[color:var(--phosphor)]">
-            ./mockups
-          </Link>
+          {/* A development tool (widget mockups against design tokens), not a
+              user-facing page — linked only in dev builds. The route itself
+              still resolves if typed in. */}
+          {import.meta.env.DEV && (
+            <Link to="/mockups" className="hover:text-[color:var(--phosphor)]">
+              ./mockups
+            </Link>
+          )}
         </nav>
       </header>
 
@@ -217,38 +265,25 @@ function Index() {
 
       {data && coords && (
         <>
-          <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-            <NowPanel data={data} />
-            <div className="terminal-box p-4 text-xs text-[color:var(--phosphor-dim)]">
-              <div className="mb-2 uppercase tracking-widest">$ cron -l</div>
-              <p>
-                * net:{" "}
-                <span
-                  className={
-                    online ? "text-[color:var(--phosphor)]" : "text-[color:var(--crimson)]"
-                  }
-                >
-                  {online ? "ONLINE" : "OFFLINE"}
-                </span>
-                {fromCache && " · serving cache"}
-                {isStale && online && " · stale, refreshing"}
-              </p>
-              <p>* auto-refresh co {interval} min (also in background)</p>
-              <p>* last sync: {new Date(dataUpdatedAt).toLocaleTimeString()}</p>
-              <p>* provider: open-meteo · lokacja: {coords.name}</p>
-            </div>
-          </div>
+          <HeroPanel data={data} />
+          <StatusLine
+            online={online}
+            fromCache={fromCache}
+            isStale={isStale}
+            updatedAt={dataUpdatedAt}
+            interval={interval}
+            timezone={data.timezone}
+          />
           <HourlyStrip data={data} />
           <div className="grid gap-4 lg:grid-cols-2">
             <DailyForecast data={data} />
-            <TerminalOutput data={data} location={coords.name} />
+            <TerminalOutput data={data} joke={joke} />
           </div>
         </>
       )}
 
       <div className="mt-auto">
-        <JokeTicker />
-        <p className="mt-2 text-center text-[10px] uppercase tracking-widest text-[color:var(--phosphor-dim)]">
+        <p className="mt-2 border-t border-[color:var(--phosphor-dim)] pt-2 text-center text-[10px] uppercase tracking-widest text-[color:var(--phosphor-dim)]">
           weather via open-meteo · no cookies · no tracking · brewed with ♥ in the terminal
         </p>
       </div>

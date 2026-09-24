@@ -47,6 +47,14 @@ object NotifStatePrefs {
         prefs(context).edit().putString("swing_date_$appWidgetId", isoDate).apply()
     }
 
+    /** Date the morning brief last went out for this widget's city. */
+    fun lastBriefDate(context: Context, appWidgetId: Int): String? =
+        prefs(context).getString("brief_date_$appWidgetId", null)
+
+    fun setBriefDate(context: Context, appWidgetId: Int, isoDate: String) {
+        prefs(context).edit().putString("brief_date_$appWidgetId", isoDate).apply()
+    }
+
     fun lastAqiNotifiedDate(context: Context, appWidgetId: Int): String? =
         prefs(context).getString("aqi_date_$appWidgetId", null)
 

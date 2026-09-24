@@ -54,6 +54,7 @@ object WidgetPrefs {
     private fun weatherCacheKey(appWidgetId: Int) = "weather_cache_$appWidgetId"
     private fun themeKey(appWidgetId: Int) = "theme_$appWidgetId"
     private fun transparencyKey(appWidgetId: Int) = "transparency_$appWidgetId"
+    private fun densityKey(appWidgetId: Int) = "density_$appWidgetId"
     private fun minWidthKey(appWidgetId: Int) = "min_width_$appWidgetId"
     private fun minHeightKey(appWidgetId: Int) = "min_height_$appWidgetId"
 
@@ -80,6 +81,7 @@ object WidgetPrefs {
             .remove(weatherCacheKey(appWidgetId))
             .remove(themeKey(appWidgetId))
             .remove(transparencyKey(appWidgetId))
+            .remove(densityKey(appWidgetId))
             .remove(minWidthKey(appWidgetId))
             .remove(minHeightKey(appWidgetId))
             .apply()
@@ -110,6 +112,19 @@ object WidgetPrefs {
     fun setTransparency(context: Context, appWidgetId: Int, transparency: WidgetTransparency) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putInt(transparencyKey(appWidgetId), transparency.storageId).apply()
+    }
+
+    /** Per-widget-instance content density (see [WidgetDensity]). Defaults to
+     * [WidgetDensity.STANDARD] — the exception-based view — for widgets placed
+     * before this setting existed as well as new ones. */
+    fun getDensity(context: Context, appWidgetId: Int): WidgetDensity {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return WidgetDensity.fromStorageId(prefs.getInt(densityKey(appWidgetId), WidgetDensity.DEFAULT.storageId))
+    }
+
+    fun setDensity(context: Context, appWidgetId: Int, density: WidgetDensity) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putInt(densityKey(appWidgetId), density.storageId).apply()
     }
 
     /** Last-known min width/height (dp) the host has granted this widget instance,
@@ -171,6 +186,18 @@ object WidgetPrefs {
                 maxNext6hPop = o.optInt("next6hPop", -1),
                 usAqi = o.optInt("aqi", -1),
                 daily = daily,
+                // Absent in caches written before the rain-window feature;
+                // an empty list just means "no rain sentence this render".
+                hourly = o.optJSONArray("hourly")?.let { arr ->
+                    (0 until arr.length()).map { i ->
+                        val h = arr.getJSONObject(i)
+                        WeatherApi.HourlyEntry(
+                            time = h.getString("t"),
+                            precipitationProbability = h.optInt("p", 0),
+                            weatherCode = h.optInt("c", 0),
+                        )
+                    }
+                } ?: emptyList(),
             )
         } catch (e: Exception) {
             null
@@ -202,6 +229,17 @@ object WidgetPrefs {
             if (weather.maxNext6hPop >= 0) put("next6hPop", weather.maxNext6hPop)
             if (weather.usAqi >= 0) put("aqi", weather.usAqi)
             put("daily", dailyArr)
+            // Short keys: this blob is rewritten on every refresh, per widget,
+            // and 24 hourly entries would otherwise dwarf everything else in it.
+            put("hourly", org.json.JSONArray().apply {
+                weather.hourly.forEach { h ->
+                    put(JSONObject().apply {
+                        put("t", h.time)
+                        put("p", h.precipitationProbability)
+                        put("c", h.weatherCode)
+                    })
+                }
+            })
         }
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putString(weatherCacheKey(appWidgetId), o.toString()).apply()
@@ -233,6 +271,9 @@ object CapacitorStorage {
     private const val NOTIF_SWING_THRESHOLD_KEY = "settings:notif-swing-threshold"
     private const val NOTIF_AQI_ENABLED_KEY = "settings:notif-aqi-enabled"
     private const val NOTIF_AQI_THRESHOLD_KEY = "settings:notif-aqi-threshold"
+    private const val BRIEF_ENABLED_KEY = "settings:brief-enabled"
+    private const val BRIEF_HOUR_KEY = "settings:brief-hour"
+    private const val TONE_KEY = "settings:tone"
 
     fun lastAppCity(context: Context): WidgetCity? {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -270,6 +311,18 @@ object CapacitorStorage {
     fun swingThreshold(context: Context): Double = getDouble(context, NOTIF_SWING_THRESHOLD_KEY, 8.0)
     fun aqiEnabled(context: Context): Boolean = getBool(context, NOTIF_AQI_ENABLED_KEY, true)
     fun aqiThreshold(context: Context): Double = getDouble(context, NOTIF_AQI_THRESHOLD_KEY, 100.0)
+
+    /** One morning summary instead of separate threshold alerts (see
+     * MorningBrief). On by default — that is the point of the feature. */
+    fun briefEnabled(context: Context): Boolean = getBool(context, BRIEF_ENABLED_KEY, true)
+
+    /** Local hour (0-23) the brief goes out from, default 7. */
+    fun briefHour(context: Context): Int = getDouble(context, BRIEF_HOUR_KEY, 7.0).toInt().coerceIn(0, 23)
+
+    fun tone(context: Context): Tone {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return Tone.fromStorage(prefs.getString(TONE_KEY, null))
+    }
 }
 
 /**

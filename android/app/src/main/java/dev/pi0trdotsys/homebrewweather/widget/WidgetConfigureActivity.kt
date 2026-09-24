@@ -44,6 +44,8 @@ class WidgetConfigureActivity : Activity() {
     private lateinit var themeButtons: Map<WidgetTheme, TextView>
     private lateinit var transparencySeekbar: SeekBar
     private lateinit var transparencyValueText: TextView
+    private lateinit var densityButtons: Map<WidgetDensity, TextView>
+    private lateinit var densityHint: TextView
 
     private var locationListener: LocationListener? = null
 
@@ -316,6 +318,32 @@ class WidgetConfigureActivity : Activity() {
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
         })
+
+        densityButtons = mapOf(
+            WidgetDensity.MINIMAL to findViewById<TextView>(R.id.density_minimal_btn),
+            WidgetDensity.STANDARD to findViewById<TextView>(R.id.density_standard_btn),
+            WidgetDensity.FULL to findViewById<TextView>(R.id.density_full_btn),
+        )
+        densityHint = findViewById(R.id.density_hint)
+        densityButtons.forEach { (density, btn) -> btn.setOnClickListener { selectDensity(density) } }
+        highlightSelectedDensity(WidgetPrefs.getDensity(this, appWidgetId))
+    }
+
+    private fun selectDensity(density: WidgetDensity) {
+        WidgetPrefs.setDensity(this, appWidgetId, density)
+        highlightSelectedDensity(density)
+        pushWidgetUpdate()
+    }
+
+    private fun highlightSelectedDensity(selected: WidgetDensity) {
+        densityButtons.forEach { (density, btn) ->
+            btn.setBackgroundColor(if (density == selected) THEME_BTN_SELECTED_BG else THEME_BTN_UNSELECTED_BG)
+        }
+        densityHint.text = when (selected) {
+            WidgetDensity.MINIMAL -> "// temperatura + 4 dni, nic więcej"
+            WidgetDensity.STANDARD -> "// tylko to, co dziś odbiega od normy"
+            WidgetDensity.FULL -> "// wszystkie odczyty, zawsze"
+        }
     }
 
     private fun selectTheme(theme: WidgetTheme) {

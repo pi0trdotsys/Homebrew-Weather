@@ -5,10 +5,20 @@ import {
   saveRefreshInterval,
   loadNotificationSettings,
   saveNotificationSettings,
+  loadTone,
+  saveTone,
   DEFAULT_NOTIFICATION_SETTINGS,
+  DEFAULT_TONE,
   type RefreshInterval,
   type NotificationSettings,
+  type Tone,
 } from "@/lib/settings";
+
+const TONES: Array<{ id: Tone; label: string; hint: string }> = [
+  { id: "clean", label: "clean", hint: "wry but polite footer, plain notifications" },
+  { id: "sigma", label: "sigma", hint: "sigma footer, plain notifications" },
+  { id: "rude", label: "rude", hint: "sigma footer, deliberately crude notifications" },
+];
 
 export const Route = createFileRoute("/settings")({
   head: () => ({
@@ -86,15 +96,21 @@ function ThresholdInput({
 function Settings() {
   const [interval, setInterval] = useState<RefreshInterval>(30);
   const [notif, setNotif] = useState<NotificationSettings>(DEFAULT_NOTIFICATION_SETTINGS);
+  const [tone, setTone] = useState<Tone>(DEFAULT_TONE);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    Promise.all([loadRefreshInterval(), loadNotificationSettings()]).then(([i, n]) => {
+    Promise.all([loadRefreshInterval(), loadNotificationSettings(), loadTone()]).then(([i, n, t]) => {
       setInterval(i);
       setNotif(n);
+      setTone(t);
       setLoaded(true);
     });
   }, []);
+
+  useEffect(() => {
+    if (loaded) saveTone(tone);
+  }, [tone, loaded]);
 
   useEffect(() => {
     if (loaded) saveRefreshInterval(interval);
@@ -143,10 +159,37 @@ function Settings() {
           </div>
           <div className="space-y-2">
             <Toggle
-              label="rain incoming"
+              label="rain soon — a heads-up about an hour before it starts"
               checked={notif.rainEnabled}
               onChange={(v) => patch({ rainEnabled: v })}
             />
+            <Toggle
+              label="morning brief — one summary instead of separate alerts"
+              checked={notif.briefEnabled}
+              onChange={(v) => patch({ briefEnabled: v })}
+            />
+            <label className="flex items-center justify-between gap-3 border border-[color:var(--phosphor-dim)]/40 px-3 py-2 text-sm">
+              <span className={notif.briefEnabled ? "" : "text-[color:var(--phosphor-dim)]"}>
+                ↳ from
+              </span>
+              <select
+                value={notif.briefHour}
+                disabled={!notif.briefEnabled}
+                onChange={(e) => patch({ briefHour: Number(e.target.value) })}
+                className="bg-transparent border border-[color:var(--phosphor-dim)] px-2 py-0.5 text-[color:var(--phosphor)] focus:outline-none focus:border-[color:var(--phosphor)] disabled:opacity-40"
+              >
+                {[5, 6, 7, 8, 9, 10, 11].map((h) => (
+                  <option key={h} value={h}>
+                    {String(h).padStart(2, "0")}:00
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p className="px-1 pt-1 text-[10px] uppercase tracking-widest text-[color:var(--phosphor-dim)]">
+              {notif.briefEnabled
+                ? "// the brief is on: the thresholds below decide what it mentions"
+                : "// the brief is off: each threshold below sends its own alert"}
+            </p>
             <Toggle
               label="high temperature"
               checked={notif.highEnabled}
@@ -193,6 +236,33 @@ function Settings() {
               suffix="AQI"
             />
           </div>
+        </div>
+
+        <div>
+          <div className="mb-2 text-[color:var(--phosphor-dim)] uppercase tracking-widest">
+            TONE
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {TONES.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setTone(t.id)}
+                className={
+                  "border px-3 py-2 text-sm uppercase tracking-widest " +
+                  (tone === t.id
+                    ? "border-[color:var(--phosphor)] bg-[color:var(--phosphor)] text-black"
+                    : "border-[color:var(--phosphor-dim)]/40 hover:border-[color:var(--phosphor)]")
+                }
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+          <p className="px-1 pt-2 text-[10px] uppercase tracking-widest text-[color:var(--phosphor-dim)]">
+            {"// "}
+            {TONES.find((t) => t.id === tone)?.hint} · widget, notifications and this dashboard
+          </p>
         </div>
 
         <p className="text-[10px] uppercase tracking-widest text-[color:var(--phosphor-dim)]">

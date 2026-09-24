@@ -5,7 +5,13 @@
       "name": "dev",
       "runtimeExecutable": "bun",
       "runtimeArgs": ["run", "dev"],
-      "port": 3000
+      "port": 8080
+    },
+    {
+      "name": "dev-bunx",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["x", "vite", "dev", "--port", "5173", "--strictPort"],
+      "port": 5173
     }
   ]
 }

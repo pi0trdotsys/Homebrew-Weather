@@ -223,5 +223,74 @@
             android:progressTint="#33ff66"
             android:thumbTint="#33ff66" />
 
+        <!-- Density: how much the widget shows (see WidgetDensity.kt). Standard
+             is the default and shows only what's out of the ordinary today;
+             full is every readout, always; minimal is temperature + 4 days. -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:fontFamily="monospace"
+            android:text="$ configure widget --density"
+            android:textColor="#4a6a4a"
+            android:textSize="13sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/density_minimal_btn"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="4dp"
+                android:layout_weight="1"
+                android:background="#0a0f0a"
+                android:fontFamily="monospace"
+                android:gravity="center"
+                android:padding="10dp"
+                android:text="minimal"
+                android:textColor="#33ff66"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/density_standard_btn"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginEnd="4dp"
+                android:layout_weight="1"
+                android:background="#0a0f0a"
+                android:fontFamily="monospace"
+                android:gravity="center"
+                android:padding="10dp"
+                android:text="standard"
+                android:textColor="#33ff66"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/density_full_btn"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:background="#0a0f0a"
+                android:fontFamily="monospace"
+                android:gravity="center"
+                android:padding="10dp"
+                android:text="full"
+                android:textColor="#33ff66"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/density_hint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:fontFamily="monospace"
+            android:textColor="#4a6a4a"
+            android:textSize="11sp" />
+
     </LinearLayout>
 </ScrollView>

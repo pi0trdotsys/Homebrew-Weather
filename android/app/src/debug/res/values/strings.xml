@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds install alongside the release app (applicationIdSuffix
+     ".debug" in app/build.gradle). These overrides make the two
+     distinguishable in the launcher and in the widget picker. -->
+<resources>
+    <string name="app_name">Homebrew Weather (debug)</string>
+    <string name="title_activity_main">Homebrew Weather (debug)</string>
+</resources>

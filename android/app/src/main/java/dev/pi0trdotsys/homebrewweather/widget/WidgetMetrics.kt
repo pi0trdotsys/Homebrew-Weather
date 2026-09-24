@@ -100,6 +100,36 @@ data class WidgetMetrics(
 
     enum class Tier { XXS, XS, S, M, L, XL }
 
+    /**
+     * Which optional rows the *content* wants this render, independent of
+     * whether the footprint can fit them.
+     *
+     * The size ladder used to assume every row was always present. Once the
+     * widget started hiding rows that have nothing worth saying (see
+     * [WidgetContent]), that assumption would have left their reserved height
+     * as empty space — the exact "half the widget is wasted" problem this whole
+     * sizing model was built to fix. So the solver only budgets for rows that
+     * will actually be drawn, and a calmer day gets bigger type rather than a
+     * gap.
+     *
+     * [heroLineCells] is the length of the hero's condition line, which can now
+     * be a sentence ("deszcz wkrótce, do ~23:00") rather than one word, so the
+     * line is sized to its real text instead of an assumed width.
+     */
+    data class Rows(
+        val meta: Boolean = true,
+        val footer: Boolean = true,
+        val pop: Boolean = true,
+        val bars: Boolean = true,
+        val stats: Boolean = true,
+        val heroLineCells: Int = 20,
+        val metaCells: Int = 34,
+    ) {
+        companion object {
+            val ALL = Rows()
+        }
+    }
+
     companion object {
         // ---- reference design, scale 1.0, heights in dp ----------------------
         // Split into a SCALABLE part (text lines and icons, which grow and
@@ -157,10 +187,6 @@ data class WidgetMetrics(
 
         /** Nominal content padding (dp) inside widget_root, before scaling. */
         private const val REF_PAD = 6f
-
-        private const val REF_GRID_FULL = REF_GRID_LABEL + REF_GRID_ICON + REF_GRID_TEMP +
-            REF_GRID_BAR + REF_GRID_POP
-        private const val REF_GRID_LEAN = REF_GRID_LABEL + REF_GRID_ICON + REF_GRID_TEMP
 
         /**
          * Smallest scale a tier is allowed to be squeezed to before the next
@@ -224,33 +250,36 @@ data class WidgetMetrics(
          * the per-day rain figures and range bars, then the hero condition
          * line. The header never drops: it is the only row carrying controls.
          */
-        private fun refHeight(tier: Tier): Pair<Float, Float> = when (tier) {
-            Tier.XL -> (REF_HEADER + REF_HERO + REF_GRID_FULL + REF_META + REF_FOOTER) to
-                (FIX_HERO_MARGIN + FIX_RULE + FIX_GRID_BASE + FIX_GRID_BAR + FIX_META + FIX_FOOTER)
-            // drop the feels/hum/wind meta line
-            Tier.L -> (REF_HEADER + REF_HERO + REF_GRID_FULL + REF_FOOTER) to
-                (FIX_HERO_MARGIN + FIX_RULE + FIX_GRID_BASE + FIX_GRID_BAR + FIX_FOOTER)
-            // ...and the sigma footer
-            Tier.M -> (REF_HEADER + REF_HERO + REF_GRID_FULL) to
-                (FIX_HERO_MARGIN + FIX_RULE + FIX_GRID_BASE + FIX_GRID_BAR)
-            // ...and the per-day PoP row + range bars
-            Tier.S -> (REF_HEADER + REF_HERO + REF_GRID_LEAN) to
-                (FIX_HERO_MARGIN + FIX_RULE + FIX_GRID_BASE)
-            // ...and finally the hero's condition line. Note this tier keeps the
-            // header: the header is the only row carrying controls (the city
-            // picker and the refresh button), so it outranks a text line that
-            // merely restates what the hero icon already shows.
-            Tier.XS -> (REF_HEADER + REF_HERO_TEMP + REF_GRID_LEAN) to
-                (FIX_HERO_MARGIN + FIX_RULE + FIX_GRID_BASE)
-            // ...and the day-of-week labels. This exists because the declared
-            // minResizeHeight (90dp) genuinely does not fit XS: at 90dp the
-            // solver clamps at MIN_SCALE and XS still overruns by ~9dp, which on
-            // device showed up as the 4-day temps sheared in half along their
-            // bottom edge. Dropping one more row is what actually makes the
-            // declared minimum renderable, rather than declaring a size the
-            // layout can't honour.
-            Tier.XXS -> (REF_HEADER + REF_HERO_TEMP + REF_GRID_ICON + REF_GRID_TEMP) to
-                (FIX_HERO_MARGIN + FIX_RULE + FIX_GRID_BASE)
+        private fun refHeight(tier: Tier, rows: Rows): Pair<Float, Float> {
+            // Always present, at every tier: the header (the only row with
+            // controls), the hero temperature, and the day icons + temps.
+            var scalable = REF_HEADER + REF_HERO_TEMP + REF_GRID_ICON + REF_GRID_TEMP
+            var fixed = FIX_HERO_MARGIN + FIX_RULE + FIX_GRID_BASE
+
+            // Dropped last, below XS: day-of-week labels. XXS exists because
+            // the declared minResizeHeight (90dp) genuinely does not fit XS —
+            // at 90dp the solver clamped at MIN_SCALE and still overran by
+            // ~9dp, which on device sheared the 4-day temps in half.
+            if (tier >= Tier.XS) scalable += REF_GRID_LABEL
+            // ...then the hero condition line, below S.
+            if (tier >= Tier.S) scalable += REF_HERO_NOW
+            // ...then the per-day rain figures and range bars, below M.
+            if (tier >= Tier.M && rows.pop) scalable += REF_GRID_POP
+            if (tier >= Tier.M && rows.bars) {
+                scalable += REF_GRID_BAR
+                fixed += FIX_GRID_BAR
+            }
+            // ...then the footer line, below L.
+            if (tier >= Tier.L && rows.footer) {
+                scalable += REF_FOOTER
+                fixed += FIX_FOOTER
+            }
+            // ...and first of all, the meta line, below XL.
+            if (tier >= Tier.XL && rows.meta) {
+                scalable += REF_META
+                fixed += FIX_META
+            }
+            return scalable to fixed
         }
 
         /**
@@ -261,7 +290,7 @@ data class WidgetMetrics(
          * tier to fill the height exactly (clamped to [MIN_SCALE]..[MAX_SCALE]),
          * then applies the width-driven caps and gates.
          */
-        fun forSize(widthDp: Int, heightDp: Int): WidgetMetrics {
+        fun forSize(widthDp: Int, heightDp: Int, rows: Rows = Rows.ALL): WidgetMetrics {
             val w = max(80, widthDp)
             val h = max(48, heightDp)
 
@@ -272,10 +301,10 @@ data class WidgetMetrics(
             fun solve(padDp: Float): Pair<Tier, Float> {
                 val budget = max(24f, h - 2f * padDp)
                 val t = Tier.entries.reversed().firstOrNull { tt ->
-                    val (scalable, fixed) = refHeight(tt)
+                    val (scalable, fixed) = refHeight(tt, rows)
                     fixed + scalable * MIN_SCALE <= budget
-                } ?: Tier.XS
-                val (scalable, fixed) = refHeight(t)
+                } ?: Tier.XXS
+                val (scalable, fixed) = refHeight(t, rows)
                 return t to (FILL * (budget - fixed) / scalable).coerceIn(MIN_SCALE, MAX_SCALE)
             }
 
@@ -285,11 +314,11 @@ data class WidgetMetrics(
 
             val showDayLabel = tier >= Tier.XS
             val showNowLine = tier >= Tier.S
-            val showFooter = tier >= Tier.L
-            val showMeta = tier >= Tier.XL
-            val showPop = tier >= Tier.M
-            val showBars = tier >= Tier.M
-            val showStats = w >= STATS_MIN_WIDTH_DP && tier >= Tier.S
+            val showFooter = tier >= Tier.L && rows.footer
+            val showMeta = tier >= Tier.XL && rows.meta
+            val showPop = tier >= Tier.M && rows.pop
+            val showBars = tier >= Tier.M && rows.bars
+            val showStats = rows.stats && w >= STATS_MIN_WIDTH_DP && tier >= Tier.S
             val showAqi = showStats && w >= AQI_MIN_WIDTH_DP
             val showSync = showStats && w >= SYNC_MIN_WIDTH_DP && tier >= Tier.L
 
@@ -360,7 +389,8 @@ data class WidgetMetrics(
                 heroIconDp = heroIconDp,
                 heroTempSp = heroTempSp.coerceAtLeast(13f),
                 heroUnitSp = (heroTempSp * 0.42f).coerceAtLeast(6f),
-                nowLineSp = min(11f * scale, heroWidth / (20f * MONO_ADVANCE)).coerceAtLeast(6.5f),
+                nowLineSp = min(11f * scale, heroWidth / (max(20, rows.heroLineCells) * MONO_ADVANCE))
+                    .coerceAtLeast(6.5f),
                 statSp = statSp.coerceAtLeast(if (showStats) 6.5f else 0f),
                 sparkSp = sparkSp.coerceIn(8f, 26f),
 
@@ -370,7 +400,7 @@ data class WidgetMetrics(
                 dayPopSp = dayPopSp.coerceAtLeast(6.5f),
                 barHeightDp = (5f * scale).roundToInt().coerceIn(3, 10),
 
-                metaSp = min(10f * scale, innerW / (34f * MONO_ADVANCE)).coerceAtLeast(6.5f),
+                metaSp = min(10f * scale, innerW / (max(34, rows.metaCells) * MONO_ADVANCE)).coerceAtLeast(6.5f),
                 footerSp = min(11f * scale, innerW / (30f * MONO_ADVANCE)).coerceAtLeast(6.5f),
                 bannerSp = (9f * scale).coerceIn(7f, 14f),
 

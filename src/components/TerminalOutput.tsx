@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import type { WeatherResponse } from "@/lib/weather-api";
-import { wmoLabel, wmoToKind } from "@/lib/wmo";
-import { pickJoke } from "@/lib/dev-jokes";
+import { wmoToKind } from "@/lib/wmo";
 
 const ASCII: Record<string, string[]> = {
   sun: [
@@ -53,29 +52,36 @@ const ASCII: Record<string, string[]> = {
   ],
 };
 
-export function TerminalOutput({
-  data,
-  location,
-}: {
-  data: WeatherResponse;
-  location: string;
-}) {
+/**
+ * The full current-conditions readout, as a terminal session.
+ *
+ * It used to print location, condition and temperature too — the same values
+ * the key/value panel beside it printed, both below a location bar that already
+ * named the place. With the hero now carrying temperature and condition and the
+ * location bar carrying the place, this is where *everything else* lives: the
+ * secondary readings, always, in full, including surface pressure (which only
+ * the removed table used to show). Nothing that was on the dashboard is gone;
+ * each reading just appears once.
+ *
+ * [joke] comes from the caller so it follows the app-wide tone setting and
+ * stays stable between re-renders.
+ */
+export function TerminalOutput({ data, joke }: { data: WeatherResponse; joke: string }) {
   const kind = wmoToKind(data.current.weather_code);
   const art = ASCII[kind] ?? ASCII.cloud;
-  const joke = pickJoke(kind, data.current.is_day === 0);
+  const c = data.current;
 
   const lines: string[] = [
-    `user@homebrew-weather:~$ weather --today`,
+    `user@homebrew-weather:~$ weather --details`,
     ``,
     ...art,
     ``,
-    `location   : ${location}`,
-    `condition  : ${wmoLabel(data.current.weather_code)}`,
-    `temp       : ${data.current.temperature_2m.toFixed(1)}°C  (feels ${data.current.apparent_temperature.toFixed(1)}°C)`,
-    `wind       : ${data.current.wind_speed_10m.toFixed(1)} km/h`,
-    `humidity   : ${data.current.relative_humidity_2m}%`,
-    `sunrise    : ${new Date(data.daily.sunrise[0]).toTimeString().slice(0, 5)}`,
-    `sunset     : ${new Date(data.daily.sunset[0]).toTimeString().slice(0, 5)}`,
+    `feels      : ${c.apparent_temperature.toFixed(1)}°C`,
+    `wind       : ${c.wind_speed_10m.toFixed(1)} km/h`,
+    `humidity   : ${c.relative_humidity_2m}%`,
+    `pressure   : ${Math.round(c.surface_pressure)} hPa`,
+    `sunrise    : ${data.daily.sunrise[0].split("T")[1]?.slice(0, 5) ?? "--:--"}`,
+    `sunset     : ${data.daily.sunset[0].split("T")[1]?.slice(0, 5) ?? "--:--"}`,
     ``,
     `# ${joke}`,
     `user@homebrew-weather:~$ `,
@@ -95,7 +101,7 @@ export function TerminalOutput({
     }, 55);
     return () => clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data.current.time, location]);
+  }, [data.current.time]);
 
   return (
     <div className="terminal-box p-4 font-mono text-[13px] leading-tight">

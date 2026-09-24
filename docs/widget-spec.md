@@ -628,3 +628,107 @@ jak płaski trend. Dane testowe harnessu miały PoP 12/88/100/45, więc ten
 przypadek nigdy się w nim nie pojawił; w suchym klimacie to stan domyślny.
 Naprawione: przy `maxPop == 0` sparkline jest ukrywany — nie ma czego rysować, a
 stojące obok „▽ 0%" i tak mówi, że nie popada.
+
+## 10. Mniej informacji naraz — widget, dashboard, powiadomienia (2026-09-24)
+
+User: „przy obecnej wielkości widgetu mam wrażenie, że jest za dużo informacji na
+raz" — plus prośba o propozycje dla całej aplikacji. Zrobione wszystkie sześć.
+
+### 10.1 Widget: pokazuj wyjątki, nie stan (`WidgetContent.kt`, `WidgetDensity.kt`)
+
+Przy 368×176dp widget pokazywał ~30 odczytów, część wielokrotnie: szansę opadów
+**3×** (bieżąca godzina, sparkline + max, pod każdym dniem), min/max dnia 2×
+(tekst i pasek zakresu), świeżość 2× (zawsze zielona kropka i zegar z sekundami).
+W zwykły suchy dzień prawie wszystko to mówiło głośno „nic się nie dzieje".
+
+Gęstość per widget (w konfiguracji, obok motywu i przezroczystości):
+
+| | standard (domyślnie) | full | minimal |
+|---|---|---|---|
+| opady per dzień | tylko dni ≥30% | zawsze | nigdy |
+| AQI | od 51 (moderate) | zawsze | od 101 |
+| odczuwalna / wiatr / wilgotność | tylko \|Δ\|≥3° / ≥30 km/h / ≥90% lub ≤20% | zawsze | nigdy |
+| kropka online, zegar sync | kropka tylko offline | zawsze | kropka tylko offline |
+| sparkline, paski zakresu | nie | tak | nie |
+| stopka | tak | tak | nie |
+
+**Solver budżetuje tylko wiersze, które faktycznie będą narysowane**
+(`WidgetMetrics.Rows`). Bez tego ukrycie treści zostawiłoby dziurę — dokładnie ten
+problem, od którego zaczęła się cała ta historia (§7/§8). Zmierzone na tym samym
+368×176dp: temperatura hero 24,8sp (full) → **31,6sp** (standard, zwykły dzień) →
+35,6sp (minimal); ikony dni 18 → 23 → 25dp.
+
+Paski zakresu, dodane w §8.5, w standardzie znikają — na realnych danych z Tolox
+(30–33° / 18–21°) wyszły jako cztery identyczne kreski. Zostały w `full`.
+
+### 10.2 „Kiedy popada" (`RainWindow.kt` + `src/lib/rain-window.ts`)
+
+Godzina jest „mokra" przy PoP ≥50% (zdanie z godziną startu to prognoza, więc
+„bardziej prawdopodobne niż nie") albo — tylko bieżąca — gdy właśnie pada. Okno =
+pierwszy ciąg mokrych godzin startujący w ciągu 12h, koniec = pierwsza sucha.
+Rodzaj = najpoważniejszy w oknie (burza > śnieg > deszcz). Widget: „deszcz
+15:00-19:00" w linii hero; dashboard i powiadomienia: pełne zdanie. Reguła
+identyczna w Kotlinie i TS; tekst po polsku w natywie, po angielsku w webie (bo
+cała aplikacja webowa jest po angielsku). `WeatherApi` parsuje teraz 24 godziny
+prognozy (wcześniej tylko dwie liczby z nich), cache je przechowuje.
+
+### 10.3 Tap w widget → aplikacja na mieście widgetu
+
+Wcześniej intencja nie niosła miasta, a `MainActivity` go nie czytała — tap w
+widget z Tolox otwierał aplikację na jej własnej lokalizacji (u usera: współrzędne
+Málagi z nazwą `unknown_location`). Teraz widget przekazuje miasto w extras,
+`MainActivity` zapisuje je do `brew-wx:coords` przed startem WebView (zimny start),
+a przy działającej aplikacji dodatkowo wysyła zdarzenie `hbw:open-city` do strony.
+Powiadomienia otwierają aplikację tak samo. Zweryfikowane na urządzeniu w obu
+ścieżkach.
+
+### 10.4 Dashboard
+
+`NowPanel` (tabela `/proc/weather`) i terminal obok pokazywały te same odczyty;
+najlepsze miejsce zajmował debugowy panel `cron -l`; nie było dużej liczby — aplikacja
+była mniej czytelna niż jej własny widget. Teraz: `HeroPanel` (duża temperatura +
+zdanie o deszczu + odczuwalna tylko gdy się różni), `StatusLine` (jedna cicha linia,
+bursztynowa tylko przy offline/stale), terminal jako pełny odczyt szczegółów
+(z ciśnieniem, które było tylko w usuniętej tabeli), jeden żart zamiast tickera +
+żartu. Usunięte: `NowPanel.tsx`, `JokeTicker.tsx`. Przy okazji: komunikat o odmowie
+geolokalizacji znika po ręcznym wyborze miasta.
+
+### 10.5 Powiadomienia: poranny brief + „deszcz za chwilę"
+
+`MorningBrief.kt`: jedno powiadomienie rano (domyślnie od 7:00, okno 3h — albo
+szersze, jeśli interwał odświeżania jest dłuższy, żeby 6-godzinny interwał go nie
+przeskoczył). Progi z ustawień decydują, co brief wspomina. Deszcz przestał być
+alertem „już pada" (wtedy już nie trzeba mówić) — teraz ostrzega, gdy okno startuje
+w bieżącej lub następnej godzinie. Wyzwalany na zboczu, nie per okno: okno „trwa od
+teraz" dostaje co godzinę nowy start, więc klucz po oknie wysyłałby powiadomienie
+co godzinę przez cały deszcz. Brief wyłączony = osobne alerty jak wcześniej.
+
+### 10.6 Ton aplikacji (`Tone.kt`, `settings:tone`)
+
+`clean` / `sigma` / `rude` (domyślnie `rude` = zachowanie sprzed zmiany). Steruje
+stopką widgetu (`CleanJokes.kt` — nowa pula, 94 linie ≤50 znaków), powiadomieniami
+(`PlainNotifications.kt` vs `RudeNotifications.kt`; brief i ostrzeżenie o deszczu są
+faktograficzne w każdym tonie, `rude` dopisuje docinkę pod faktem) i żartem na
+dashboardzie — `sigma-jokes.ts` wreszcie jest w aplikacji webowej używany.
+
+### 10.7 Drobne
+
+- Wersja z jednego źródła: `package.json` → `src/lib/version.ts` (dashboard) i
+  `versionName` w `build.gradle`. Wcześniej nawigacja pokazywała na sztywno `v1.0.0`.
+- `./mockups` linkowane tylko w dev (`import.meta.env.DEV`); w bundlu prod 0 wystąpień.
+- Build debug ma `applicationIdSuffix ".debug"` i instaluje się **obok** release'u —
+  harness działa bez ruszania widgetu z ekranu głównego.
+
+### 10.8 Weryfikacja
+
+37 testów JVM (nowe: `RainWindowTest` 12, `WidgetContentRulesTest` 10,
+`MorningBriefTest` 8 + długość/unikalność puli clean). Harness: 11 kombinacji
+rozmiar × gęstość × dane (spokojny / wydarzeniowy dzień), przepełnienie mierzone
+przez `uiautomator` — wszystkie mieszczą się, 5–20dp zapasu, symetrycznie.
+Dashboard i ustawienia sprawdzone w przeglądarce (zero błędów konsoli).
+**Nie** sprawdzone na żywo: faktyczne dostarczenie briefu i ostrzeżenia o deszczu
+(aplikacja debug nie ma uprawnienia do powiadomień; logika pokryta testami).
+
+**Znane, poza zakresem:** webowe `reverseGeocode` wciąż woła martwy endpoint
+Open-Meteo `/v1/reverse` (natyw ma już `DeviceGeocoder`, §7), stąd
+`unknown_location` przy lokalizacji z GPS w aplikacji.

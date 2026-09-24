@@ -1,6 +1,11 @@
 apply plugin: 'com.android.application'
 apply plugin: 'org.jetbrains.kotlin.android'
 
+// versionName comes from the repo's package.json — the single source the web
+// app also displays (src/lib/version.ts). versionCode stays here: it's an
+// Android-only monotonic counter with no web equivalent.
+def appVersionName = new groovy.json.JsonSlurper().parse(rootProject.file('../package.json')).version
+
 // Release signing key, loaded from android/keystore.properties (gitignored,
 // alongside the .jks itself — see android/.gitignore).
 //
@@ -29,8 +34,8 @@ android {
         applicationId "dev.pi0trdotsys.homebrewweather"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 12
-        versionName "0.6.0-beta.8"
+        versionCode 13
+        versionName appVersionName
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -53,6 +58,18 @@ android {
         }
     }
     buildTypes {
+        // Debug builds get their own applicationId, so they install *next to*
+        // a release build instead of over it. The two are signed with
+        // different keys (debug keystore vs. the release key below), and
+        // Android refuses to replace an app with a differently-signed one — so
+        // without the suffix, every switch between a dev build and the real
+        // release meant uninstalling, which deletes the home-screen widget and
+        // its per-widget config. Side by side, the release install (and the
+        // widget on it) is never touched by development.
+        debug {
+            applicationIdSuffix ".debug"
+            versionNameSuffix "-debug"
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
