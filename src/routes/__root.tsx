@@ -1,4 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { I18nProvider } from "@/lib/i18n";
 import {
   Outlet,
   Link,
@@ -137,12 +138,14 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="crt-flicker min-h-screen">
-        <Outlet />
-      </div>
-      <div className="crt-scanlines" />
-      <div className="crt-vignette" />
-      <EasterEgg />
+      <I18nProvider>
+        <div className="crt-flicker min-h-screen">
+          <Outlet />
+        </div>
+        <div className="crt-scanlines" />
+        <div className="crt-vignette" />
+        <EasterEgg />
+      </I18nProvider>
     </QueryClientProvider>
   );
 }

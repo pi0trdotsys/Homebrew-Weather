@@ -27,6 +27,48 @@ export async function saveCoords(coords: Coords): Promise<void> {
   await Preferences.set({ key: COORDS_KEY, value: JSON.stringify(coords) });
 }
 
+// Saved cities, most recently used first. The app used to remember exactly
+// one location, although every widget has its own city — so checking another
+// place meant searching for it again each time.
+export const CITIES_KEY = "brew-wx:cities";
+export const MAX_CITIES = 8;
+
+export async function loadCities(): Promise<Coords[]> {
+  const { value } = await Preferences.get({ key: CITIES_KEY });
+  if (!value) return [];
+  try {
+    const list = JSON.parse(value) as Coords[];
+    return Array.isArray(list)
+      ? list.filter((c) => Number.isFinite(c.lat) && Number.isFinite(c.lon))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export async function saveCities(cities: Coords[]): Promise<void> {
+  await Preferences.set({ key: CITIES_KEY, value: JSON.stringify(cities.slice(0, MAX_CITIES)) });
+}
+
+/** Two entries are the same place if they are within ~1 km. */
+export const sameCity = (a: Coords, b: Coords) =>
+  Math.abs(a.lat - b.lat) < 0.01 && Math.abs(a.lon - b.lon) < 0.01;
+
+/** [c] moved (or added) to the front of [list]. */
+export function withCity(list: Coords[], c: Coords): Coords[] {
+  return [c, ...list.filter((x) => !sameCity(x, c))].slice(0, MAX_CITIES);
+}
+
+// A day to open on, written by the Android side when a widget's day column is
+// tapped (MainActivity.FOCUS_DAY_KEY). Read once on boot, then cleared.
+export const FOCUS_DAY_KEY = "brew-wx:focus-day";
+
+export async function takeFocusDay(): Promise<string | null> {
+  const { value } = await Preferences.get({ key: FOCUS_DAY_KEY });
+  if (value) await Preferences.remove({ key: FOCUS_DAY_KEY });
+  return value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : null;
+}
+
 export type NotificationSettings = {
   rainEnabled: boolean;
   highEnabled: boolean;
@@ -41,6 +83,10 @@ export type NotificationSettings = {
   // thresholds above then decide what the brief mentions (MorningBrief.kt).
   briefEnabled: boolean;
   briefHour: number; // local hour, 0-23
+  // Tomorrow in one line, in the evening (EveningPreview in MorningBrief.kt).
+  // Off by default: a new notification nobody has asked for yet.
+  eveningEnabled: boolean;
+  eveningHour: number; // local hour, 0-23
 };
 
 export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
@@ -55,6 +101,8 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   aqiThreshold: 100,
   briefEnabled: true,
   briefHour: 7,
+  eveningEnabled: false,
+  eveningHour: 20,
 };
 
 const NOTIF_KEYS: Record<keyof NotificationSettings, string> = {
@@ -69,6 +117,8 @@ const NOTIF_KEYS: Record<keyof NotificationSettings, string> = {
   aqiThreshold: "settings:notif-aqi-threshold",
   briefEnabled: "settings:brief-enabled",
   briefHour: "settings:brief-hour",
+  eveningEnabled: "settings:evening-enabled",
+  eveningHour: "settings:evening-hour",
 };
 
 // The app's voice, applied to the widget footer, notifications and the

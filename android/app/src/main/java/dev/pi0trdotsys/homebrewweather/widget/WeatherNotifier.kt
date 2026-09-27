@@ -27,26 +27,28 @@ import kotlin.math.roundToInt
  * piggybacks on the existing WeatherWorker periodic refresh (and manual/
  * configure refreshes) instead of running its own polling loop.
  *
- * ## Two kinds of notification now
+ * ## What it sends
  *
- * - **Rain soon** — the one thing worth interrupting for, sent as soon as rain
- *   or a storm is due within about an hour (see [checkRainSoon]). It used to
- *   fire only once it had *already started* raining, which is when you no
- *   longer need telling.
+ * - **Rain soon** — rain or a storm due within about an hour (see
+ *   [checkRainSoon]). It used to fire only once it had *already started*
+ *   raining, which is when you no longer need telling.
+ * - **Rain stopping** — the other half: after a spell of at least two hours,
+ *   when it's about to stop (see [RainStop]). Both ride the rain toggle.
  * - **Morning brief** — one summary of the day ([MorningBrief]), replacing the
- *   separate high / low / swing / air-quality alerts, which used to arrive one
- *   by one whenever each threshold happened to trip.
+ *   separate high / low / swing / air-quality alerts.
+ * - **Evening preview** — opt-in, tomorrow in one line ([EveningPreview]).
  *
  * With the brief switched off in settings, the separate alerts come back
  * exactly as before — nothing that was configurable has stopped being so.
  *
  * All settings are read live from the shared "CapacitorStorage" prefs file
  * (see [CapacitorStorage]); dedupe state lives in [NotifStatePrefs]. Wording
- * follows the app-wide [Tone].
+ * follows the app-wide [Tone] and [Lang].
  */
 object WeatherNotifier {
     private const val CHANNEL_RAIN = "rain_alerts"
     private const val CHANNEL_BRIEF = "morning_brief"
+    private const val CHANNEL_EVENING = "evening_preview"
     private const val CHANNEL_TEMP_EXTREME = "temp_extreme_alerts"
     private const val CHANNEL_TEMP_SWING = "temp_swing_alerts"
     private const val CHANNEL_AQI = "aqi_alerts"
@@ -57,36 +59,27 @@ object WeatherNotifier {
 
     private fun todayIso(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
-    private fun ensureChannels(context: Context) {
+    /** Creating a channel that exists updates its name and description, so
+     * this also relabels them when the language changes. */
+    private fun ensureChannels(context: Context, texts: Texts) {
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
-        nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_RAIN, "Rain alerts", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = "Rain or thunderstorms about to start in one of your widget cities"
-            },
-        )
-        nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_BRIEF, "Morning brief", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = "One summary of the day per widget city, in the morning"
-            },
-        )
-        nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_TEMP_EXTREME, "Temperature extremes", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = "High or low temperature thresholds crossed (when the morning brief is off)"
-            },
-        )
-        nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_TEMP_SWING, "Temperature swings", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = "Big day-to-day temperature swings (when the morning brief is off)"
-            },
-        )
-        nm.createNotificationChannel(
-            NotificationChannel(CHANNEL_AQI, "Air quality alerts", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = "Poor air quality thresholds crossed (when the morning brief is off)"
-            },
-        )
+        listOf(
+            CHANNEL_RAIN to texts.channelRain,
+            CHANNEL_BRIEF to texts.channelBrief,
+            CHANNEL_EVENING to texts.channelEvening,
+            CHANNEL_TEMP_EXTREME to texts.channelTempExtreme,
+            CHANNEL_TEMP_SWING to texts.channelTempSwing,
+            CHANNEL_AQI to texts.channelAqi,
+        ).forEach { (id, label) ->
+            nm.createNotificationChannel(
+                NotificationChannel(id, label.first, NotificationManager.IMPORTANCE_DEFAULT).apply {
+                    description = label.second
+                },
+            )
+        }
     }
 
-    private fun hasPermission(context: Context): Boolean {
+    fun hasPermission(context: Context): Boolean {
         if (Build.VERSION.SDK_INT >= 33) {
             val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
                 PackageManager.PERMISSION_GRANTED
@@ -139,19 +132,25 @@ object WeatherNotifier {
         }
     }
 
+    private fun titleFor(city: WidgetCity) = "Homebrew Weather — ${city.name}"
+
     /** Entry point — called once per widget instance right after a fresh weather fetch. */
     fun evaluate(context: Context, appWidgetId: Int, city: WidgetCity, weather: WeatherApi.WeatherData) {
         if (!hasPermission(context)) return
-        ensureChannels(context)
+        val lang = CapacitorStorage.lang(context)
+        val texts = lang.texts
+        ensureChannels(context, texts)
         val tone = CapacitorStorage.tone(context)
-        checkRainSoon(context, appWidgetId, city, weather, tone)
+        checkRainSoon(context, appWidgetId, city, weather, tone, texts)
+        checkRainStop(context, appWidgetId, city, weather, texts)
         if (CapacitorStorage.briefEnabled(context)) {
-            checkBrief(context, appWidgetId, city, weather, tone)
+            checkBrief(context, appWidgetId, city, weather, tone, texts)
         } else {
-            checkHighLow(context, appWidgetId, city, weather, tone)
-            checkSwing(context, appWidgetId, city, weather, tone)
-            checkAqi(context, appWidgetId, city, weather, tone)
+            checkHighLow(context, appWidgetId, city, weather, tone, texts)
+            checkSwing(context, appWidgetId, city, weather, tone, texts)
+            checkAqi(context, appWidgetId, city, weather, tone, texts)
         }
+        if (CapacitorStorage.eveningEnabled(context)) checkEvening(context, appWidgetId, city, weather, texts)
     }
 
     /**
@@ -169,6 +168,7 @@ object WeatherNotifier {
         city: WidgetCity,
         weather: WeatherApi.WeatherData,
         tone: Tone,
+        texts: Texts,
     ) {
         val window = RainWindow.find(weather.hourly, weather.currentWeatherCode)
             ?.takeIf { it.startsInHours <= RAIN_SOON_HOURS }
@@ -177,18 +177,95 @@ object WeatherNotifier {
         NotifStatePrefs.setWasRaining(context, appWidgetId, imminent)
 
         if (!CapacitorStorage.rainEnabled(context) || window == null || was) return
+        sendRainSoon(context, appWidgetId, city, window, tone, texts, prefix = "")
+    }
 
+    private fun sendRainSoon(
+        context: Context,
+        appWidgetId: Int,
+        city: WidgetCity,
+        window: RainWindow.Window,
+        tone: Tone,
+        texts: Texts,
+        prefix: String,
+    ) {
         val isThunder = window.kind == RainWindow.Kind.THUNDER
-        val text = "${city.name}: ${RainWindow.long(window)}"
-        val expanded = if (tone == Tone.RUDE) "$text\n\n${RudeNotifications.rainTail(isThunder)}" else null
+        val text = "$prefix${city.name}: ${RainWindow.long(window, texts)}"
+        val expanded = if (tone == Tone.RUDE) "$text\n\n${RudeNotifications.rainTail(isThunder, lang = texts.lang)}" else null
+        notify(context, appWidgetId * 100 + 1, CHANNEL_RAIN, titleFor(city), text, expanded, city)
+    }
+
+    /**
+     * It's been raining for a while and is about to stop ([RainStop]).
+     * Once per spell: the spell's start is remembered while it rains, and the
+     * "sent" flag clears when it stops.
+     */
+    private fun checkRainStop(
+        context: Context,
+        appWidgetId: Int,
+        city: WidgetCity,
+        weather: WeatherApi.WeatherData,
+        texts: Texts,
+    ) {
+        val now = System.currentTimeMillis()
+        val window = RainWindow.find(weather.hourly, weather.currentWeatherCode)
+        val raining = window?.ongoing == true
+        if (!raining) {
+            NotifStatePrefs.setRainingSince(context, appWidgetId, 0L)
+            NotifStatePrefs.setStopSent(context, appWidgetId, false)
+            return
+        }
+        var since = NotifStatePrefs.rainingSince(context, appWidgetId)
+        if (since == 0L) {
+            since = now
+            NotifStatePrefs.setRainingSince(context, appWidgetId, now)
+        }
+        val hours = ((now - since) / 3_600_000L).toInt()
+        if (!CapacitorStorage.rainEnabled(context) || NotifStatePrefs.stopSent(context, appWidgetId)) return
+        if (!RainStop.isDue(window, hours)) return
+        NotifStatePrefs.setStopSent(context, appWidgetId, true)
+        val end = window?.end ?: return
         notify(
             context,
-            notificationId = appWidgetId * 100 + 1,
-            channelId = CHANNEL_RAIN,
-            title = "Homebrew Weather — ${city.name}",
-            text = text,
-            expanded = expanded,
+            appWidgetId * 100 + 7,
+            CHANNEL_RAIN,
+            titleFor(city),
+            "${city.name}: ${texts.rainStop(window.kind, end)}",
             city = city,
+        )
+    }
+
+    private fun thresholds(context: Context) = MorningBrief.Thresholds(
+        highEnabled = CapacitorStorage.highEnabled(context),
+        highThreshold = CapacitorStorage.highThreshold(context),
+        lowEnabled = CapacitorStorage.lowEnabled(context),
+        lowThreshold = CapacitorStorage.lowThreshold(context),
+        swingEnabled = CapacitorStorage.swingEnabled(context),
+        swingThreshold = CapacitorStorage.swingThreshold(context),
+        aqiEnabled = CapacitorStorage.aqiEnabled(context),
+        aqiThreshold = CapacitorStorage.aqiThreshold(context),
+    )
+
+    private fun composeBrief(
+        city: WidgetCity,
+        weather: WeatherApi.WeatherData,
+        tone: Tone,
+        texts: Texts,
+        context: Context,
+    ): MorningBrief.Brief? {
+        val seed = (System.currentTimeMillis() / (60 * 60 * 1000L)).toInt()
+        val tail = when (tone) {
+            Tone.RUDE -> RudeNotifications.briefTail(seed, texts.lang)
+            Tone.SIGMA -> Jokes.pick(tone, texts.lang, Wmo.wmoToKind(weather.daily.firstOrNull()?.weatherCode ?: 0), false, seed)
+            Tone.CLEAN -> null
+        }
+        return MorningBrief.compose(
+            cityName = city.name,
+            weather = weather,
+            thresholds = thresholds(context),
+            aqiLabel = texts::aqiLabel,
+            tail = tail,
+            texts = texts,
         )
     }
 
@@ -198,79 +275,103 @@ object WeatherNotifier {
         city: WidgetCity,
         weather: WeatherApi.WeatherData,
         tone: Tone,
+        texts: Texts,
     ) {
         val today = todayIso()
-        val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-        val refreshMinutes = CapacitorStorage.refreshIntervalMinutes(context)
         val due = MorningBrief.isDue(
-            hourNow = hour,
+            hourNow = Calendar.getInstance().get(Calendar.HOUR_OF_DAY),
             briefHour = CapacitorStorage.briefHour(context),
             alreadySentToday = NotifStatePrefs.lastBriefDate(context, appWidgetId) == today,
-            refreshMinutes = refreshMinutes,
+            refreshMinutes = CapacitorStorage.refreshIntervalMinutes(context),
         )
         if (!due) return
-
-        val seed = (System.currentTimeMillis() / (60 * 60 * 1000L)).toInt()
-        val tail = when (tone) {
-            Tone.RUDE -> RudeNotifications.briefTail(seed)
-            Tone.SIGMA -> SigmaJokes.pick(Wmo.wmoToKind(weather.daily.firstOrNull()?.weatherCode ?: 0), false, seed)
-            Tone.CLEAN -> null
-        }
-        val brief = MorningBrief.compose(
-            cityName = city.name,
-            weather = weather,
-            thresholds = MorningBrief.Thresholds(
-                highEnabled = CapacitorStorage.highEnabled(context),
-                highThreshold = CapacitorStorage.highThreshold(context),
-                lowEnabled = CapacitorStorage.lowEnabled(context),
-                lowThreshold = CapacitorStorage.lowThreshold(context),
-                swingEnabled = CapacitorStorage.swingEnabled(context),
-                swingThreshold = CapacitorStorage.swingThreshold(context),
-                aqiEnabled = CapacitorStorage.aqiEnabled(context),
-                aqiThreshold = CapacitorStorage.aqiThreshold(context),
-            ),
-            aqiLabel = { WeatherWidgetProvider.aqiLabelAndColor(it).first },
-            tail = tail,
-        ) ?: return
-
+        val brief = composeBrief(city, weather, tone, texts, context) ?: return
         NotifStatePrefs.setBriefDate(context, appWidgetId, today)
-        notify(
-            context,
-            notificationId = appWidgetId * 100 + 6,
-            channelId = CHANNEL_BRIEF,
-            title = brief.title,
-            text = brief.summary,
-            expanded = brief.full,
-            city = city,
-        )
+        notify(context, appWidgetId * 100 + 6, CHANNEL_BRIEF, brief.title, brief.summary, brief.full, city)
     }
+
+    private fun checkEvening(
+        context: Context,
+        appWidgetId: Int,
+        city: WidgetCity,
+        weather: WeatherApi.WeatherData,
+        texts: Texts,
+    ) {
+        val today = todayIso()
+        val due = EveningPreview.isDue(
+            hourNow = Calendar.getInstance().get(Calendar.HOUR_OF_DAY),
+            eveningHour = CapacitorStorage.eveningHour(context),
+            alreadySentToday = NotifStatePrefs.lastEveningDate(context, appWidgetId) == today,
+            refreshMinutes = CapacitorStorage.refreshIntervalMinutes(context),
+        )
+        if (!due) return
+        val preview = EveningPreview.compose(city.name, weather, texts) ?: return
+        NotifStatePrefs.setEveningDate(context, appWidgetId, today)
+        notify(context, appWidgetId * 100 + 8, CHANNEL_EVENING, preview.title, preview.summary, city = city)
+    }
+
+    /**
+     * Sends one of each kind — rain heads-up, morning brief, evening preview —
+     * right now, built from real data for [city], each titled "[test]". For
+     * the "send test notifications" button in the app's settings, so what the
+     * notifications look like can be checked without waiting for 7am or rain.
+     * Returns how many were posted; 0 without notification permission.
+     */
+    fun sendTest(context: Context, city: WidgetCity, weather: WeatherApi.WeatherData): Int {
+        if (!hasPermission(context)) return 0
+        val lang = CapacitorStorage.lang(context)
+        val texts = lang.texts
+        ensureChannels(context, texts)
+        val tone = CapacitorStorage.tone(context)
+        val id = TEST_ID_BASE
+        var sent = 0
+
+        val window = RainWindow.find(weather.hourly, weather.currentWeatherCode)
+        if (window != null) {
+            sendRainSoon(context, id, city, window, tone, texts, prefix = texts.testPrefix)
+        } else {
+            notify(context, id * 100 + 1, CHANNEL_RAIN, titleFor(city), "${texts.testPrefix}${city.name}: ${texts.testNoRain}", city = city)
+        }
+        sent++
+
+        composeBrief(city, weather, tone, texts, context)?.let {
+            notify(context, id * 100 + 6, CHANNEL_BRIEF, texts.testPrefix + it.title, it.summary, it.full, city)
+            sent++
+        }
+        EveningPreview.compose(city.name, weather, texts)?.let {
+            notify(context, id * 100 + 8, CHANNEL_EVENING, texts.testPrefix + it.title, it.summary, city = city)
+            sent++
+        }
+        return sent
+    }
+
+    /** Notification id base for test sends — no real widget id is this large. */
+    private const val TEST_ID_BASE = 9_999_990
 
     // -------------------------------------------------------------------------
     // Separate threshold alerts — only when the morning brief is switched off.
     // Unchanged in behaviour from before the brief existed.
     // -------------------------------------------------------------------------
 
-    private fun checkHighLow(context: Context, appWidgetId: Int, city: WidgetCity, weather: WeatherApi.WeatherData, tone: Tone) {
+    private fun checkHighLow(
+        context: Context,
+        appWidgetId: Int,
+        city: WidgetCity,
+        weather: WeatherApi.WeatherData,
+        tone: Tone,
+        texts: Texts,
+    ) {
         val temp = weather.currentTemperature
         if (temp.isNaN()) return
         val today = todayIso()
+        val t = temp.roundToInt()
 
         if (CapacitorStorage.highEnabled(context)) {
             val threshold = CapacitorStorage.highThreshold(context)
             if (temp >= threshold && NotifStatePrefs.lastHighNotifiedDate(context, appWidgetId) != today) {
                 NotifStatePrefs.setHighNotifiedDate(context, appWidgetId, today)
-                notify(
-                    context,
-                    notificationId = appWidgetId * 100 + 2,
-                    channelId = CHANNEL_TEMP_EXTREME,
-                    title = "Homebrew Weather — ${city.name}",
-                    text = if (tone == Tone.RUDE) {
-                        RudeNotifications.highTemp(city.name, temp.roundToInt())
-                    } else {
-                        PlainNotifications.highTemp(city.name, temp.roundToInt())
-                    },
-                    city = city,
-                )
+                val text = if (tone == Tone.RUDE) RudeNotifications.highTemp(city.name, t, lang = texts.lang) else texts.highTemp(city.name, t)
+                notify(context, appWidgetId * 100 + 2, CHANNEL_TEMP_EXTREME, titleFor(city), text, city = city)
             }
         }
 
@@ -278,23 +379,20 @@ object WeatherNotifier {
             val threshold = CapacitorStorage.lowThreshold(context)
             if (temp <= threshold && NotifStatePrefs.lastLowNotifiedDate(context, appWidgetId) != today) {
                 NotifStatePrefs.setLowNotifiedDate(context, appWidgetId, today)
-                notify(
-                    context,
-                    notificationId = appWidgetId * 100 + 3,
-                    channelId = CHANNEL_TEMP_EXTREME,
-                    title = "Homebrew Weather — ${city.name}",
-                    text = if (tone == Tone.RUDE) {
-                        RudeNotifications.lowTemp(city.name, temp.roundToInt())
-                    } else {
-                        PlainNotifications.lowTemp(city.name, temp.roundToInt())
-                    },
-                    city = city,
-                )
+                val text = if (tone == Tone.RUDE) RudeNotifications.lowTemp(city.name, t, lang = texts.lang) else texts.lowTemp(city.name, t)
+                notify(context, appWidgetId * 100 + 3, CHANNEL_TEMP_EXTREME, titleFor(city), text, city = city)
             }
         }
     }
 
-    private fun checkSwing(context: Context, appWidgetId: Int, city: WidgetCity, weather: WeatherApi.WeatherData, tone: Tone) {
+    private fun checkSwing(
+        context: Context,
+        appWidgetId: Int,
+        city: WidgetCity,
+        weather: WeatherApi.WeatherData,
+        tone: Tone,
+        texts: Texts,
+    ) {
         if (!CapacitorStorage.swingEnabled(context)) return
         val today = weather.daily.getOrNull(0) ?: return
         val tomorrow = weather.daily.getOrNull(1) ?: return
@@ -309,27 +407,26 @@ object WeatherNotifier {
 
         val todayMax = today.tempMax.roundToInt()
         val tomorrowMax = tomorrow.tempMax.roundToInt()
-        notify(
-            context,
-            notificationId = appWidgetId * 100 + 4,
-            channelId = CHANNEL_TEMP_SWING,
-            title = "Homebrew Weather — ${city.name}",
-            text = if (tone == Tone.RUDE) {
-                RudeNotifications.swing(city.name, todayMax, tomorrowMax, warming = delta > 0)
-            } else {
-                PlainNotifications.swing(city.name, todayMax, tomorrowMax, warming = delta > 0)
-            },
-            city = city,
-        )
+        val text = if (tone == Tone.RUDE) {
+            RudeNotifications.swing(city.name, todayMax, tomorrowMax, warming = delta > 0, lang = texts.lang)
+        } else {
+            texts.swing(city.name, todayMax, tomorrowMax, warming = delta > 0)
+        }
+        notify(context, appWidgetId * 100 + 4, CHANNEL_TEMP_SWING, titleFor(city), text, city = city)
     }
 
     /** Once-per-day-per-widget alert when the current US AQI reading meets or
      * exceeds the configured threshold. Skips entirely when this refresh's AQI
      * is unknown ([WeatherApi.WeatherData.usAqi] < 0, e.g. a failed AQ fetch
-     * this cycle) — never notifies on missing data. Category label reuses
-     * [WeatherWidgetProvider.aqiLabelAndColor]'s exact breakpoints rather than
-     * redefining them here. */
-    private fun checkAqi(context: Context, appWidgetId: Int, city: WidgetCity, weather: WeatherApi.WeatherData, tone: Tone) {
+     * this cycle) — never notifies on missing data. */
+    private fun checkAqi(
+        context: Context,
+        appWidgetId: Int,
+        city: WidgetCity,
+        weather: WeatherApi.WeatherData,
+        tone: Tone,
+        texts: Texts,
+    ) {
         if (!CapacitorStorage.aqiEnabled(context)) return
         val aqi = weather.usAqi
         if (aqi < 0) return
@@ -341,18 +438,12 @@ object WeatherNotifier {
         if (NotifStatePrefs.lastAqiNotifiedDate(context, appWidgetId) == today) return
         NotifStatePrefs.setAqiNotifiedDate(context, appWidgetId, today)
 
-        val (label, _) = WeatherWidgetProvider.aqiLabelAndColor(aqi)
-        notify(
-            context,
-            notificationId = appWidgetId * 100 + 5,
-            channelId = CHANNEL_AQI,
-            title = "Homebrew Weather — ${city.name}",
-            text = if (tone == Tone.RUDE) {
-                RudeNotifications.aqi(city.name, aqi, label)
-            } else {
-                PlainNotifications.aqi(city.name, aqi, label)
-            },
-            city = city,
-        )
+        val label = texts.aqiLabel(aqi)
+        val text = if (tone == Tone.RUDE) {
+            RudeNotifications.aqi(city.name, aqi, label, lang = texts.lang)
+        } else {
+            texts.aqiAlert(city.name, aqi, label)
+        }
+        notify(context, appWidgetId * 100 + 5, CHANNEL_AQI, titleFor(city), text, city = city)
     }
 }

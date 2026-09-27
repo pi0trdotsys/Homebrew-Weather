@@ -281,7 +281,7 @@ class WidgetPreviewDebugActivity : Activity() {
                 WeatherApi.DailyEntry("2026-08-04", 3, 24.0, 19.0, 0),
             ),
             // From 23:00 on the 31st: dry to 13:00 on the 1st, wet 13-19, dry
-            // 20-21, wet again 22-23; the 2nd wet 10-11.
+            // 20-21, wet again 22-23; the 2nd a storm 10-11.
             hourly = (23..71).map { h ->
                 val hod = h % 24
                 val day = h / 24
@@ -289,7 +289,8 @@ class WidgetPreviewDebugActivity : Activity() {
                 WeatherApi.HourlyEntry(
                     time = "2026-%sT%02d:00".format(listOf("07-31", "08-01", "08-02")[day], hod),
                     precipitationProbability = if (wet) 80 else 0,
-                    weatherCode = if (wet) 61 else 3,
+                    // The 2nd's spell is a storm, so the harness shows both colours.
+                    weatherCode = if (!wet) 3 else if (day == 2) 95 else 61,
                 )
             },
         )

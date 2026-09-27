@@ -47,6 +47,20 @@ class WidgetContentTest {
     }
 
     @Test
+    fun `english pools fit the footer, are unique and cover every kind`() {
+        listOf(EnJokes.cleanPools, EnJokes.sigmaPools).forEach { pools ->
+            val lines = pools.values.flatten()
+            val tooLong = lines.filter { it.length > SigmaJokes.MAX_LINE_LENGTH }
+            assertTrue("too long: $tooLong", tooLong.isEmpty())
+            val dupes = lines.groupingBy { it }.eachCount().filterValues { it > 1 }.keys
+            assertTrue("duplicated: $dupes", dupes.isEmpty())
+            assertEquals(SigmaJokes.pools.keys, pools.keys)
+        }
+        assertEquals(EnJokes.pickSigma("rain", false, 3), Jokes.pick(Tone.RUDE, Lang.EN, "rain", false, 3))
+        assertEquals(CleanJokes.pick("rain", false, 3), Jokes.pick(Tone.CLEAN, Lang.PL, "rain", false, 3))
+    }
+
+    @Test
     fun `every weather kind has a sigma pool`() {
         // "night" is the extra pool mixed in after dark, not a WeatherKind.
         val kinds = listOf("sun", "partly", "cloud", "fog", "rain", "snow", "thunder")

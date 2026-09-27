@@ -793,3 +793,128 @@ urządzeniu (~0,66 em na znak) z marginesem.
 - Harness: nowy scenariusz `EVENING` przy 368×176 (standard i minimal), 180×90 i
   170×170.
 - Dashboard sprawdzony w przeglądarce.
+
+## 12. Piętnaście usprawnień (2026-09-28)
+
+Całość listy propozycji z 27.09. Po kolei, z tym, co nieoczywiste.
+
+**1. „unknown_location” w aplikacji.**
+
+- Aplikacja webowa wciąż wołała martwe `/v1/reverse`.
+- Teraz w Androidzie nazwę podaje geokoder urządzenia: `HbwPlugin.reverseGeocode`
+  (ten sam `DeviceGeocoder`, którego widget używa od §7).
+- W przeglądarce: Nominatim (OSM).
+- Gdy żadne nie odpowie: współrzędne („36.43°N 5.15°W”) zamiast bezsensownego napisu.
+- Nie sprawdzone na żywo: aplikacja release nie ma zgody na lokalizację, a tej zgody
+  nie udzielam za użytkownika.
+
+**2. Prognoza z pamięci czytana wg zegara (`WeatherData.rebasedTo`, `src/lib/rebase.ts`).**
+
+- Offline widget renderował zapisaną prognozę z zamrożonym „teraz”. Prognoza z
+  23:00 rano dalej mówiła „jutro” o dzisiejszym dniu.
+- Teraz odrzucane są minione godziny i dni.
+- „Teraz” (temperatura, kod pogody, dzień/noc) bierze się z godziny prognozy
+  godzinowej.
+- Odczyty bez prognozy godzinowej stają się nieznane, a standard je ukrywa:
+  odczuwalna, wilgotność, wiatr.
+- Wymaga offsetu strefy miasta (`utc_offset_seconds`, nowe pole w cache) oraz
+  temperatury i `is_day` w godzinach.
+- Stare cache bez offsetu przechodzą bez zmian.
+
+**3. Testowe powiadomienia i moment prośby o zgodę.**
+
+- W ustawieniach jest przycisk, który wysyła po jednym z każdego rodzaju, z
+  prawdziwych danych, z dopiskiem „[test]”: ostrzeżenie o deszczu, brief i zapowiedź
+  jutra.
+- O zgodę na powiadomienia aplikacja pyta przy włączaniu któregokolwiek z nich albo
+  przy teście. Wcześniej pytała tylko przy dodawaniu widgetu.
+- Zweryfikowane na telefonie: 3 powiadomienia doszły, w tym „burza od 07:00 do ok.
+  19:00”.
+
+**4. Pierwsze uruchomienie.**
+
+- Wcześniej aplikacja od razu sama pytała o lokalizację.
+- Teraz pokazuje ekran „wpisz miasto albo użyj lokalizacji”, a systemowe pytanie
+  pojawia się dopiero po wybraniu tej drugiej opcji.
+
+**5. Dotknięcie dnia.**
+
+- Każda kolumna widgetu ma własny PendingIntent z `EXTRA_DAY`.
+- `MainActivity` zapisuje dzień (`brew-wx:focus-day`) przy zimnym starcie albo
+  przekazuje go w zdarzeniu `hbw:open-city`.
+- Aplikacja otwiera panel dnia (`DayDetail`) z godzinami. Wiersze prognozy 7-dniowej
+  otwierają ten sam panel.
+- Zweryfikowane: tap w „wt” otworzył 2026-09-29.
+
+**6. Kolor deszczu w kolumnie.**
+
+- Burza bursztynowa, śnieg jasny, deszcz cyjan, sama szansa (bez okna) przygaszona.
+- `DayWindow.kind` bierze najgroźniejszy kod w oknie.
+
+**7. Font pikselowy (`PixelFont.kt`).**
+
+- Wiersz deszczu to teraz bitmapy 5×7 w całych pikselach, jak ikony.
+- Szerokość jest znana przed rysowaniem, więc koniec z zapasami na fallbackowe
+  „▽”/„–” z §11.
+- Wszystkie cztery kolumny mają jedną skalę (`fitRow`). Wcześniej krótkie „▽ 10–12”
+  wychodziło większe niż „▽ 13–20+” obok.
+- Gdy wspólna skala spadłaby poniżej 3, znika „▽”: przy 170dp godziny ważą więcej
+  niż symbol, a kolor i miejsce pod dniem i tak mówią, że to deszcz.
+- Zakres świadomie tylko ten wiersz. Pozostały tekst to wciąż TextView; przepisanie
+  całości na bitmapy zmieniłoby charakter widgetu i to osobna decyzja.
+
+**8. Jeden język.**
+
+- `settings:lang`, domyślnie zgodnie z urządzeniem.
+- Teksty natywne: `Lang.kt` (`PlTexts`/`EnTexts`), czyli widget, powiadomienia,
+  kanały i ekran konfiguracji.
+- Teksty webowe: `src/lib/i18n.ts`.
+- Dekoracja terminalowa („$ weather --forecast 7”, „grep”) zostaje w obu językach.
+- Angielskie pule: clean to dawne dev-jokes, sigma i rude to nowe pule w tym samym
+  rejestrze.
+- Webowe pule są generowane z Kotlina (`scripts/gen-jokes.ts`), więc widget i
+  aplikacja nie rozjadą się. Zmiana języka lub tonu od razu przerysowuje widgety.
+
+**9. „Przestanie padać ok. 16:00” (`RainStop`).**
+
+- Po deszczu trwającym co najmniej 2h, gdy pierwsza sucha godzina jest za maks. 1h.
+- Raz na epizod: początek epizodu i flaga „wysłane” są w `NotifStatePrefs`.
+
+**10. Zapowiedź jutra (`EveningPreview`).**
+
+- Opt-in, domyślnie od 20:00. Przykład: „Estepona · jutro / 23°/20° · burza 7–19”.
+- Ta sama reguła okna co brief; nie może wypaść po północy.
+
+**11. Pasek godzinowy.**
+
+- Zamiast 24 procentów: jeden pasek nad godzinami deszczu z etykietą, np. „▽ burza
+  07:00–19:00 · maks. 90%”, w kolorze rodzaju opadu.
+
+**12. Zapisane miasta.**
+
+- Do 8, ostatnio używane pierwsze (`brew-wx:cities`), jako żetony nad wyszukiwarką.
+
+**13. CI (`.github/workflows/ci.yml`).**
+
+- Typecheck, zgodność wygenerowanych żartów i testy JVM przy każdym pushu na `main`
+  i przy każdym PR.
+
+**14. Build bez Node.**
+
+- `bun run dev:bun` i `build:capacitor` uruchamiają Vite przez `bun --bun`.
+- `dev`/`build` zostały nietknięte, bo uruchamia je Lovable.
+
+**15. Zrzut widgetu do README.**
+
+- `scripts/readme-widget-shot.ps1` odświeża widget, znajduje `widget_root` w zrzucie
+  UI i wycina go do `docs/screenshot-widget.png`.
+- Krok jest w checkliście wydania w `docs/DEVELOPMENT.md`.
+
+**Weryfikacja.**
+
+- 63 testy JVM.
+- Telefon: widget, dotknięcie dnia i powiadomienia testowe.
+- Harness: nowy scenariusz wieczorny z burzą, 368×176 w trybach standard i minimal,
+  180×90 oraz 170×170.
+- Przeglądarka: pierwsze uruchomienie, PL/EN, panel dnia, miasta i pasek deszczu, bez
+  błędów w konsoli.

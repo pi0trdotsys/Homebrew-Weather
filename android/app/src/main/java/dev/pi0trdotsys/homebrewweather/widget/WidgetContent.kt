@@ -41,6 +41,8 @@ data class WidgetContent(
     /** Per-day rain text, 4 entries; blank for a day that doesn't merit one.
      * A likely-rain window ("▽ 8–18") where the day has one, else a chance. */
     val dayPop: List<String>,
+    /** How each [dayPop] entry is coloured: a storm must stand out from rain. */
+    val dayPopStyle: List<PopStyle>,
     /** Index into `weather.daily` of the grid's first column: 0, or 1 in the
      * evening (see [EVENING_HOUR]). */
     val dayOffset: Int,
@@ -62,9 +64,11 @@ data class WidgetContent(
         stats = showStats,
         heroLineCells = heroLine.length,
         metaCells = metaLine?.length ?: 0,
-        popCells = dayPop.maxOfOrNull { it.length } ?: 0,
         dayLabelCells = firstDayLabel.length,
     )
+
+    /** Colour of a per-day rain entry. */
+    enum class PopStyle { NONE, CHANCE, RAIN, SNOW, THUNDER }
 
     companion object {
         /** A day's rain figure is worth showing from here up. Below it the
@@ -101,13 +105,14 @@ data class WidgetContent(
             weather: WeatherApi.WeatherData,
             density: WidgetDensity,
             offline: Boolean,
+            texts: Texts = PlTexts,
         ): WidgetContent {
             val nowKind = Wmo.wmoToKind(weather.currentWeatherCode).let {
                 if (!weather.isDay && (it == "sun" || it == "partly")) "moon" else it
             }
             // Today's rain only; any other day's goes under its own column.
             val window = RainWindow.today(weather.hourly, weather.currentWeatherCode)
-            val base = window?.let(RainWindow::short) ?: kindLabel(nowKind)
+            val base = window?.let { RainWindow.short(it, texts) } ?: texts.kindLabel(nowKind)
 
             val dayOffset = dayOffset(weather)
             val days = weather.daily.drop(dayOffset).take(4)
@@ -115,7 +120,7 @@ data class WidgetContent(
             val minimal = density == WidgetDensity.MINIMAL
 
             val heroLine = if (full && weather.currentPrecipitationProbability >= 0) {
-                "$base · opady ${weather.currentPrecipitationProbability}%"
+                "$base · ${texts.heroPop(weather.currentPrecipitationProbability)}"
             } else {
                 base
             }
@@ -132,26 +137,32 @@ data class WidgetContent(
             // moved from the hero to its day's column, a minimal widget would
             // otherwise have lost tomorrow's rain altogether — and "when will
             // it rain" is the one thing even minimal is meant to say.
-            val dayPop = (0 until 4).map { i ->
-                val day = days.getOrNull(i) ?: return@map ""
+            val none = "" to PopStyle.NONE
+            fun chance(p: Int) = if (full || p >= DAY_POP_MIN) "▽ $p%" to PopStyle.CHANCE else none
+            fun windowCell(w: RainWindow.DayWindow) = "▽ ${RainWindow.dayShort(w, texts)}" to when (w.kind) {
+                RainWindow.Kind.RAIN -> PopStyle.RAIN
+                RainWindow.Kind.SNOW -> PopStyle.SNOW
+                RainWindow.Kind.THUNDER -> PopStyle.THUNDER
+            }
+            val cells = (0 until 4).map { i ->
+                val day = days.getOrNull(i) ?: return@map none
                 val isToday = dayOffset == 0 && i == 0
                 if (minimal) {
-                    if (isToday) return@map ""
-                    return@map RainWindow.forDay(weather.hourly, day.date)?.let { "▽ ${RainWindow.dayShort(it)}" } ?: ""
+                    if (isToday) return@map none
+                    return@map RainWindow.forDay(weather.hourly, day.date)?.let(::windowCell) ?: none
                 }
                 if (isToday) {
                     // The hero owns today's rain. Without a window there, the
                     // column may still carry a chance, but only of the hours
                     // still ahead: the daily max also covers a morning shower
                     // that's already over.
-                    if (window != null) return@map ""
-                    val p = remainingTodayPop(weather) ?: day.precipitationProbabilityMax
-                    return@map if (full || p >= DAY_POP_MIN) "▽ $p%" else ""
+                    if (window != null) return@map none
+                    return@map chance(remainingTodayPop(weather) ?: day.precipitationProbabilityMax)
                 }
-                RainWindow.forDay(weather.hourly, day.date)?.let { return@map "▽ ${RainWindow.dayShort(it)}" }
-                val p = day.precipitationProbabilityMax
-                if (full || p >= DAY_POP_MIN) "▽ $p%" else ""
+                RainWindow.forDay(weather.hourly, day.date)?.let { return@map windowCell(it) }
+                chance(day.precipitationProbabilityMax)
             }
+            val dayPop = cells.map { it.first }
             val showPopRow = dayPop.any { it.isNotEmpty() }
 
             return WidgetContent(
@@ -166,15 +177,16 @@ data class WidgetContent(
                 showPopMax = full,
                 showPopRow = showPopRow,
                 dayPop = dayPop,
+                dayPopStyle = cells.map { it.second },
                 dayOffset = dayOffset,
-                firstDayLabel = if (dayOffset == 0) "dziś" else "jutro",
+                firstDayLabel = if (dayOffset == 0) texts.today else texts.tomorrow,
                 // A range bar restates the two numbers printed above it. On
                 // real data from a settled spell (30-33° highs, 18-21° lows)
                 // the four bars came out identical — ink that says nothing.
                 showBars = full,
                 metaLine = when (density) {
-                    WidgetDensity.FULL -> fullMeta(weather)
-                    WidgetDensity.STANDARD -> notableMeta(weather)
+                    WidgetDensity.FULL -> fullMeta(weather, texts)
+                    WidgetDensity.STANDARD -> notableMeta(weather, texts)
                     WidgetDensity.MINIMAL -> null
                 },
                 showFooter = !minimal,
@@ -201,50 +213,28 @@ data class WidgetContent(
         }
 
         /** Only the secondary conditions that are out of the ordinary, or null. */
-        fun notableMeta(weather: WeatherApi.WeatherData): String? {
+        fun notableMeta(weather: WeatherApi.WeatherData, texts: Texts = PlTexts): String? {
             val parts = mutableListOf<String>()
             val t = weather.currentTemperature
             val feels = weather.apparentTemperature
             if (!t.isNaN() && !feels.isNaN() && abs(feels - t) >= FEELS_DELTA) {
-                parts += "odczuwalna ${feels.roundToInt()}°"
+                parts += texts.feels(feels.roundToInt())
             }
             val wind = weather.windSpeedKmh
-            if (!wind.isNaN() && wind >= WINDY_KMH) parts += "wiatr ${wind.roundToInt()} km/h"
+            if (!wind.isNaN() && wind >= WINDY_KMH) parts += texts.wind(wind.roundToInt())
             val hum = weather.humidityPercent
             when {
-                hum >= HUMID_PCT -> parts += "wilgotno $hum%"
-                hum in 0..DRY_PCT -> parts += "sucho $hum%"
+                hum >= HUMID_PCT -> parts += texts.humid(hum)
+                hum in 0..DRY_PCT -> parts += texts.dry(hum)
             }
             return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
         }
 
-        /** Everything, always — the pre-standard-mode meta line, unchanged. */
-        fun fullMeta(weather: WeatherApi.WeatherData): String? {
-            val parts = mutableListOf<String>()
-            if (!weather.apparentTemperature.isNaN()) parts += "feels ${weather.apparentTemperature.roundToInt()}°"
-            if (weather.humidityPercent >= 0) parts += "hum ${weather.humidityPercent}%"
-            if (!weather.windSpeedKmh.isNaN()) parts += "wind ${weather.windSpeedKmh.roundToInt()}km/h"
-            return parts.takeIf { it.isNotEmpty() }?.joinToString("  ·  ")
-        }
-
-        /**
-         * Short Polish condition label for the hero line.
-         *
-         * Two of these used to be "częściowo" and "noc", which only read as
-         * conditions behind the old "now · " prefix ("now · częściowo"). Standing
-         * alone under the temperature they said "partially" and "night", so they
-         * are now the words a forecast would actually use.
-         */
-        fun kindLabel(kind: String): String = when (kind) {
-            "sun" -> "słonecznie"
-            "partly" -> "przejaśnienia"
-            "cloud" -> "pochmurno"
-            "fog" -> "mgła"
-            "rain" -> "deszcz"
-            "snow" -> "śnieg"
-            "thunder" -> "burza"
-            "moon" -> "pogodna noc"
-            else -> kind
-        }
+        /** Everything, always — the pre-standard-mode meta line. */
+        fun fullMeta(weather: WeatherApi.WeatherData, texts: Texts = PlTexts): String? = texts.fullMeta(
+            feels = weather.apparentTemperature.takeIf { !it.isNaN() }?.roundToInt(),
+            humidity = weather.humidityPercent.takeIf { it >= 0 },
+            windKmh = weather.windSpeedKmh.takeIf { !it.isNaN() }?.roundToInt(),
+        )
     }
 }

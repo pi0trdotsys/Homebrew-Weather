@@ -1,3 +1,5 @@
+import { useI18n } from "@/lib/i18n";
+
 /**
  * Connection and sync status, as one quiet line.
  *
@@ -22,6 +24,7 @@ export function StatusLine({
   interval: number;
   timezone: string;
 }) {
+  const { lang, t } = useI18n();
   const problem = !online || isStale;
   return (
     <p
@@ -31,12 +34,18 @@ export function StatusLine({
       }
     >
       <span className={online ? "" : "text-[color:var(--crimson)]"}>
-        ● {online ? "online" : "offline"}
-        {fromCache && " · serving cache"}
-        {isStale && online && " · stale, refreshing"}
+        ● {online ? t.online : t.offline}
+        {fromCache && ` · ${t.servingCache}`}
+        {isStale && online && ` · ${t.staleRefreshing}`}
       </span>
-      <span>sync {new Date(updatedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
-      <span>every {interval} min</span>
+      <span>
+        {t.sync}{" "}
+        {new Date(updatedAt).toLocaleTimeString(lang === "pl" ? "pl-PL" : "en-GB", {
+          hour: "2-digit",
+          minute: "2-digit",
+        })}
+      </span>
+      <span>{t.every(interval)}</span>
       <span>open-meteo</span>
       <span>{timezone}</span>
     </p>

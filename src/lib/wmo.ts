@@ -1,14 +1,7 @@
 // Map Open-Meteo WMO weather codes to our internal icon kinds.
 // https://open-meteo.com/en/docs
 
-export type WeatherKind =
-  | "sun"
-  | "partly"
-  | "cloud"
-  | "fog"
-  | "rain"
-  | "snow"
-  | "thunder";
+export type WeatherKind = "sun" | "partly" | "cloud" | "fog" | "rain" | "snow" | "thunder";
 
 export function wmoToKind(code: number): WeatherKind {
   if (code === 0) return "sun";
@@ -55,4 +48,40 @@ export function wmoLabel(code: number): string {
     99: "thunderstorm w/ hail",
   };
   return m[code] ?? "unknown";
+}
+
+const PL_LABELS: Record<number, string> = {
+  0: "bezchmurnie",
+  1: "prawie bezchmurnie",
+  2: "częściowe zachmurzenie",
+  3: "pochmurno",
+  45: "mgła",
+  48: "szadź",
+  51: "lekka mżawka",
+  53: "mżawka",
+  55: "gęsta mżawka",
+  56: "marznąca mżawka",
+  57: "marznąca mżawka",
+  61: "słaby deszcz",
+  63: "deszcz",
+  65: "ulewa",
+  66: "marznący deszcz",
+  67: "marznący deszcz",
+  71: "słaby śnieg",
+  73: "śnieg",
+  75: "intensywny śnieg",
+  77: "ziarna śniegu",
+  80: "przelotny deszcz",
+  81: "przelotny deszcz",
+  82: "gwałtowne ulewy",
+  85: "przelotny śnieg",
+  86: "przelotny śnieg",
+  95: "burza",
+  96: "burza z gradem",
+  99: "burza z gradem",
+};
+
+/** [wmoLabel] in the app's language (see i18n.ts). */
+export function wmoLabelIn(code: number, lang: "pl" | "en"): string {
+  return lang === "pl" ? (PL_LABELS[code] ?? "nieznane") : wmoLabel(code);
 }

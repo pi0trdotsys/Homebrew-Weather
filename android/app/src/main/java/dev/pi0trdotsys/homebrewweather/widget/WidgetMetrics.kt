@@ -66,7 +66,8 @@ data class WidgetMetrics(
     val dayLabelSp: Float,
     val dayIconDp: Int,
     val dayTempSp: Float,
-    val dayPopSp: Float,
+    /** Height of the per-day rain row (PixelFont bitmaps), in dp. */
+    val popRowDp: Float,
     val barHeightDp: Int,
 
     // footer / meta / banner
@@ -124,10 +125,7 @@ data class WidgetMetrics(
         val stats: Boolean = true,
         val heroLineCells: Int = 20,
         val metaCells: Int = 34,
-        /** Longest per-day rain text: "▽ 100%" is 6 cells, a window such as
-         * "▽ 13–20+" is 8. */
-        val popCells: Int = 6,
-        /** Longest day label: "dziś" is 4 cells, the evening's "jutro" is 5. */
+        /** Longest day label: "dziś" is 4 cells, "jutro" / "today" 5. */
         val dayLabelCells: Int = 4,
     ) {
         companion object {
@@ -177,7 +175,7 @@ data class WidgetMetrics(
         private const val REF_GRID_ICON = 20f
         private const val REF_GRID_TEMP = 16.3f // 14sp (x1.16)
         private const val REF_GRID_BAR = 5f
-        private const val REF_GRID_POP = 13.6f // 10sp, "▽" glyph (x1.36)
+        private const val REF_GRID_POP = 13.6f // PixelFont row (was 10sp text with a "▽" glyph)
         private const val REF_META = 11.7f // 10sp (x1.17)
         private const val REF_FOOTER = 12.8f // 11sp (x1.16)
 
@@ -340,18 +338,11 @@ data class WidgetMetrics(
             val showTempPair = pairCap >= min(wantTempSp, 9.5f)
             val dayTempSp = min(wantTempSp, if (showTempPair) pairCap else singleCap)
 
-            // "▽ 100%" is 6 cells, one of them the wide fallback glyph; a rain
-            // window ("▽ 13–20+") runs to 8, sized to what this render has.
-            // A window also carries "–", which like "▽" comes from a fallback
-            // font and runs wider than the Latin cells, so windows get 1.5
-            // cells of slack: modelled as plain cells, "▽ 13–20+" measured
-            // right at the column's limit on a 170dp widget and ellipsized to
-            // "▽ 13–2…".
-            val popCells = max(6, rows.popCells)
-            val popUnits = (popCells - 1) * MONO_ADVANCE + GLYPH_ADVANCE +
-                if (rows.popCells > 6) 1.5f * MONO_ADVANCE else 0f
-            val dayPopSp = min(10f * scale, colW / popUnits)
-            // Day labels: "dziś" is 4 cells, the evening's "jutro" 5.
+            // The per-day rain row is drawn in PixelFont, which fits its own
+            // width exactly (see PixelFont.fitScale); all it needs from here is
+            // the row's height.
+            val popRowDp = REF_GRID_POP * scale
+            // Day labels: "dziś" is 4 cells, "jutro" / "today" 5.
             val dayLabelSp = min(11f * scale, colW / ((max(4, rows.dayLabelCells) + 0.4f) * MONO_ADVANCE))
 
             // The grid icon may grow with the column when there's width to spare,
@@ -411,7 +402,7 @@ data class WidgetMetrics(
                 dayLabelSp = dayLabelSp.coerceAtLeast(6.5f),
                 dayIconDp = dayIconDp,
                 dayTempSp = dayTempSp.coerceAtLeast(8f),
-                dayPopSp = dayPopSp.coerceAtLeast(6.5f),
+                popRowDp = popRowDp,
                 barHeightDp = (5f * scale).roundToInt().coerceIn(3, 10),
 
                 metaSp = min(10f * scale, innerW / (max(34, rows.metaCells) * MONO_ADVANCE)).coerceAtLeast(6.5f),

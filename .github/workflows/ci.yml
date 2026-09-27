@@ -1,0 +1,55 @@
+# Checks every push to main and every pull request: the web app typechecks,
+# the generated joke pools match their Kotlin source, and the widget's JVM
+# tests pass. main syncs straight into Lovable, so a broken build there shows
+# up in the editor — this catches it first.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install
+      - name: Typecheck
+        run: bun x tsc --noEmit -p .
+      - name: Joke pools are in sync with the Kotlin source
+        run: |
+          bun scripts/gen-jokes.ts
+          git diff --exit-code -- src/lib/jokes.generated.ts
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install
+      # The Android project includes Capacitor's generated plugin module and
+      # the web bundle, neither of which is committed.
+      - name: Build web bundle and sync Capacitor
+        run: |
+          bun run build:capacitor
+          bun x cap sync android
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Widget unit tests
+        working-directory: android
+        run: ./gradlew testDebugUnitTest --no-daemon
+      - name: Test report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-report
+          path: android/app/build/reports/tests/

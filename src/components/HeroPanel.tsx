@@ -1,6 +1,7 @@
 import type { WeatherResponse } from "@/lib/weather-api";
-import { wmoLabel, wmoToKind } from "@/lib/wmo";
+import { wmoLabelIn, wmoToKind } from "@/lib/wmo";
 import { describeRainWindow, findTodayRainWindow } from "@/lib/rain-window";
+import { useI18n } from "@/lib/i18n";
 import { PixelIcon } from "./PixelIcon";
 
 /** Feels-like is only information when it disagrees with the thermometer — the
@@ -19,6 +20,7 @@ const FEELS_DELTA = 3;
  * readout to the terminal panel further down.
  */
 export function HeroPanel({ data }: { data: WeatherResponse }) {
+  const { lang, t } = useI18n();
   const c = data.current;
   const baseKind = wmoToKind(c.weather_code);
   const kind = !c.is_day && (baseKind === "sun" || baseKind === "partly") ? "moon" : baseKind;
@@ -42,11 +44,11 @@ export function HeroPanel({ data }: { data: WeatherResponse }) {
             (rain ? "text-[color:var(--amber)]" : "text-[color:var(--phosphor)]")
           }
         >
-          {rain ? describeRainWindow(rain) : wmoLabel(c.weather_code).toLowerCase()}
+          {rain ? describeRainWindow(rain, t) : wmoLabelIn(c.weather_code, lang)}
         </p>
         {feelsDiffers && (
           <p className="mt-1 text-xs text-[color:var(--phosphor-dim)]">
-            feels like {Math.round(c.apparent_temperature)}°
+            {t.feelsLike(Math.round(c.apparent_temperature))}
           </p>
         )}
       </div>

@@ -32,15 +32,20 @@ public class MainActivity extends BridgeActivity {
     public static final String EXTRA_CITY_LAT = "dev.pi0trdotsys.homebrewweather.CITY_LAT";
     public static final String EXTRA_CITY_LON = "dev.pi0trdotsys.homebrewweather.CITY_LON";
     public static final String EXTRA_CITY_NAME = "dev.pi0trdotsys.homebrewweather.CITY_NAME";
+    /** A day ("2026-09-28") to open on — set when a widget's day column is tapped. */
+    public static final String EXTRA_DAY = "dev.pi0trdotsys.homebrewweather.DAY";
 
     private static final String CAPACITOR_PREFS = "CapacitorStorage";
     private static final String COORDS_KEY = "brew-wx:coords";
+    /** Read once by the web app on boot, then cleared (see src/routes/index.tsx). */
+    private static final String FOCUS_DAY_KEY = "brew-wx:focus-day";
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         // Before super.onCreate(): the web app reads its saved location as
         // soon as it boots, so the widget's city has to be in storage first.
         storeCityFrom(getIntent());
+        registerPlugin(HbwPlugin.class);
         super.onCreate(savedInstanceState);
     }
 
@@ -68,17 +73,21 @@ public class MainActivity extends BridgeActivity {
         double lon = intent.getDoubleExtra(EXTRA_CITY_LON, Double.NaN);
         String name = intent.getStringExtra(EXTRA_CITY_NAME);
         if (Double.isNaN(lat) || Double.isNaN(lon)) return null;
+        String day = intent.getStringExtra(EXTRA_DAY);
         try {
-            String json = new JSONObject()
+            JSONObject city = new JSONObject()
                 .put("lat", lat)
                 .put("lon", lon)
-                .put("name", name != null ? name : "?")
-                .toString();
-            getSharedPreferences(CAPACITOR_PREFS, Context.MODE_PRIVATE)
+                .put("name", name != null ? name : "?");
+            android.content.SharedPreferences.Editor edit = getSharedPreferences(CAPACITOR_PREFS, Context.MODE_PRIVATE)
                 .edit()
-                .putString(COORDS_KEY, json)
-                .apply();
-            return json;
+                .putString(COORDS_KEY, city.toString());
+            // A tapped day column: stored for a cold start (the web app reads
+            // and clears it on boot), and sent along in the event otherwise.
+            if (day != null) edit.putString(FOCUS_DAY_KEY, day);
+            else edit.remove(FOCUS_DAY_KEY);
+            edit.apply();
+            return (day != null ? new JSONObject(city.toString()).put("day", day) : city).toString();
         } catch (JSONException e) {
             return null;
         }

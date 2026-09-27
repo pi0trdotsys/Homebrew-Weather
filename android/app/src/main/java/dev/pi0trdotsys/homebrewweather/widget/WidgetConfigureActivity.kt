@@ -35,6 +35,7 @@ class WidgetConfigureActivity : Activity() {
     private var appWidgetId = AppWidgetManager.INVALID_APPWIDGET_ID
     private val bgExecutor = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val texts: Texts by lazy { CapacitorStorage.lang(this).texts }
 
     private lateinit var cityInput: EditText
     private lateinit var statusText: TextView
@@ -68,13 +69,13 @@ class WidgetConfigureActivity : Activity() {
             return
         }
 
-        cityInput = findViewById(R.id.city_input)
+        cityInput = findViewById<EditText>(R.id.city_input).apply { hint = texts.cfgSearchHint }
         statusText = findViewById(R.id.status_text)
         resultsContainer = findViewById(R.id.results_container)
         suggestionBtn = findViewById(R.id.suggestion_btn)
 
-        findViewById<Button>(R.id.search_btn).setOnClickListener { doSearch() }
-        findViewById<Button>(R.id.locate_btn).setOnClickListener { useCurrentLocation() }
+        findViewById<Button>(R.id.search_btn).apply { text = texts.cfgSearch }.setOnClickListener { doSearch() }
+        findViewById<Button>(R.id.locate_btn).apply { text = texts.cfgUseLocation }.setOnClickListener { useCurrentLocation() }
 
         showLastAppCitySuggestion()
         maybeRequestNotificationPermission()
@@ -112,7 +113,7 @@ class WidgetConfigureActivity : Activity() {
 
     private fun showLastAppCitySuggestion() {
         val last = CapacitorStorage.lastAppCity(this) ?: return
-        suggestionBtn.text = "> use last app location: ${last.name}"
+        suggestionBtn.text = texts.cfgUseLast(last.name)
         suggestionBtn.visibility = View.VISIBLE
         suggestionBtn.setOnClickListener { selectCity(last) }
     }
@@ -120,10 +121,10 @@ class WidgetConfigureActivity : Activity() {
     private fun doSearch() {
         val query = cityInput.text?.toString()?.trim().orEmpty()
         if (query.isEmpty()) {
-            statusText.text = "// type a city name first"
+            statusText.text = texts.cfgTypeFirst
             return
         }
-        statusText.text = "// searching..."
+        statusText.text = texts.cfgSearching
         resultsContainer.removeAllViews()
         bgExecutor.execute {
             val results = try {
@@ -133,11 +134,11 @@ class WidgetConfigureActivity : Activity() {
             }
             mainHandler.post {
                 if (results == null) {
-                    statusText.text = "// search failed, check connection"
+                    statusText.text = texts.cfgSearchFailed
                 } else if (results.isEmpty()) {
-                    statusText.text = "// no results for \"$query\""
+                    statusText.text = texts.cfgNoResults(query)
                 } else {
-                    statusText.text = "// ${results.size} result(s)"
+                    statusText.text = texts.cfgResults(results.size)
                     results.forEach { r -> resultsContainer.addView(buildResultRow(r)) }
                 }
             }
@@ -182,7 +183,7 @@ class WidgetConfigureActivity : Activity() {
             if (grantResults.any { it == PackageManager.PERMISSION_GRANTED }) {
                 requestLocationFix()
             } else {
-                statusText.text = "// location permission denied — search instead"
+                statusText.text = texts.cfgPermissionDenied
             }
         }
         // NOTIFICATION_PERMISSION_REQUEST result is intentionally not handled here:
@@ -192,7 +193,7 @@ class WidgetConfigureActivity : Activity() {
 
     private fun requestLocationFix() {
         val lm = getSystemService(Context.LOCATION_SERVICE) as LocationManager
-        statusText.text = "// locating..."
+        statusText.text = texts.cfgLocating
 
         val lastKnown = safeLastKnown(lm, LocationManager.GPS_PROVIDER)
             ?: safeLastKnown(lm, LocationManager.NETWORK_PROVIDER)
@@ -208,7 +209,7 @@ class WidgetConfigureActivity : Activity() {
             else -> null
         }
         if (provider == null) {
-            statusText.text = "// no location provider enabled — search instead"
+            statusText.text = texts.cfgNoProvider
             return
         }
         try {
@@ -225,11 +226,11 @@ class WidgetConfigureActivity : Activity() {
                 if (locationListener === listener) {
                     lm.removeUpdates(listener)
                     locationListener = null
-                    statusText.text = "// no fix in time — try again outdoors, or search instead"
+                    statusText.text = texts.cfgNoFix
                 }
             }, 10_000)
         } catch (e: SecurityException) {
-            statusText.text = "// location permission denied — search instead"
+            statusText.text = texts.cfgPermissionDenied
         }
     }
 
@@ -242,7 +243,7 @@ class WidgetConfigureActivity : Activity() {
     }
 
     private fun reverseGeocodeAndSelect(location: Location) {
-        statusText.text = "// resolving location name..."
+        statusText.text = texts.cfgResolving
         val lat = location.latitude
         val lon = location.longitude
         bgExecutor.execute {
@@ -265,7 +266,7 @@ class WidgetConfigureActivity : Activity() {
     }
 
     private fun selectCity(city: WidgetCity) {
-        statusText.text = "// saving ${city.name}..."
+        statusText.text = texts.cfgSaving(city.name)
         WidgetPrefs.setCity(this, appWidgetId, city)
 
         bgExecutor.execute {
@@ -339,11 +340,7 @@ class WidgetConfigureActivity : Activity() {
         densityButtons.forEach { (density, btn) ->
             btn.setBackgroundColor(if (density == selected) THEME_BTN_SELECTED_BG else THEME_BTN_UNSELECTED_BG)
         }
-        densityHint.text = when (selected) {
-            WidgetDensity.MINIMAL -> "// temperatura + 4 dni, deszcz tylko z godzinami"
-            WidgetDensity.STANDARD -> "// tylko to, co dziś odbiega od normy"
-            WidgetDensity.FULL -> "// wszystkie odczyty, zawsze"
-        }
+        densityHint.text = texts.densityHint(selected)
     }
 
     private fun selectTheme(theme: WidgetTheme) {

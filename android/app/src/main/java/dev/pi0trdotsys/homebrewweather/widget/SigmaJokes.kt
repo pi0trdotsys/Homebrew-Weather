@@ -6,10 +6,10 @@ import kotlin.math.abs
  * Footer copy for the widget, in the app's "sigma" voice — this is the user's
  * own personal app mocking its own user, never a real person.
  *
- * Direct Kotlin port of src/lib/sigma-jokes.ts: same pools, same pick-by-seed
- * logic (pool is night + kind when isNight, else just kind; index =
- * |seed| % pool.size). Keep the two byte-identical; the .ts side is generated
- * from this file.
+ * The source of truth for these pools: the web app's copy,
+ * src/lib/jokes.generated.ts, is generated from this file by
+ * `bun scripts/gen-jokes.ts` (and CI fails if it's stale). Pick rule: pool is
+ * night + kind when isNight, else just kind; index = |seed| % pool.size.
  *
  * ## Line length
  *

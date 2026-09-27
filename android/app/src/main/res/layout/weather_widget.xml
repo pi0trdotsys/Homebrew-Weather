@@ -328,17 +328,12 @@
                     android:layout_marginEnd="4dp"
                     android:scaleType="fitXY" />
 
-                <TextView
+                <ImageView
                     android:id="@+id/widget_pop0"
-                    android:layout_width="match_parent"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:ellipsize="end"
-                    android:fontFamily="monospace"
-                    android:gravity="center"
-                    android:includeFontPadding="false"
-                    android:singleLine="true"
-                    android:textColor="@color/widget_cyan"
-                    android:textSize="10sp" />
+                    android:layout_gravity="center_horizontal"
+                    android:contentDescription="@null" />
             </LinearLayout>
 
             <FrameLayout
@@ -397,17 +392,12 @@
                     android:layout_marginEnd="4dp"
                     android:scaleType="fitXY" />
 
-                <TextView
+                <ImageView
                     android:id="@+id/widget_pop1"
-                    android:layout_width="match_parent"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:ellipsize="end"
-                    android:fontFamily="monospace"
-                    android:gravity="center"
-                    android:includeFontPadding="false"
-                    android:singleLine="true"
-                    android:textColor="@color/widget_cyan"
-                    android:textSize="10sp" />
+                    android:layout_gravity="center_horizontal"
+                    android:contentDescription="@null" />
             </LinearLayout>
 
             <FrameLayout
@@ -466,17 +456,12 @@
                     android:layout_marginEnd="4dp"
                     android:scaleType="fitXY" />
 
-                <TextView
+                <ImageView
                     android:id="@+id/widget_pop2"
-                    android:layout_width="match_parent"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:ellipsize="end"
-                    android:fontFamily="monospace"
-                    android:gravity="center"
-                    android:includeFontPadding="false"
-                    android:singleLine="true"
-                    android:textColor="@color/widget_cyan"
-                    android:textSize="10sp" />
+                    android:layout_gravity="center_horizontal"
+                    android:contentDescription="@null" />
             </LinearLayout>
 
             <FrameLayout
@@ -535,17 +520,12 @@
                     android:layout_marginEnd="4dp"
                     android:scaleType="fitXY" />
 
-                <TextView
+                <ImageView
                     android:id="@+id/widget_pop3"
-                    android:layout_width="match_parent"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:ellipsize="end"
-                    android:fontFamily="monospace"
-                    android:gravity="center"
-                    android:includeFontPadding="false"
-                    android:singleLine="true"
-                    android:textColor="@color/widget_cyan"
-                    android:textSize="10sp" />
+                    android:layout_gravity="center_horizontal"
+                    android:contentDescription="@null" />
             </LinearLayout>
         </LinearLayout>
 

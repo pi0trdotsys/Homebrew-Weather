@@ -39,6 +39,10 @@ object WeatherApi {
         val time: String,
         val precipitationProbability: Int,
         val weatherCode: Int,
+        /** NaN for caches written before it was kept. */
+        val temperature: Double = Double.NaN,
+        /** Null for caches written before it was kept. */
+        val isDay: Boolean? = null,
     )
 
     data class WeatherData(
@@ -76,7 +80,57 @@ object WeatherApi {
         // spread across a current-hour figure, a 4-day sparkline and four
         // daily maxima. Empty for caches written before this field existed.
         val hourly: List<HourlyEntry> = emptyList(),
-    )
+        // The location's offset from UTC, so a cached forecast can be read
+        // against the real clock later (see [rebasedTo]). Null for caches
+        // written before it was kept.
+        val utcOffsetSeconds: Int? = null,
+    ) {
+        /**
+         * This forecast as it should read *now*, however long ago it was
+         * fetched.
+         *
+         * Offline, the widget keeps rendering its last cached forecast — and
+         * everything relative in it ("now", "today", "dziś"/"jutro", which
+         * column comes first) was frozen at fetch time. A forecast fetched at
+         * 23:00 and still on screen at 09:00 kept calling today "jutro", kept
+         * showing last night's temperature as the current one, and kept
+         * today's first hours of rain in a window that had already started.
+         *
+         * So: past hours are dropped; "now" is taken from the hourly forecast
+         * for the real current hour; days that are over are dropped. Readouts
+         * with no hourly forecast (feels-like, humidity, wind) become unknown
+         * rather than stay stale, and the standard density hides them. A
+         * forecast fetched this hour comes back unchanged.
+         */
+        fun rebasedTo(nowMillis: Long): WeatherData {
+            val offset = utcOffsetSeconds ?: return this
+            if (hourly.isEmpty()) return this
+            val nowLocal = localHourIso(nowMillis, offset)
+            val idx = hourly.indexOfLast { it.time <= nowLocal }
+            if (idx <= 0) return this
+            val now = hourly[idx]
+            val today = nowLocal.substringBefore('T')
+            return copy(
+                isDay = now.isDay ?: isDay,
+                currentWeatherCode = now.weatherCode,
+                currentTemperature = if (now.temperature.isNaN()) currentTemperature else now.temperature,
+                apparentTemperature = Double.NaN,
+                humidityPercent = -1,
+                windSpeedKmh = Double.NaN,
+                currentPrecipitationProbability = now.precipitationProbability,
+                maxNext6hPop = hourly.drop(idx).take(7).maxOfOrNull { it.precipitationProbability } ?: -1,
+                daily = daily.filter { it.date >= today },
+                hourly = hourly.drop(idx),
+            )
+        }
+    }
+
+    /** "2026-09-28T09:00" — the current hour in a location [offsetSeconds] from UTC. */
+    fun localHourIso(nowMillis: Long, offsetSeconds: Int): String {
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:00", java.util.Locale.US)
+        sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
+        return sdf.format(java.util.Date(nowMillis + offsetSeconds * 1000L))
+    }
 
     /** How many forecast hours [WeatherData.hourly] keeps: enough to cover
      * every grid day to midnight, so each column can carry its own rain window
@@ -137,7 +191,7 @@ object WeatherApi {
         val url = "https://api.open-meteo.com/v1/forecast" +
             "?latitude=$lat&longitude=$lon" +
             "&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,is_day,surface_pressure" +
-            "&hourly=temperature_2m,weather_code,precipitation_probability" +
+            "&hourly=temperature_2m,weather_code,precipitation_probability,is_day" +
             "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset" +
             "&timezone=auto&forecast_days=7"
         val json = httpGetJson(url)
@@ -202,6 +256,8 @@ object WeatherApi {
         } else -1
 
         val hCodes = hourly?.optJSONArray("weather_code")
+        val hTemps = hourly?.optJSONArray("temperature_2m")
+        val hIsDay = hourly?.optJSONArray("is_day")
         val hourlyEntries = if (hTimes != null && hPops != null && currentIdx >= 0) {
             val end = minOf(hTimes.length(), currentIdx + HOURLY_HORIZON)
             (currentIdx until end).map { i ->
@@ -209,6 +265,8 @@ object WeatherApi {
                     time = hTimes.optString(i),
                     precipitationProbability = hPops.optInt(i, 0),
                     weatherCode = hCodes?.optInt(i, 0) ?: 0,
+                    temperature = hTemps?.optDouble(i, Double.NaN) ?: Double.NaN,
+                    isDay = hIsDay?.let { if (it.isNull(i)) null else it.optInt(i, 1) == 1 },
                 )
             }
         } else {
@@ -243,6 +301,7 @@ object WeatherApi {
             maxNext6hPop = maxNext6hPop,
             daily = entries,
             hourly = hourlyEntries,
+            utcOffsetSeconds = if (json.has("utc_offset_seconds")) json.optInt("utc_offset_seconds") else null,
         )
     }
 

@@ -1,6 +1,6 @@
 {
   "name": "tanstack_start_ts",
-  "version": "0.6.0-beta.10",
+  "version": "0.6.0-beta.11",
   "private": true,
   "sideEffects": false,
   "type": "module",
@@ -11,7 +11,8 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "build:capacitor": "vite build --config vite.capacitor.config.ts && mv capacitor-www/capacitor-entry.html capacitor-www/index.html"
+    "dev:bun": "bun --bun vite dev --port 5173 --strictPort",
+    "build:capacitor": "bun --bun vite build --config vite.capacitor.config.ts && mv capacitor-www/capacitor-entry.html capacitor-www/index.html"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.2",

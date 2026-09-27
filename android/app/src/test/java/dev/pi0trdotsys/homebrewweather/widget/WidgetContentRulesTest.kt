@@ -162,7 +162,6 @@ class WidgetContentRulesTest {
         assertEquals(1, c.dayOffset)
         assertEquals("jutro", c.firstDayLabel)
         assertEquals(listOf("▽ 8–19", "", "", ""), c.dayPop)
-        assertEquals("▽ 8–19".length, c.rows().popCells)
         assertEquals(5, c.rows().dayLabelCells)
     }
 
@@ -199,22 +198,125 @@ class WidgetContentRulesTest {
         assertEquals("", WidgetContent.build(past, WidgetDensity.STANDARD, false).dayPop[0])
     }
 
-    @Test
-    fun `window text fits its column with room to spare`() {
-        val rows = WidgetContent.build(lateEvening, WidgetDensity.STANDARD, false).rows().copy(popCells = 8)
-        // The widest window, "▽ 13–20+" (8 cells), in the narrowest columns
-        // that still show the row. On device it measured ~0.66 em per cell
-        // (the "▽" and "–" run wide), and at exactly that 170x170 ellipsized
-        // to "▽ 13–2…" — so check against the measured width, with a margin.
-        listOf(170 to 170, 180 to 120, 250 to 165).forEach { (w, h) ->
-            val m = WidgetMetrics.forSize(w, h, rows)
-            val need = m.dayPopSp * 8 * 0.66f
-            assertTrue("${w}x$h: needs $need dp of ${m.colWidthDp}", need + 2f <= m.colWidthDp)
-        }
-    }
 
     @Test
     fun `night shows a moon label, not the daytime condition`() {
         assertEquals("pogodna noc", WidgetContent.build(calm.copy(isDay = false), WidgetDensity.STANDARD, false).heroLine)
+    }
+
+    // --- colour of a day's rain (a storm must stand out) --------------------
+
+    @Test
+    fun `a storm window is styled apart from rain and from a mere chance`() {
+        val storm = lateEvening.copy(hourly = (23..60).map { h -> hour(h, if (h in 32..42) 80 else 0, if (h in 32..42) 95 else 3) })
+        val c = WidgetContent.build(storm, WidgetDensity.FULL, false)
+        assertEquals(WidgetContent.PopStyle.THUNDER, c.dayPopStyle[0])
+        assertEquals(WidgetContent.PopStyle.CHANCE, c.dayPopStyle[1])
+        assertEquals(WidgetContent.PopStyle.RAIN, WidgetContent.build(lateEvening, WidgetDensity.STANDARD, false).dayPopStyle[0])
+    }
+
+    // --- English ------------------------------------------------------------
+
+    @Test
+    fun `english speaks english end to end`() {
+        val c = WidgetContent.build(eventful, WidgetDensity.STANDARD, false, EnTexts)
+        assertEquals("rain 15–18", c.heroLine)
+        assertEquals("today", c.firstDayLabel)
+        assertEquals("feels 13° · wind 42 km/h · humid 94%", c.metaLine)
+        val evening = WidgetContent.build(lateEvening, WidgetDensity.STANDARD, false, EnTexts)
+        assertEquals("overcast", evening.heroLine)
+        assertEquals("tmrw", evening.firstDayLabel)
+        assertEquals("sunny · rain 0%", WidgetContent.build(calm, WidgetDensity.FULL, false, EnTexts).heroLine)
+    }
+
+    @Test
+    fun `both languages have every day-of-week label, at most 3 cells`() {
+        listOf(PlTexts, EnTexts).forEach { t ->
+            (0..6).forEach { d -> assertTrue("${t.lang} $d", t.dow(d).length in 2..3) }
+            assertTrue(t.today.length <= 5 && t.tomorrow.length <= 5)
+        }
+    }
+
+    // --- PixelFont: the rain row's own font -----------------------------------
+
+    @Test
+    fun `every string the rain row can produce is in the pixel font`() {
+        val samples = mutableListOf("▽ 100%", "▽ 0%", "▽ 13–20+", "▽ 0–24")
+        listOf(PlTexts, EnTexts).forEach { t -> samples += "▽ ${t.dayOpen(20)}" }
+        val missing = samples.flatMap { s -> s.filterNot(PixelFont::covers).toList() }.distinct()
+        assertTrue("missing glyphs: $missing", missing.isEmpty())
+    }
+
+    @Test
+    fun `pixel font fits the narrowest column at a whole-pixel scale`() {
+        // 170dp widget at 3x density: a column is ~117px wide, the row ~36px tall.
+        val text = "▽ 13–20+"
+        val scale = PixelFont.fitScale(text, maxWidthPx = 117, maxHeightPx = 36)
+        assertTrue("scale $scale", scale >= 2)
+        assertTrue(PixelFont.widthUnits(text) * scale <= 117)
+        // ...and the row's height caps it on a wide widget.
+        assertEquals(36 / PixelFont.ROWS, PixelFont.fitScale(text, maxWidthPx = 10_000, maxHeightPx = 36))
+    }
+
+    @Test
+    fun `the rain row shares one scale, and sheds the marker before it gets tiny`() {
+        val row = listOf("▽ 13–20+", "▽ 10–12", "", "")
+        // Wide column: one scale for both, marker kept.
+        val (wide, wideScale) = PixelFont.fitRow(row, maxWidthPx = 264, maxHeightPx = 36)
+        assertEquals(row, wide)
+        assertEquals(minOf(264 / PixelFont.widthUnits("▽ 13–20+"), 36 / PixelFont.ROWS), wideScale)
+        // 170dp widget (~105px columns): with the marker the row would drop to
+        // scale 2; without it, 3 — so the marker goes, for every column.
+        val (narrow, narrowScale) = PixelFont.fitRow(row, maxWidthPx = 105, maxHeightPx = 36)
+        assertEquals(listOf("13–20+", "10–12", "", ""), narrow)
+        assertEquals(3, narrowScale)
+    }
+
+    // --- rebasedTo: a cached forecast read against the real clock -------------
+
+    /** Fetched at 23:00 on the 24th (UTC+2), rain from 08:00 on the 25th. */
+    private val fetchedLate = lateEvening.copy(
+        utcOffsetSeconds = 7200,
+        currentTemperature = 22.0,
+        apparentTemperature = 25.0,
+        hourly = (23..60).map { h ->
+            WeatherApi.HourlyEntry(
+                "2026-09-%02dT%02d:00".format(24 + h / 24, h % 24),
+                if (h in 32..42) 80 else 0,
+                if (h in 32..42) 61 else 3,
+                temperature = 10.0 + h % 24,
+                isDay = h % 24 in 7..19,
+            )
+        },
+    )
+
+    /** 2026-09-25 09:30 local (UTC+2) as epoch ms. */
+    private val nextMorning = java.time.OffsetDateTime.parse("2026-09-25T09:30:00+02:00").toInstant().toEpochMilli()
+
+    @Test
+    fun `a forecast from last night reads as this morning's`() {
+        val r = fetchedLate.rebasedTo(nextMorning)
+        assertEquals("2026-09-25T09:00", r.hourly.first().time)
+        assertEquals(19.0, r.currentTemperature, 0.0) // the 09:00 hourly temperature
+        assertTrue(r.isDay)
+        assertTrue("stale feels-like is dropped", r.apparentTemperature.isNaN())
+        assertEquals("2026-09-25", r.daily.first().date)
+
+        val c = WidgetContent.build(r, WidgetDensity.STANDARD, offline = true)
+        assertEquals("dziś", c.firstDayLabel)
+        assertEquals(0, c.dayOffset)
+        // The 09:00 forecast hour is rain, so "now" is raining, until 19.
+        assertEquals("pada do ~19", c.heroLine)
+    }
+
+    @Test
+    fun `a forecast fetched this hour is left alone`() {
+        val justNow = java.time.OffsetDateTime.parse("2026-09-24T23:40:00+02:00").toInstant().toEpochMilli()
+        assertEquals(fetchedLate, fetchedLate.rebasedTo(justNow))
+    }
+
+    @Test
+    fun `old caches without an offset are left alone`() {
+        assertEquals(lateEvening, lateEvening.rebasedTo(nextMorning))
     }
 }

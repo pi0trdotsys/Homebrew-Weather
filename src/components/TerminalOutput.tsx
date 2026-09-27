@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
 import type { WeatherResponse } from "@/lib/weather-api";
 import { wmoToKind } from "@/lib/wmo";
+import { useI18n } from "@/lib/i18n";
 
 const ASCII: Record<string, string[]> = {
   sun: [
     "     \\   |   /     ",
-    "      .-\"\"\"-.      ",
+    '      .-"""-.      ',
     "   -- (  o  o ) -- ",
     "      \\  ---  /    ",
     "      /`-...-`\\    ",
@@ -13,7 +14,7 @@ const ASCII: Record<string, string[]> = {
   ],
   partly: [
     "    \\  |  /   .--.  ",
-    "    .-\"\"-.  .-(    ). ",
+    '    .-""-.  .-(    ). ',
     "   ( o  o )(___.__)__)",
     "    `----'           ",
   ],
@@ -70,18 +71,20 @@ export function TerminalOutput({ data, joke }: { data: WeatherResponse; joke: st
   const kind = wmoToKind(data.current.weather_code);
   const art = ASCII[kind] ?? ASCII.cloud;
   const c = data.current;
+  const { t } = useI18n();
+  const key = (label: string) => label.padEnd(11) + ":";
 
   const lines: string[] = [
     `user@homebrew-weather:~$ weather --details`,
     ``,
     ...art,
     ``,
-    `feels      : ${c.apparent_temperature.toFixed(1)}°C`,
-    `wind       : ${c.wind_speed_10m.toFixed(1)} km/h`,
-    `humidity   : ${c.relative_humidity_2m}%`,
-    `pressure   : ${Math.round(c.surface_pressure)} hPa`,
-    `sunrise    : ${data.daily.sunrise[0].split("T")[1]?.slice(0, 5) ?? "--:--"}`,
-    `sunset     : ${data.daily.sunset[0].split("T")[1]?.slice(0, 5) ?? "--:--"}`,
+    `${key(t.tFeels)} ${c.apparent_temperature.toFixed(1)}°C`,
+    `${key(t.tWind)} ${c.wind_speed_10m.toFixed(1)} km/h`,
+    `${key(t.tHumidity)} ${c.relative_humidity_2m}%`,
+    `${key(t.tPressure)} ${Math.round(c.surface_pressure)} hPa`,
+    `${key(t.tSunrise)} ${data.daily.sunrise[0].split("T")[1]?.slice(0, 5) ?? "--:--"}`,
+    `${key(t.tSunset)} ${data.daily.sunset[0].split("T")[1]?.slice(0, 5) ?? "--:--"}`,
     ``,
     `# ${joke}`,
     `user@homebrew-weather:~$ `,

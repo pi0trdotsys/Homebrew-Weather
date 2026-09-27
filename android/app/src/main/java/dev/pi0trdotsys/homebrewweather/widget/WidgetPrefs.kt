@@ -195,9 +195,12 @@ object WidgetPrefs {
                             time = h.getString("t"),
                             precipitationProbability = h.optInt("p", 0),
                             weatherCode = h.optInt("c", 0),
+                            temperature = h.optDouble("T", Double.NaN),
+                            isDay = if (h.has("d")) h.optInt("d") == 1 else null,
                         )
                     }
                 } ?: emptyList(),
+                utcOffsetSeconds = if (o.has("utcOffset")) o.optInt("utcOffset") else null,
             )
         } catch (e: Exception) {
             null
@@ -228,6 +231,7 @@ object WidgetPrefs {
             if (weather.currentPrecipitationProbability >= 0) put("currentPop", weather.currentPrecipitationProbability)
             if (weather.maxNext6hPop >= 0) put("next6hPop", weather.maxNext6hPop)
             if (weather.usAqi >= 0) put("aqi", weather.usAqi)
+            weather.utcOffsetSeconds?.let { put("utcOffset", it) }
             put("daily", dailyArr)
             // Short keys: this blob is rewritten on every refresh, per widget,
             // and 120 hourly entries would otherwise dwarf everything else in it.
@@ -237,6 +241,8 @@ object WidgetPrefs {
                         put("t", h.time)
                         put("p", h.precipitationProbability)
                         put("c", h.weatherCode)
+                        if (!h.temperature.isNaN()) put("T", h.temperature)
+                        h.isDay?.let { put("d", if (it) 1 else 0) }
                     })
                 }
             })
@@ -274,6 +280,9 @@ object CapacitorStorage {
     private const val BRIEF_ENABLED_KEY = "settings:brief-enabled"
     private const val BRIEF_HOUR_KEY = "settings:brief-hour"
     private const val TONE_KEY = "settings:tone"
+    private const val LANG_KEY = "settings:lang"
+    private const val EVENING_ENABLED_KEY = "settings:evening-enabled"
+    private const val EVENING_HOUR_KEY = "settings:evening-hour"
 
     fun lastAppCity(context: Context): WidgetCity? {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -323,6 +332,19 @@ object CapacitorStorage {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         return Tone.fromStorage(prefs.getString(TONE_KEY, null))
     }
+
+    /** App-wide language (see [Lang]); unset follows the device. */
+    fun lang(context: Context): Lang {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return Lang.fromStorage(prefs.getString(LANG_KEY, null))
+    }
+
+    /** Evening preview of tomorrow (see [EveningPreview]). Off by default:
+     * a new notification nobody asked for yet. */
+    fun eveningEnabled(context: Context): Boolean = getBool(context, EVENING_ENABLED_KEY, false)
+
+    /** Local hour (0-23) the evening preview goes out from, default 20. */
+    fun eveningHour(context: Context): Int = getDouble(context, EVENING_HOUR_KEY, 20.0).toInt().coerceIn(0, 23)
 }
 
 /**

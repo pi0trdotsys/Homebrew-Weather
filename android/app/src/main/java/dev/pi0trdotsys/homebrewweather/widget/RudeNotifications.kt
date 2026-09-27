@@ -4,12 +4,12 @@ import kotlin.random.Random
 
 /**
  * Push-notification copy in the app's already-established "sigma" voice (see
- * src/lib/sigma-jokes.ts / SigmaJokes.kt — same tone, same audience: this is
+ * SigmaJokes.kt — same tone, same audience: this is
  * the user's own personal app, mocking themselves, not anyone else). The
  * default English notification strings ("heat's no joke today") read as
  * generic weather-app copy; these are deliberately rude/bad-boy/mocking
  * instead, per an explicit request to make alerts "chamskie, bad-boyowe,
- * złośliwe" — Polish, mildly-to-moderately vulgar, matching sigma-jokes.ts's
+ * złośliwe" — Polish, mildly-to-moderately vulgar, matching SigmaJokes.kt's
  * existing register (kurwa/chuj-family words, "sigma vs beta" mockery), not
  * hate speech or slurs and never aimed at a real person.
  *
@@ -42,8 +42,8 @@ object RudeNotifications {
         "%s: burza szaleje, nie graj bohatera i wracaj do domu",
     )
 
-    fun rain(city: String, isThunder: Boolean, seed: Int = randomSeed()): String {
-        val template = pick(if (isThunder) THUNDER else RAIN, seed)
+    fun rain(city: String, isThunder: Boolean, seed: Int = randomSeed(), lang: Lang = Lang.PL): String {
+        val template = pick(rainPool(isThunder, lang), seed)
         return String.format(template, city)
     }
 
@@ -53,8 +53,15 @@ object RudeNotifications {
      * The fact goes first in every tone — it's what you need to read at a
      * glance on the lock screen — and the attitude comes after it.
      */
-    fun rainTail(isThunder: Boolean, seed: Int = randomSeed()): String =
-        pick(if (isThunder) THUNDER else RAIN, seed).removePrefix("%s: ")
+    fun rainTail(isThunder: Boolean, seed: Int = randomSeed(), lang: Lang = Lang.PL): String =
+        pick(rainPool(isThunder, lang), seed).removePrefix("%s: ")
+
+    private fun rainPool(isThunder: Boolean, lang: Lang) = when {
+        lang == Lang.EN && isThunder -> EN_THUNDER
+        lang == Lang.EN -> EN_RAIN
+        isThunder -> THUNDER
+        else -> RAIN
+    }
 
     // ---------------------------------------------------------------------
     // Morning brief closing line
@@ -70,7 +77,8 @@ object RudeNotifications {
         "prognoza jest, plan dnia jakoś nie bardzo",
     )
 
-    fun briefTail(seed: Int = randomSeed()): String = pick(BRIEF_TAIL, seed)
+    fun briefTail(seed: Int = randomSeed(), lang: Lang = Lang.PL): String =
+        pick(if (lang == Lang.EN) EN_BRIEF_TAIL else BRIEF_TAIL, seed)
 
     // ---------------------------------------------------------------------
     // High temperature
@@ -83,8 +91,8 @@ object RudeNotifications {
         "%s: upał, %d°C, ogarnij się zanim padniesz jak ofiara",
     )
 
-    fun highTemp(city: String, tempC: Int, seed: Int = randomSeed()): String =
-        String.format(pick(HIGH, seed), city, tempC)
+    fun highTemp(city: String, tempC: Int, seed: Int = randomSeed(), lang: Lang = Lang.PL): String =
+        String.format(pick(if (lang == Lang.EN) EN_HIGH else HIGH, seed), city, tempC)
 
     // ---------------------------------------------------------------------
     // Low temperature
@@ -97,8 +105,8 @@ object RudeNotifications {
         "%s: %d°C, zimno jak twój Discord status, weź czapkę",
     )
 
-    fun lowTemp(city: String, tempC: Int, seed: Int = randomSeed()): String =
-        String.format(pick(LOW, seed), city, tempC)
+    fun lowTemp(city: String, tempC: Int, seed: Int = randomSeed(), lang: Lang = Lang.PL): String =
+        String.format(pick(if (lang == Lang.EN) EN_LOW else LOW, seed), city, tempC)
 
     // ---------------------------------------------------------------------
     // Big day-to-day temperature swing
@@ -114,8 +122,22 @@ object RudeNotifications {
         "%s: robi się zimno, %d° -> %d° jutro, nie graj twardziela bez kurtki",
     )
 
-    fun swing(city: String, todayMax: Int, tomorrowMax: Int, warming: Boolean, seed: Int = randomSeed()): String =
-        String.format(pick(if (warming) SWING_UP else SWING_DOWN, seed), city, todayMax, tomorrowMax)
+    fun swing(
+        city: String,
+        todayMax: Int,
+        tomorrowMax: Int,
+        warming: Boolean,
+        seed: Int = randomSeed(),
+        lang: Lang = Lang.PL,
+    ): String {
+        val pool = when {
+            lang == Lang.EN && warming -> EN_SWING_UP
+            lang == Lang.EN -> EN_SWING_DOWN
+            warming -> SWING_UP
+            else -> SWING_DOWN
+        }
+        return String.format(pick(pool, seed), city, todayMax, tomorrowMax)
+    }
 
     // ---------------------------------------------------------------------
     // Air quality
@@ -127,6 +149,51 @@ object RudeNotifications {
         "%s: powietrze do dupy, AQI %d, maska albo zostań w domu jak sigma",
     )
 
-    fun aqi(city: String, aqiValue: Int, label: String, seed: Int = randomSeed()): String =
-        String.format(pick(AQI, seed), city, aqiValue, label)
+    fun aqi(city: String, aqiValue: Int, label: String, seed: Int = randomSeed(), lang: Lang = Lang.PL): String =
+        String.format(pick(if (lang == Lang.EN) EN_AQI else AQI, seed), city, aqiValue, label)
+
+    // ---------------------------------------------------------------------
+    // English (Lang.EN): the same register, in English slang.
+    // ---------------------------------------------------------------------
+    private val EN_RAIN = listOf(
+        "%s: pouring like hell, grab a jacket and stop whining",
+        "%s: rain again, damn it. dress like an adult",
+        "%s: it's raining. jacket or get soaked like a clown",
+        "%s: coming down hard, sort yourself out before going out",
+    )
+    private val EN_THUNDER = listOf(
+        "%s: thunderstorm, don't stand under a tree like an idiot",
+        "%s: thunder louder than your ego, get inside",
+        "%s: lightning, damn it, close the windows and get a grip",
+    )
+    private val EN_BRIEF_TAIL = listOf(
+        "you've got the forecast, no excuses",
+        "read it? now move your ass",
+        "coffee, pants, out the door. in that order",
+        "the day won't live itself, get going",
+        "that's the forecast. the rest is your excuses",
+    )
+    private val EN_HIGH = listOf(
+        "%s: %d°C, stop lazing around and drink some water",
+        "%s: %d°C, your brain's cooking like your life plans",
+        "%s: hot as hell, %d°C, don't be a wimp, hydrate",
+    )
+    private val EN_LOW = listOf(
+        "%s: %d°C, freezing like your dating chances, dress up",
+        "%s: damn cold, %d°C, jacket or stop complaining",
+        "%s: %d°C, cold as your heart, go out anyway",
+    )
+    private val EN_SWING_UP = listOf(
+        "%s: jumping from %d° to %d° tomorrow, sort your clothes out",
+        "%s: %d° -> %d° tomorrow, weather changes faster than your moods",
+    )
+    private val EN_SWING_DOWN = listOf(
+        "%s: dropping from %d° to %d° tomorrow, dress up or freeze",
+        "%s: %d° -> %d° tomorrow, don't play tough without a jacket",
+    )
+    private val EN_AQI = listOf(
+        "%s: AQI %d (%s), air worse than your decisions, stay in",
+        "%s: smog as hell, AQI %d, don't jog out there like a fool",
+        "%s: AQI %d (%s), you're breathing garbage, train indoors",
+    )
 }

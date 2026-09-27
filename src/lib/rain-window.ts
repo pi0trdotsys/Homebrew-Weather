@@ -17,6 +17,7 @@
 // rain as if it were today's.
 import type { WeatherResponse } from "./weather-api";
 import { wmoToKind } from "./wmo";
+import type { Strings } from "./i18n";
 
 export const LIKELY_POP = 50;
 
@@ -142,36 +143,58 @@ export function remainingTodayPop(data: WeatherResponse): number | null {
   if (now < 0) return null;
   const today = dateOf(time[now]);
   let max = 0;
-  for (let i = now; i < time.length && dateOf(time[i]) === today; i++) max = Math.max(max, pops[i] ?? 0);
+  for (let i = now; i < time.length && dateOf(time[i]) === today; i++)
+    max = Math.max(max, pops[i] ?? 0);
   return max;
 }
-
-const NOUN: Record<RainKind, string> = { rain: "rain", snow: "snow", thunder: "thunderstorm" };
-const ONGOING: Record<RainKind, string> = {
-  rain: "raining",
-  snow: "snowing",
-  thunder: "storming",
-};
 
 /** An end at midnight reads "24:00" rather than "00:00". */
 const endClock = (c: string) => (c === "00:00" ? "24:00" : c);
 
-/** Full-sentence form for the dashboard hero. */
-export function describeRainWindow(w: RainWindow): string {
-  const noun = NOUN[w.kind];
+/** Full-sentence form for the dashboard hero, in the app's language. */
+export function describeRainWindow(w: RainWindow, t: Strings): string {
+  const noun = t.rainNoun[w.kind];
+  const verb = t.rainOngoing[w.kind];
   const end = w.end && endClock(w.end);
-  if (w.ongoing) {
-    return end ? `${ONGOING[w.kind]}, easing off around ${end}` : `${ONGOING[w.kind]}, no end in sight`;
-  }
-  if (w.startsInHours === 0) {
-    return end ? `${noun} within the hour, until about ${end}` : `${noun} within the hour`;
-  }
-  return end ? `${noun} from ${w.start} until about ${end}` : `${noun} from ${w.start}`;
+  if (w.ongoing) return end ? t.rainEasing(verb, end) : t.rainNoEnd(verb);
+  if (w.startsInHours === 0) return end ? t.rainWithinHourUntil(noun, end) : t.rainWithinHour(noun);
+  return end ? t.rainFromUntil(noun, w.start, end) : t.rainFrom(noun, w.start);
 }
 
 /** Short form for a forecast row: "rain 08:00–19:00", "rain 08:00–10:00, again later". */
-export function describeDayRainWindow(w: DayRainWindow): string {
-  const noun = NOUN[w.kind];
-  if (!w.end) return `${noun} from ${w.start}`;
-  return `${noun} ${w.start}–${w.end}` + (w.moreLater ? ", again later" : "");
+export function describeDayRainWindow(w: DayRainWindow, t: Strings): string {
+  const noun = t.rainNoun[w.kind];
+  if (!w.end) return t.rainFrom(noun, w.start);
+  return t.rainRange(noun, w.start, w.end) + (w.moreLater ? t.againLater : "");
+}
+
+/** A run of likely-wet hours inside a slice of the hourly forecast. */
+export type RainRun = { from: number; to: number; kind: RainKind; maxPop: number };
+
+/**
+ * Runs of likely rain among the hourly indices [idx], for the hourly strip:
+ * one band over each run instead of a percentage under every hour. Same
+ * "likely" bar as every other rain rule here.
+ */
+export function rainRuns(data: WeatherResponse, idx: number[]): RainRun[] {
+  const { precipitation_probability: pops, weather_code: codes } = data.hourly;
+  const runs: RainRun[] = [];
+  let start = -1;
+  const close = (endPos: number) => {
+    const span = idx.slice(start, endPos);
+    runs.push({
+      from: start,
+      to: endPos,
+      kind: severest(span.map((i) => codes[i])),
+      maxPop: Math.max(...span.map((i) => pops[i] ?? 0)),
+    });
+    start = -1;
+  };
+  idx.forEach((i, pos) => {
+    const wet = (pops[i] ?? 0) >= LIKELY_POP;
+    if (wet && start < 0) start = pos;
+    if (!wet && start >= 0) close(pos);
+  });
+  if (start >= 0) close(idx.length);
+  return runs;
 }

@@ -15,6 +15,9 @@
          anything else in the app so they get their own entries here. -->
     <color name="widget_amber_dim">#806000</color>
     <color name="widget_cyan_dim">#2a6666</color>
+    <!-- Per-day rain row: snow gets its own colour, distinct from rain (cyan)
+         and storms (amber). -->
+    <color name="widget_snow">#dfefff</color>
     <color name="widget_crimson">#ff5555</color>
     <color name="widget_crimson_dim">#703030</color>
 

@@ -113,7 +113,6 @@ class WeatherWidgetProvider : AppWidgetProvider() {
         var debugForceOfflineCache: Boolean = false
 
         private val bgExecutor = Executors.newCachedThreadPool()
-        private val DOW = arrayOf("nd", "pn", "wt", "śr", "cz", "pt", "sb")
 
         // Sizes are no longer constants here. Every dp/sp the widget draws is
         // derived from the footprint the host granted this instance — see
@@ -134,7 +133,7 @@ class WeatherWidgetProvider : AppWidgetProvider() {
                 val spinner = RemoteViews(context.packageName, R.layout.weather_widget)
                 spinner.setViewVisibility(R.id.widget_refresh_spinner, View.VISIBLE)
                 spinner.setViewVisibility(R.id.widget_status_banner, View.VISIBLE)
-                spinner.setTextViewText(R.id.widget_status_banner, "⟳ refreshing…")
+                spinner.setTextViewText(R.id.widget_status_banner, CapacitorStorage.lang(context).texts.refreshing)
                 spinner.setTextColor(R.id.widget_status_banner, context.getColor(R.color.widget_cyan))
                 appWidgetManager.partiallyUpdateAppWidget(appWidgetId, spinner)
             } catch (e: Exception) {
@@ -169,9 +168,10 @@ class WeatherWidgetProvider : AppWidgetProvider() {
                 // every blink if this used a different ladder. The ladder now
                 // depends on which rows the content shows, so rebuild that
                 // content from the same cached forecast the last render wrote.
-                val weather = WidgetPrefs.getCachedWeather(context, id)
+                // Read against the real clock, like the full render does.
+                val weather = WidgetPrefs.getCachedWeather(context, id)?.rebasedTo(System.currentTimeMillis())
                 val content = weather?.let {
-                    WidgetContent.build(it, WidgetPrefs.getDensity(context, id), offline = false)
+                    WidgetContent.build(it, WidgetPrefs.getDensity(context, id), offline = false, texts = CapacitorStorage.lang(context).texts)
                 }
                 val rows = content?.rows() ?: WidgetMetrics.Rows.ALL
                 val m = WidgetSize.resolve(context, id).metrics(rows)
@@ -300,11 +300,7 @@ class WeatherWidgetProvider : AppWidgetProvider() {
          * [aqiComfortPenalty] and reused verbatim by [WeatherNotifier], neither
          * of which has a width problem.
          */
-        private fun aqiShortLabel(aqi: Int): String = when (val label = aqiLabelAndColor(aqi).first) {
-            "unhealthy (sensitive)" -> "sensitive"
-            "very unhealthy" -> "very bad"
-            else -> label
-        }
+        private fun aqiShortLabel(aqi: Int, texts: Texts): String = texts.aqiShort(aqi)
 
         /** AQI penalty term of [computeComfortScore], keyed off the exact same
          * category labels [aqiLabelAndColor] already returns for the AQI line —
@@ -379,14 +375,14 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
         }
 
-        private fun dowAbbrev(isoDate: String): String {
+        private fun dowAbbrev(isoDate: String, texts: Texts): String {
             return try {
                 val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.US)
                 val date = sdf.parse(isoDate) ?: return "?"
                 val cal = Calendar.getInstance()
                 cal.time = date
-                // Calendar.DAY_OF_WEEK: Sunday=1 .. Saturday=7, matches DOW[0..6] order (nd..sb)
-                DOW[cal.get(Calendar.DAY_OF_WEEK) - 1]
+                // Calendar.DAY_OF_WEEK: Sunday=1 .. Saturday=7; Texts.dow counts from Sunday = 0.
+                texts.dow(cal.get(Calendar.DAY_OF_WEEK) - 1)
             } catch (e: Exception) {
                 "?"
             }
@@ -458,6 +454,16 @@ class WeatherWidgetProvider : AppWidgetProvider() {
         private val TEMP_IDS = intArrayOf(R.id.widget_temp0, R.id.widget_temp1, R.id.widget_temp2, R.id.widget_temp3)
         private val POP_IDS = intArrayOf(R.id.widget_pop0, R.id.widget_pop1, R.id.widget_pop2, R.id.widget_pop3)
         private val BAR_IDS = intArrayOf(R.id.widget_bar0, R.id.widget_bar1, R.id.widget_bar2, R.id.widget_bar3)
+        private val COL_IDS = intArrayOf(R.id.widget_col0, R.id.widget_col1, R.id.widget_col2, R.id.widget_col3)
+
+        /** A storm has to stand out from plain rain at a glance; a chance
+         * (no likely window) stays quiet. */
+        private fun popColorRes(style: WidgetContent.PopStyle): Int = when (style) {
+            WidgetContent.PopStyle.THUNDER -> R.color.widget_amber
+            WidgetContent.PopStyle.SNOW -> R.color.widget_snow
+            WidgetContent.PopStyle.RAIN -> R.color.widget_cyan
+            WidgetContent.PopStyle.CHANCE, WidgetContent.PopStyle.NONE -> R.color.widget_cyan_dim
+        }
 
         /** Rows the "no city yet" / "offline, nothing cached" placeholder states
          * draw: the header and a one-line message in the footer slot. */
@@ -526,7 +532,6 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             for (i in 0 until 4) {
                 sp(rv, DAY_LABEL_IDS[i], m.dayLabelSp)
                 sp(rv, TEMP_IDS[i], m.dayTempSp)
-                sp(rv, POP_IDS[i], m.dayPopSp)
             }
 
             sp(rv, R.id.widget_meta_line, m.metaSp)
@@ -563,6 +568,7 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             // replays its actions in order, so the later sizes and visibilities
             // are the ones that stick.
             val size = WidgetSize.resolve(context, appWidgetId)
+            val texts = CapacitorStorage.lang(context).texts
             val rv = RemoteViews(context.packageName, R.layout.weather_widget)
             applyMetrics(context, rv, size.metrics(PLACEHOLDER_ROWS))
             val pendingFlags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
@@ -636,8 +642,8 @@ class WeatherWidgetProvider : AppWidgetProvider() {
 
             val storedCity = WidgetPrefs.getCity(context, appWidgetId)
             if (storedCity == null) {
-                rv.setTextViewText(R.id.widget_header_label, "┌─ set city ─┐")
-                rv.setTextViewText(R.id.widget_footer_joke, "> tap [city] to configure")
+                rv.setTextViewText(R.id.widget_header_label, texts.setCityHeader)
+                rv.setTextViewText(R.id.widget_footer_joke, texts.tapToConfigure)
                 rv.setViewVisibility(R.id.widget_aqi_line, View.GONE)
                 rv.setViewVisibility(R.id.widget_refresh_spinner, View.GONE)
                 rv.setViewVisibility(R.id.widget_status_banner, View.GONE)
@@ -682,10 +688,10 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             }
 
             if (weather == null) {
-                rv.setTextViewText(R.id.widget_footer_joke, "> offline — no cached data yet")
+                rv.setTextViewText(R.id.widget_footer_joke, texts.offlineNoCacheFooter)
                 rv.setViewVisibility(R.id.widget_aqi_line, View.GONE)
                 rv.setViewVisibility(R.id.widget_refresh_spinner, View.GONE)
-                rv.setTextViewText(R.id.widget_status_banner, "offline · no cached data yet")
+                rv.setTextViewText(R.id.widget_status_banner, texts.bannerOfflineNoCache)
                 rv.setTextColor(R.id.widget_status_banner, context.getColor(R.color.widget_offline))
                 rv.setViewVisibility(R.id.widget_status_banner, View.VISIBLE)
                 return rv
@@ -695,12 +701,12 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             val dimmed = !online || !isFresh
             when {
                 !online -> {
-                    rv.setTextViewText(R.id.widget_status_banner, "offline · serving cached snapshot")
+                    rv.setTextViewText(R.id.widget_status_banner, texts.bannerOfflineCached)
                     rv.setTextColor(R.id.widget_status_banner, context.getColor(R.color.widget_offline))
                     rv.setViewVisibility(R.id.widget_status_banner, View.VISIBLE)
                 }
                 !isFresh -> {
-                    rv.setTextViewText(R.id.widget_status_banner, "stale · retrying")
+                    rv.setTextViewText(R.id.widget_status_banner, texts.bannerStale)
                     rv.setTextColor(R.id.widget_status_banner, context.getColor(R.color.widget_amber))
                     rv.setViewVisibility(R.id.widget_status_banner, View.VISIBLE)
                 }
@@ -737,6 +743,12 @@ class WeatherWidgetProvider : AppWidgetProvider() {
                 WidgetPrefs.setCachedWeather(context, appWidgetId, weather)
             }
 
+            // Everything below reads "now" and "today" off the forecast, so a
+            // cached one (offline, or a failed refresh) is first moved to the
+            // real current hour — see WeatherData.rebasedTo. A fresh fetch
+            // comes back unchanged. The cache above keeps the raw fetch.
+            weather = weather.rebasedTo(System.currentTimeMillis())
+
             // Now that real weather data (including this refresh's best-effort AQI)
             // is available, resolve WidgetTheme.AUTO_HEALTH's actual color — this
             // overwrites the green fallback [applyThemeColors] call applied above,
@@ -751,7 +763,7 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             // see WidgetContent for the "show the exceptions" rules and
             // WidgetMetrics.Rows for why sizing has to follow content now.
             val density = WidgetPrefs.getDensity(context, appWidgetId)
-            val content = WidgetContent.build(weather, density, offline = !online)
+            val content = WidgetContent.build(weather, density, offline = !online, texts = texts)
             val metrics = size.metrics(content.rows())
             applyMetrics(context, rv, metrics)
 
@@ -775,10 +787,17 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             val globalMax = days.mapNotNull { it.tempMax.takeIf { t -> !t.isNaN() } }.maxOrNull() ?: 0.0
             val barWidthPx = dpToPx(context, metrics.colWidthDp.toInt() - 8)
             val barHeightPx = dpToPx(context, metrics.barHeightDp)
+            // The rain row's bitmaps: the row's exact height, and the column's
+            // width less a couple of dp so a full-width glyph run never touches
+            // the dividers.
+            val popHeightPx = Math.round(metrics.popRowDp * context.resources.displayMetrics.density)
+            val popWidthPx = dpToPx(context, (metrics.colWidthDp - 4f).toInt().coerceAtLeast(8))
+            // One scale for all four columns (see PixelFont.fitRow).
+            val (popRow, popScale) = PixelFont.fitRow(content.dayPop, popWidthPx, popHeightPx)
 
             for (i in 0 until 4) {
                 val entry = days.getOrNull(i) ?: continue
-                val dayLabel = if (i == 0) content.firstDayLabel else dowAbbrev(entry.date)
+                val dayLabel = if (i == 0) content.firstDayLabel else dowAbbrev(entry.date, texts)
                 val kind = Wmo.wmoToKind(entry.weatherCode)
                 rv.setTextViewText(DAY_LABEL_IDS[i], dayLabel)
                 rv.setImageViewBitmap(ICON_IDS[i], WidgetGraphics.icon(context, kind, iconPx, frame))
@@ -789,8 +808,34 @@ class WeatherWidgetProvider : AppWidgetProvider() {
                 )
                 // Blank rather than hidden for a day below the threshold: the
                 // row exists because *some* day merits a figure, and the four
-                // columns have to stay aligned with each other.
-                rv.setTextViewText(POP_IDS[i], content.dayPop[i].ifEmpty { " " })
+                // columns have to stay aligned with each other — PixelFont
+                // renders a blank as a spacer of the row's full height.
+                rv.setImageViewBitmap(
+                    POP_IDS[i],
+                    WidgetGraphics.sized(
+                        context,
+                        PixelFont.render(
+                            popRow[i],
+                            context.getColor(popColorRes(content.dayPopStyle[i])),
+                            scale = popScale,
+                            heightPx = popHeightPx,
+                        ),
+                    ),
+                )
+
+                // Tapping a day opens the app on that day's hours (see
+                // MainActivity.EXTRA_DAY and the day panel in the web app).
+                val dayIntent = Intent(context, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    putExtra(MainActivity.EXTRA_CITY_LAT, city.lat)
+                    putExtra(MainActivity.EXTRA_CITY_LON, city.lon)
+                    putExtra(MainActivity.EXTRA_CITY_NAME, city.name)
+                    putExtra(MainActivity.EXTRA_DAY, entry.date)
+                }
+                rv.setOnClickPendingIntent(
+                    COL_IDS[i],
+                    PendingIntent.getActivity(context, appWidgetId * 10 + 3 + i, dayIntent, pendingFlags),
+                )
 
                 if (metrics.showBars) {
                     rv.setImageViewBitmap(
@@ -846,7 +891,7 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             val aqi = content.aqi
             if (aqi != null && metrics.showAqi) {
                 val colorRes = aqiLabelAndColor(aqi).second
-                val text = "AQI $aqi · ${aqiShortLabel(aqi)}"
+                val text = "AQI $aqi · ${aqiShortLabel(aqi, texts)}"
                 val span = SpannableString(text)
                 span.setSpan(ForegroundColorSpan(context.getColor(colorRes)), 0, text.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
                 rv.setTextViewText(R.id.widget_aqi_line, span)
@@ -859,11 +904,8 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             // Seed by current hour so the joke is stable within a refresh cycle but
             // varies across refreshes/hours, matching pickSigma()'s intent.
             val seed = (System.currentTimeMillis() / (60 * 60 * 1000L)).toInt()
-            // Footer voice follows the app-wide tone (see Tone).
-            val joke = when (CapacitorStorage.tone(context)) {
-                Tone.CLEAN -> CleanJokes.pick(kind0, isNight, seed)
-                Tone.SIGMA, Tone.RUDE -> SigmaJokes.pick(kind0, isNight, seed)
-            }
+            // Footer voice follows the app-wide tone (see Tone) and language.
+            val joke = Jokes.pick(CapacitorStorage.tone(context), texts.lang, kind0, isNight, seed)
             rv.setTextViewText(R.id.widget_footer_joke, "> $joke")
 
             return rv

@@ -63,6 +63,8 @@ object RainWindow {
         val end: String?,
         /** Precipitation is observed right now, not just forecast. */
         val ongoing: Boolean,
+        /** Hours from now until the first dry hour, or null if the data runs out first. */
+        val endsInHours: Int? = null,
     )
 
     /** One day's rain, for that day's grid column: hours of the day, 0..24. */
@@ -73,6 +75,9 @@ object RainWindow {
         val endHour: Int?,
         /** More wet hours later the same day, after this run has ended. */
         val moreLater: Boolean,
+        /** Most severe precipitation in the run, so the grid can colour a
+         * storm differently from plain rain. */
+        val kind: Kind = Kind.RAIN,
     )
 
     /** First window starting within [START_HORIZON_HOURS] of now, today or not. */
@@ -112,15 +117,15 @@ object RainWindow {
             else -> null
         }
         val moreLater = (end until day.size).any { day[it].precipitationProbability >= LIKELY_POP }
-        return DayWindow(hourOf(day[first].time), endHour, moreLater)
+        return DayWindow(hourOf(day[first].time), endHour, moreLater, severest(day.subList(first, end).map { it.weatherCode }))
     }
 
     /**
      * Grid form, a few cells wide: "8–18", "8–10+" (it comes back later that
-     * day), "od 20" (the data ends while it's still wet).
+     * day), "od 20" / "from 20" (the data ends while it's still wet).
      */
-    fun dayShort(d: DayWindow): String = when (d.endHour) {
-        null -> "od ${d.startHour}"
+    fun dayShort(d: DayWindow, texts: Texts = PlTexts): String = when (d.endHour) {
+        null -> texts.dayOpen(d.startHour)
         else -> "${d.startHour}–${d.endHour}" + if (d.moreLater) "+" else ""
     }
 
@@ -142,19 +147,21 @@ object RainWindow {
 
         val span = hourly.subList(startIdx, endIdx)
         val codes = span.map { it.weatherCode } + if (startIdx == 0 && nowIsWet) listOf(currentWeatherCode) else emptyList()
-        val kind = when {
-            codes.any { Wmo.wmoToKind(it) == "thunder" } -> Kind.THUNDER
-            codes.any { Wmo.wmoToKind(it) == "snow" } -> Kind.SNOW
-            else -> Kind.RAIN
-        }
 
         return Window(
-            kind = kind,
+            kind = severest(codes),
             startsInHours = startIdx,
             start = clock(hourly[startIdx].time),
             end = hourly.getOrNull(endIdx)?.let { clock(it.time) },
             ongoing = startIdx == 0 && nowIsWet,
+            endsInHours = if (endIdx < hourly.size) endIdx else null,
         )
+    }
+
+    private fun severest(codes: List<Int>): Kind = when {
+        codes.any { Wmo.wmoToKind(it) == "thunder" } -> Kind.THUNDER
+        codes.any { Wmo.wmoToKind(it) == "snow" } -> Kind.SNOW
+        else -> Kind.RAIN
     }
 
     /**
@@ -166,47 +173,15 @@ object RainWindow {
      * Whole hours, like the grid: every boundary is on the hour anyway, so
      * ":00" was two cells of nothing, which the solver now spends on type size.
      */
-    fun short(w: Window): String {
-        val noun = noun(w.kind)
-        val start = hourOf(w.start)
-        val end = w.end?.let { endHourLabel(it) }
-        return when {
-            w.ongoing && end != null -> "${ongoingVerb(w.kind)} do ~$end"
-            w.ongoing -> "${ongoingVerb(w.kind)} na dłużej"
-            w.startsInHours == 0 && end != null -> "$noun wkrótce, do ~$end"
-            w.startsInHours == 0 -> "$noun wkrótce"
-            end != null -> "$noun $start–$end"
-            else -> "$noun od $start"
-        }
-    }
+    fun short(w: Window, texts: Texts = PlTexts): String =
+        texts.rainShort(w.kind, w.ongoing, w.startsInHours == 0, hourOf(w.start), w.end?.let { endHourLabel(it) })
 
     /**
-     * Full-sentence form for the app's hero and for notifications, where
-     * there's room to say it the way a person would.
+     * Full-sentence form for notifications, where there's room to say it the
+     * way a person would.
      */
-    fun long(w: Window): String {
-        val noun = noun(w.kind)
-        return when {
-            w.ongoing && w.end != null -> "${ongoingVerb(w.kind)}, przestanie ok. ${w.end}"
-            w.ongoing -> "${ongoingVerb(w.kind)} i nie zanosi się na koniec"
-            w.startsInHours == 0 && w.end != null -> "$noun w ciągu godziny, do ok. ${w.end}"
-            w.startsInHours == 0 -> "$noun w ciągu godziny"
-            w.end != null -> "$noun od ${w.start} do ok. ${w.end}"
-            else -> "$noun od ${w.start}"
-        }
-    }
-
-    private fun noun(kind: Kind) = when (kind) {
-        Kind.RAIN -> "deszcz"
-        Kind.SNOW -> "śnieg"
-        Kind.THUNDER -> "burza"
-    }
-
-    private fun ongoingVerb(kind: Kind) = when (kind) {
-        Kind.RAIN -> "pada"
-        Kind.SNOW -> "sypie"
-        Kind.THUNDER -> "grzmi"
-    }
+    fun long(w: Window, texts: Texts = PlTexts): String =
+        texts.rainLong(w.kind, w.ongoing, w.startsInHours == 0, w.start, w.end)
 
     private fun isPrecip(code: Int): Boolean =
         Wmo.wmoToKind(code).let { it == "rain" || it == "snow" || it == "thunder" }

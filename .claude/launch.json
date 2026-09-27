@@ -10,7 +10,7 @@
     {
       "name": "dev-bunx",
       "runtimeExecutable": "bun",
-      "runtimeArgs": ["x", "vite", "dev", "--port", "5173", "--strictPort"],
+      "runtimeArgs": ["run", "dev:bun"],
       "port": 5173
     }
   ]

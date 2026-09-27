@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   loadRefreshInterval,
   saveRefreshInterval,
@@ -13,11 +13,29 @@ import {
   type NotificationSettings,
   type Tone,
 } from "@/lib/settings";
+import { useI18n, type Lang } from "@/lib/i18n";
+import {
+  ensureNotificationPermission,
+  isNative,
+  refreshWidgets,
+  sendTestNotifications,
+} from "@/lib/native";
 
-const TONES: Array<{ id: Tone; label: string; hint: string }> = [
-  { id: "clean", label: "clean", hint: "wry but polite footer, plain notifications" },
-  { id: "sigma", label: "sigma", hint: "sigma footer, plain notifications" },
-  { id: "rude", label: "rude", hint: "sigma footer, deliberately crude notifications" },
+const TONES: Tone[] = ["clean", "sigma", "rude"];
+const LANGS: Array<{ id: Lang; label: string }> = [
+  { id: "pl", label: "polski" },
+  { id: "en", label: "english" },
+];
+
+/** Settings keys that turn a notification on — enabling one asks for permission. */
+const NOTIFYING: Array<keyof NotificationSettings> = [
+  "rainEnabled",
+  "briefEnabled",
+  "eveningEnabled",
+  "highEnabled",
+  "lowEnabled",
+  "swingEnabled",
+  "aqiEnabled",
 ];
 
 export const Route = createFileRoute("/settings")({
@@ -26,7 +44,7 @@ export const Route = createFileRoute("/settings")({
       { title: "settings — Homebrew Weather" },
       {
         name: "description",
-        content: "Configure refresh interval and weather notifications.",
+        content: "Configure refresh interval, notifications, tone and language.",
       },
     ],
   }),
@@ -93,24 +111,73 @@ function ThresholdInput({
   );
 }
 
+function HourSelect({
+  label,
+  value,
+  hours,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  hours: number[];
+  disabled: boolean;
+  onChange: (h: number) => void;
+}) {
+  return (
+    <label className="flex items-center justify-between gap-3 border border-[color:var(--phosphor-dim)]/40 px-3 py-2 text-sm">
+      <span className={disabled ? "text-[color:var(--phosphor-dim)]" : ""}>{label}</span>
+      <select
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="bg-transparent border border-[color:var(--phosphor-dim)] px-2 py-0.5 text-[color:var(--phosphor)] focus:outline-none focus:border-[color:var(--phosphor)] disabled:opacity-40"
+      >
+        {hours.map((h) => (
+          <option key={h} value={h}>
+            {String(h).padStart(2, "0")}:00
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function Settings() {
+  const { lang, t, setLang } = useI18n();
   const [interval, setInterval] = useState<RefreshInterval>(30);
   const [notif, setNotif] = useState<NotificationSettings>(DEFAULT_NOTIFICATION_SETTINGS);
   const [tone, setTone] = useState<Tone>(DEFAULT_TONE);
   const [loaded, setLoaded] = useState(false);
+  const [testState, setTestState] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([loadRefreshInterval(), loadNotificationSettings(), loadTone()]).then(([i, n, t]) => {
-      setInterval(i);
-      setNotif(n);
-      setTone(t);
-      setLoaded(true);
-    });
+    Promise.all([loadRefreshInterval(), loadNotificationSettings(), loadTone()]).then(
+      ([i, n, t]) => {
+        setInterval(i);
+        setNotif(n);
+        setTone(t);
+        setLoaded(true);
+      },
+    );
   }, []);
 
+  // Language and tone show on the home screen too, so widgets are re-rendered
+  // as soon as either changes rather than at their next scheduled refresh.
+  const firstRender = useRef(true);
   useEffect(() => {
-    if (loaded) saveTone(tone);
+    if (!loaded) return;
+    saveTone(tone).then(() => {
+      if (firstRender.current) firstRender.current = false;
+      else refreshWidgets();
+    });
   }, [tone, loaded]);
+
+  const changeLang = (l: Lang) => {
+    setLang(l);
+    // setLang saves asynchronously; give it a moment before widgets re-read it.
+    window.setTimeout(refreshWidgets, 300);
+  };
 
   useEffect(() => {
     if (loaded) saveRefreshInterval(interval);
@@ -120,7 +187,36 @@ function Settings() {
     if (loaded) saveNotificationSettings(notif);
   }, [notif, loaded]);
 
-  const patch = (p: Partial<NotificationSettings>) => setNotif((prev) => ({ ...prev, ...p }));
+  const patch = (p: Partial<NotificationSettings>) => {
+    setNotif((prev) => ({ ...prev, ...p }));
+    // Turning a notification on is the moment permission is obviously needed —
+    // previously it was only ever asked for when adding a widget.
+    const enabling = NOTIFYING.some((k) => p[k] === true);
+    if (enabling && isNative()) {
+      void ensureNotificationPermission().then((granted) => {
+        if (!granted) setTestState(t.testNoPermission);
+      });
+    }
+  };
+
+  const sendTest = async () => {
+    if (!isNative()) {
+      setTestState(t.testWebOnly);
+      return;
+    }
+    setTestState(t.testSending);
+    const granted = await ensureNotificationPermission();
+    if (!granted) {
+      setTestState(t.testNoPermission);
+      return;
+    }
+    try {
+      const r = await sendTestNotifications();
+      setTestState(r.granted ? t.testSent(r.sent) : t.testNoPermission);
+    } catch (e) {
+      setTestState(t.testFailed((e as Error).message));
+    }
+  };
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6">
@@ -135,10 +231,36 @@ function Settings() {
       <div className="terminal-box mt-6 space-y-4 p-5 text-sm">
         <div>
           <div className="mb-2 text-[color:var(--phosphor-dim)] uppercase tracking-widest">
-            REFRESH
+            {t.language}
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            {LANGS.map((l) => (
+              <button
+                key={l.id}
+                type="button"
+                onClick={() => changeLang(l.id)}
+                className={
+                  "border px-3 py-2 text-sm uppercase tracking-widest " +
+                  (lang === l.id
+                    ? "border-[color:var(--phosphor)] bg-[color:var(--phosphor)] text-black"
+                    : "border-[color:var(--phosphor-dim)]/40 hover:border-[color:var(--phosphor)]")
+                }
+              >
+                {l.label}
+              </button>
+            ))}
+          </div>
+          <p className="px-1 pt-2 text-[10px] uppercase tracking-widest text-[color:var(--phosphor-dim)]">
+            {t.languageHint}
+          </p>
+        </div>
+
+        <div>
+          <div className="mb-2 text-[color:var(--phosphor-dim)] uppercase tracking-widest">
+            {t.refresh}
           </div>
           <label className="flex items-center justify-between gap-3 border border-[color:var(--phosphor-dim)]/40 px-3 py-2">
-            <span>auto-refresh interval (app + home-screen widget)</span>
+            <span>{t.refreshLabel}</span>
             <select
               value={interval}
               onChange={(e) => setInterval(Number(e.target.value) as RefreshInterval)}
@@ -155,120 +277,132 @@ function Settings() {
 
         <div>
           <div className="mb-2 text-[color:var(--phosphor-dim)] uppercase tracking-widest">
-            NOTIFICATIONS
+            {t.notifications}
           </div>
           <div className="space-y-2">
             <Toggle
-              label="rain soon — a heads-up about an hour before it starts"
+              label={t.rainSoon}
               checked={notif.rainEnabled}
               onChange={(v) => patch({ rainEnabled: v })}
             />
             <Toggle
-              label="morning brief — one summary instead of separate alerts"
+              label={t.briefToggle}
               checked={notif.briefEnabled}
               onChange={(v) => patch({ briefEnabled: v })}
             />
-            <label className="flex items-center justify-between gap-3 border border-[color:var(--phosphor-dim)]/40 px-3 py-2 text-sm">
-              <span className={notif.briefEnabled ? "" : "text-[color:var(--phosphor-dim)]"}>
-                ↳ from
-              </span>
-              <select
-                value={notif.briefHour}
-                disabled={!notif.briefEnabled}
-                onChange={(e) => patch({ briefHour: Number(e.target.value) })}
-                className="bg-transparent border border-[color:var(--phosphor-dim)] px-2 py-0.5 text-[color:var(--phosphor)] focus:outline-none focus:border-[color:var(--phosphor)] disabled:opacity-40"
-              >
-                {[5, 6, 7, 8, 9, 10, 11].map((h) => (
-                  <option key={h} value={h}>
-                    {String(h).padStart(2, "0")}:00
-                  </option>
-                ))}
-              </select>
-            </label>
+            <HourSelect
+              label={t.from}
+              value={notif.briefHour}
+              hours={[5, 6, 7, 8, 9, 10, 11]}
+              disabled={!notif.briefEnabled}
+              onChange={(h) => patch({ briefHour: h })}
+            />
+            <Toggle
+              label={t.eveningToggle}
+              checked={notif.eveningEnabled}
+              onChange={(v) => patch({ eveningEnabled: v })}
+            />
+            <HourSelect
+              label={t.from}
+              value={notif.eveningHour}
+              hours={[17, 18, 19, 20, 21, 22]}
+              disabled={!notif.eveningEnabled}
+              onChange={(h) => patch({ eveningHour: h })}
+            />
             <p className="px-1 pt-1 text-[10px] uppercase tracking-widest text-[color:var(--phosphor-dim)]">
-              {notif.briefEnabled
-                ? "// the brief is on: the thresholds below decide what it mentions"
-                : "// the brief is off: each threshold below sends its own alert"}
+              {notif.briefEnabled ? t.briefOn : t.briefOff}
             </p>
             <Toggle
-              label="high temperature"
+              label={t.high}
               checked={notif.highEnabled}
               onChange={(v) => patch({ highEnabled: v })}
             />
             <ThresholdInput
-              label="↳ threshold"
+              label={t.threshold}
               value={notif.highThreshold}
               disabled={!notif.highEnabled}
               onChange={(v) => patch({ highThreshold: v })}
             />
             <Toggle
-              label="low temperature"
+              label={t.low}
               checked={notif.lowEnabled}
               onChange={(v) => patch({ lowEnabled: v })}
             />
             <ThresholdInput
-              label="↳ threshold"
+              label={t.threshold}
               value={notif.lowThreshold}
               disabled={!notif.lowEnabled}
               onChange={(v) => patch({ lowThreshold: v })}
             />
             <Toggle
-              label="big day-to-day swing"
+              label={t.swing}
               checked={notif.swingEnabled}
               onChange={(v) => patch({ swingEnabled: v })}
             />
             <ThresholdInput
-              label="↳ min. delta"
+              label={t.minDelta}
               value={notif.swingThreshold}
               disabled={!notif.swingEnabled}
               onChange={(v) => patch({ swingThreshold: v })}
             />
             <Toggle
-              label="air quality"
+              label={t.air}
               checked={notif.aqiEnabled}
               onChange={(v) => patch({ aqiEnabled: v })}
             />
             <ThresholdInput
-              label="↳ AQI threshold"
+              label={t.aqiThreshold}
               value={notif.aqiThreshold}
               disabled={!notif.aqiEnabled}
               onChange={(v) => patch({ aqiThreshold: v })}
               suffix="AQI"
             />
+            <button
+              type="button"
+              onClick={() => void sendTest()}
+              className="mt-1 w-full border border-[color:var(--phosphor)] px-3 py-2 text-xs uppercase tracking-widest hover:bg-[color:var(--phosphor)] hover:text-black"
+            >
+              {t.testNotifications}
+            </button>
+            {testState && (
+              <p className="px-1 text-[10px] uppercase tracking-widest text-[color:var(--amber)]">
+                {testState}
+              </p>
+            )}
           </div>
         </div>
 
         <div>
           <div className="mb-2 text-[color:var(--phosphor-dim)] uppercase tracking-widest">
-            TONE
+            {t.tone}
           </div>
           <div className="grid grid-cols-3 gap-2">
-            {TONES.map((t) => (
+            {TONES.map((id) => (
               <button
-                key={t.id}
+                key={id}
                 type="button"
-                onClick={() => setTone(t.id)}
+                onClick={() => setTone(id)}
                 className={
                   "border px-3 py-2 text-sm uppercase tracking-widest " +
-                  (tone === t.id
+                  (tone === id
                     ? "border-[color:var(--phosphor)] bg-[color:var(--phosphor)] text-black"
                     : "border-[color:var(--phosphor-dim)]/40 hover:border-[color:var(--phosphor)]")
                 }
               >
-                {t.label}
+                {id}
               </button>
             ))}
           </div>
           <p className="px-1 pt-2 text-[10px] uppercase tracking-widest text-[color:var(--phosphor-dim)]">
             {"// "}
-            {TONES.find((t) => t.id === tone)?.hint} · widget, notifications and this dashboard
+            {t.toneHints[tone]} · {t.toneApplies}
           </p>
         </div>
 
         <p className="text-[10px] uppercase tracking-widest text-[color:var(--phosphor-dim)]">
-          {"// on Android these are read directly by the home-screen widget's"}
+          {t.nativeNote1}
           <br />
-          {"// background worker — no need to open the app for alerts to fire."}
+          {t.nativeNote2}
         </p>
       </div>
     </div>

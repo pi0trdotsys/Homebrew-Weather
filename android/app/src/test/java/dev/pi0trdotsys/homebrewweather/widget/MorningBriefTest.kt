@@ -99,4 +99,65 @@ class MorningBriefTest {
         // A 6h interval could otherwise land at 06:30 and 12:30, both outside 07-10.
         assertTrue(MorningBrief.isDue(12, 7, alreadySentToday = false, refreshMinutes = 360))
     }
+
+    @Test
+    fun `english brief`() {
+        val b = MorningBrief.compose("Tolox", quiet, thresholds, { "good" }, null, EnTexts)!!
+        assertEquals("Tolox · today", b.title)
+        assertEquals("24°/14° · sunny", b.summary)
+    }
+
+    // --- evening preview of tomorrow -----------------------------------------
+
+    /** 21:00 on the 24th; tomorrow (25th) a storm 7-19. */
+    private val evening = quiet.copy(
+        daily = listOf(
+            WeatherApi.DailyEntry("2026-09-24", 3, 26.0, 22.0, 0),
+            WeatherApi.DailyEntry("2026-09-25", 95, 23.0, 20.0, 90),
+        ),
+        hourly = (21..48).map { h ->
+            val wet = h - 24 in 7..18
+            WeatherApi.HourlyEntry("2026-09-%02dT%02d:00".format(24 + h / 24, h % 24), if (wet) 80 else 0, if (wet) 95 else 3)
+        },
+    )
+
+    @Test
+    fun `evening preview names tomorrow and when it rains`() {
+        val p = EveningPreview.compose("Estepona", evening)!!
+        assertEquals("Estepona · jutro", p.title)
+        assertEquals("23°/20° · burza 7–19", p.summary)
+        val en = EveningPreview.compose("Estepona", evening, EnTexts)!!
+        assertEquals("Estepona · tomorrow", en.title)
+        assertEquals("23°/20° · storm 7–19", en.summary)
+    }
+
+    @Test
+    fun `evening preview of a dry day is its condition`() {
+        val dry = evening.copy(hourly = evening.hourly.map { it.copy(precipitationProbability = 0, weatherCode = 0) },
+            daily = listOf(evening.daily[0], evening.daily[1].copy(weatherCode = 1, precipitationProbabilityMax = 0)))
+        assertEquals("23°/20° · przejaśnienia", EveningPreview.compose("X", dry)!!.summary)
+    }
+
+    @Test
+    fun `evening preview is due in the evening window, never after midnight`() {
+        assertTrue(EveningPreview.isDue(20, 20, alreadySentToday = false))
+        assertFalse(EveningPreview.isDue(19, 20, alreadySentToday = false))
+        assertFalse("past midnight it would be about today", EveningPreview.isDue(0, 22, alreadySentToday = false))
+        assertFalse(EveningPreview.isDue(21, 20, alreadySentToday = true))
+    }
+
+    // --- rain stopping ---------------------------------------------------------
+
+    private fun ongoing(endsIn: Int?) = RainWindow.Window(RainWindow.Kind.RAIN, 0, "08:00", "16:00", ongoing = true, endsInHours = endsIn)
+
+    @Test
+    fun `rain stop is announced only after a real spell, just before it ends`() {
+        assertTrue(RainStop.isDue(ongoing(1), rainingForHours = 3))
+        assertFalse("a shower isn't worth it", RainStop.isDue(ongoing(1), rainingForHours = 1))
+        assertFalse("still hours to go", RainStop.isDue(ongoing(3), rainingForHours = 5))
+        assertFalse("no end in the data", RainStop.isDue(ongoing(null), rainingForHours = 5))
+        assertFalse("forecast rain isn't falling yet", RainStop.isDue(ongoing(1).copy(ongoing = false), rainingForHours = 5))
+        assertEquals("przestanie padać ok. 16:00", PlTexts.rainStop(RainWindow.Kind.RAIN, "16:00"))
+        assertEquals("rain stopping around 16:00", EnTexts.rainStop(RainWindow.Kind.RAIN, "16:00"))
+    }
 }

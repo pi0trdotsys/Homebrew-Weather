@@ -55,6 +55,32 @@ object NotifStatePrefs {
         prefs(context).edit().putString("brief_date_$appWidgetId", isoDate).apply()
     }
 
+    /** Date the evening preview of tomorrow last went out for this widget. */
+    fun lastEveningDate(context: Context, appWidgetId: Int): String? =
+        prefs(context).getString("evening_date_$appWidgetId", null)
+
+    fun setEveningDate(context: Context, appWidgetId: Int, isoDate: String) {
+        prefs(context).edit().putString("evening_date_$appWidgetId", isoDate).apply()
+    }
+
+    /** When the current rain spell was first seen falling (epoch ms), or 0
+     * when it isn't raining — how long it has rained decides whether its end
+     * is worth a notification (see RainStop). */
+    fun rainingSince(context: Context, appWidgetId: Int): Long =
+        prefs(context).getLong("raining_since_$appWidgetId", 0L)
+
+    fun setRainingSince(context: Context, appWidgetId: Int, epochMs: Long) {
+        prefs(context).edit().putLong("raining_since_$appWidgetId", epochMs).apply()
+    }
+
+    /** Whether this spell's "stopping soon" notification already went out. */
+    fun stopSent(context: Context, appWidgetId: Int): Boolean =
+        prefs(context).getBoolean("stop_sent_$appWidgetId", false)
+
+    fun setStopSent(context: Context, appWidgetId: Int, value: Boolean) {
+        prefs(context).edit().putBoolean("stop_sent_$appWidgetId", value).apply()
+    }
+
     fun lastAqiNotifiedDate(context: Context, appWidgetId: Int): String? =
         prefs(context).getString("aqi_date_$appWidgetId", null)
 
