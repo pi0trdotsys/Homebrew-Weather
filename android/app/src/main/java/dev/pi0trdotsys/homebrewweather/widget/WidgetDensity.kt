@@ -9,7 +9,8 @@ package dev.pi0trdotsys.homebrewweather.widget
  * [WidgetContent]). [FULL] is the escape hatch for anyone who wants every
  * readout all the time — it is what the widget looked like before this mode
  * existed. [MINIMAL] is for people who want a temperature and four days and
- * nothing else competing with them.
+ * nothing else competing with them — except when rain is likely, which it
+ * still says, as hours under the day it falls on.
  */
 enum class WidgetDensity(val storageId: Int, val label: String) {
     MINIMAL(0, "minimal"),

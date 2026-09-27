@@ -1,6 +1,6 @@
 import type { WeatherResponse } from "@/lib/weather-api";
 import { wmoLabel, wmoToKind } from "@/lib/wmo";
-import { describeRainWindow, findRainWindow } from "@/lib/rain-window";
+import { describeRainWindow, findTodayRainWindow } from "@/lib/rain-window";
 import { PixelIcon } from "./PixelIcon";
 
 /** Feels-like is only information when it disagrees with the thermometer — the
@@ -22,7 +22,8 @@ export function HeroPanel({ data }: { data: WeatherResponse }) {
   const c = data.current;
   const baseKind = wmoToKind(c.weather_code);
   const kind = !c.is_day && (baseKind === "sun" || baseKind === "partly") ? "moon" : baseKind;
-  const rain = findRainWindow(data);
+  // Today's rain only: another day's belongs on its own row in DailyForecast.
+  const rain = findTodayRainWindow(data);
   const feelsDiffers = Math.abs(c.apparent_temperature - c.temperature_2m) >= FEELS_DELTA;
 
   return (

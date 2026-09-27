@@ -71,7 +71,7 @@ object MorningBrief {
         val max = today.tempMax.roundToInt()
         val min = today.tempMin.roundToInt()
 
-        val window = RainWindow.find(weather.hourly, weather.currentWeatherCode)
+        val window = RainWindow.today(weather.hourly, weather.currentWeatherCode)
         // With a rain sentence coming, the day's condition word would only
         // repeat it ("deszcz · deszcz od 09:00...").
         val dayLine = if (window != null) "$max°/$min°"

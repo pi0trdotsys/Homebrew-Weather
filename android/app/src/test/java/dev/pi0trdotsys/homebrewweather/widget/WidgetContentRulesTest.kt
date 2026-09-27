@@ -12,8 +12,14 @@ class WidgetContentRulesTest {
     private fun day(max: Double, min: Double, pop: Int, code: Int = 1) =
         WeatherApi.DailyEntry("2026-09-24", code, max, min, pop)
 
+    /** Days dated 2026-09-24 onwards, in order: the per-day rain rule matches
+     * hourly entries to a column by date, so each day needs its own. */
+    private fun dated(vararg days: WeatherApi.DailyEntry) =
+        days.mapIndexed { i, d -> d.copy(date = "2026-09-%02d".format(24 + i)) }
+
+    /** Hour [h] counted from midnight on the 24th; 24 and up roll into the next days. */
     private fun hour(h: Int, pop: Int, code: Int = if (pop >= 50) 61 else 1) =
-        WeatherApi.HourlyEntry("2026-09-24T%02d:00".format(h % 24), pop, code)
+        WeatherApi.HourlyEntry("2026-09-%02dT%02d:00".format(24 + h / 24, h % 24), pop, code)
 
     /** A settled, dry, unremarkable day — the case the widget used to shout on. */
     private val calm = WeatherApi.WeatherData(
@@ -25,7 +31,7 @@ class WidgetContentRulesTest {
         windSpeedKmh = 5.0,
         currentPrecipitationProbability = 0,
         usAqi = 36,
-        daily = listOf(day(31.0, 18.0, 0), day(30.0, 18.0, 0), day(33.0, 18.0, 0), day(32.0, 21.0, 0)),
+        daily = dated(day(31.0, 18.0, 0), day(30.0, 18.0, 0), day(33.0, 18.0, 0), day(32.0, 21.0, 0)),
         hourly = (11..34).map { hour(it, 0, 0) },
     )
 
@@ -38,7 +44,7 @@ class WidgetContentRulesTest {
         windSpeedKmh = 42.0,
         currentPrecipitationProbability = 10,
         usAqi = 142,
-        daily = listOf(day(22.0, 14.0, 70), day(19.0, 11.0, 12), day(17.0, 9.0, 100, 95), day(20.0, 12.0, 45)),
+        daily = dated(day(22.0, 14.0, 70), day(19.0, 11.0, 12), day(17.0, 9.0, 100, 95), day(20.0, 12.0, 45)),
         hourly = listOf(10, 10, 10, 10, 80, 90, 70, 20).mapIndexed { i, p -> hour(11 + i, p) },
     )
 
@@ -60,10 +66,11 @@ class WidgetContentRulesTest {
     @Test
     fun `an eventful day surfaces each unusual thing and only those`() {
         val c = WidgetContent.build(eventful, WidgetDensity.STANDARD, offline = false)
-        assertEquals("deszcz 15:00-18:00", c.heroLine)
+        assertEquals("deszcz 15–18", c.heroLine)
         assertEquals(142, c.aqi)
         assertTrue(c.showPopRow)
-        assertEquals(listOf("▽ 70%", "", "▽ 100%", "▽ 45%"), c.dayPop)
+        // Today's 70% is the hero's sentence now, not a second readout.
+        assertEquals(listOf("", "", "▽ 100%", "▽ 45%"), c.dayPop)
         assertEquals("odczuwalna 13° · wiatr 42 km/h · wilgotno 94%", c.metaLine)
         assertTrue(c.showStats)
     }
@@ -105,7 +112,7 @@ class WidgetContentRulesTest {
         assertNull(c.metaLine)
         assertFalse(c.showFooter)
         // ...but a rain sentence is still the most useful thing it can say.
-        assertEquals("deszcz 15:00-18:00", c.heroLine)
+        assertEquals("deszcz 15–18", c.heroLine)
     }
 
     @Test
@@ -133,6 +140,77 @@ class WidgetContentRulesTest {
     fun `old caches without hourly data fall back to the condition label`() {
         val legacy = eventful.copy(hourly = emptyList(), currentWeatherCode = 61)
         assertEquals("deszcz", WidgetContent.build(legacy, WidgetDensity.STANDARD, false).heroLine)
+    }
+
+    // --- rain pinned to its day; the evening grid ---------------------------
+
+    /** 23:00 on the 24th, dry tonight, rain 08-19 on the 25th — the device case. */
+    private val lateEvening = calm.copy(
+        isDay = false,
+        currentWeatherCode = 3,
+        daily = dated(
+            day(26.0, 22.0, 0), day(23.0, 20.0, 90, 61), day(25.0, 20.0, 10),
+            day(25.0, 21.0, 0), day(24.0, 19.0, 0),
+        ),
+        hourly = (23..60).map { h -> hour(h, if (h in 32..42) 80 else 0) },
+    )
+
+    @Test
+    fun `in the evening tomorrow's rain goes under tomorrow, not under the temperature`() {
+        val c = WidgetContent.build(lateEvening, WidgetDensity.STANDARD, false)
+        assertEquals("pochmurno", c.heroLine)
+        assertEquals(1, c.dayOffset)
+        assertEquals("jutro", c.firstDayLabel)
+        assertEquals(listOf("▽ 8–19", "", "", ""), c.dayPop)
+        assertEquals("▽ 8–19".length, c.rows().popCells)
+        assertEquals(5, c.rows().dayLabelCells)
+    }
+
+    @Test
+    fun `before the evening the grid starts today and tomorrow's rain still sits under it`() {
+        val afternoon = lateEvening.copy(hourly = (14..60).map { h -> hour(h, if (h in 32..42) 80 else 0) })
+        val c = WidgetContent.build(afternoon, WidgetDensity.STANDARD, false)
+        assertEquals(0, c.dayOffset)
+        assertEquals("dziś", c.firstDayLabel)
+        assertEquals(listOf("", "▽ 8–19", "", ""), c.dayPop)
+    }
+
+    @Test
+    fun `minimal keeps a day's rain window but none of the chances`() {
+        val c = WidgetContent.build(lateEvening, WidgetDensity.MINIMAL, false)
+        assertEquals(listOf("▽ 8–19", "", "", ""), c.dayPop)
+        assertTrue(c.showPopRow)
+    }
+
+    @Test
+    fun `no fifth day, no evening shift`() {
+        val short = lateEvening.copy(daily = lateEvening.daily.take(4))
+        assertEquals(0, WidgetContent.build(short, WidgetDensity.STANDARD, false).dayOffset)
+    }
+
+    @Test
+    fun `today's column counts only the hours still ahead`() {
+        // The daily max is 70% from a shower that's already over; what's left
+        // of the day tops out at 20%, which isn't worth a figure.
+        val past = calm.copy(
+            daily = dated(day(22.0, 14.0, 70), day(19.0, 11.0, 0), day(17.0, 9.0, 0), day(20.0, 12.0, 0)),
+            hourly = (15..30).map { hour(it, 20) },
+        )
+        assertEquals("", WidgetContent.build(past, WidgetDensity.STANDARD, false).dayPop[0])
+    }
+
+    @Test
+    fun `window text fits its column with room to spare`() {
+        val rows = WidgetContent.build(lateEvening, WidgetDensity.STANDARD, false).rows().copy(popCells = 8)
+        // The widest window, "▽ 13–20+" (8 cells), in the narrowest columns
+        // that still show the row. On device it measured ~0.66 em per cell
+        // (the "▽" and "–" run wide), and at exactly that 170x170 ellipsized
+        // to "▽ 13–2…" — so check against the measured width, with a margin.
+        listOf(170 to 170, 180 to 120, 250 to 165).forEach { (w, h) ->
+            val m = WidgetMetrics.forSize(w, h, rows)
+            val need = m.dayPopSp * 8 * 0.66f
+            assertTrue("${w}x$h: needs $need dp of ${m.colWidthDp}", need + 2f <= m.colWidthDp)
+        }
     }
 
     @Test

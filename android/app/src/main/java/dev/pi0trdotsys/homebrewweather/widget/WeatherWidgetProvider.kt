@@ -170,17 +170,19 @@ class WeatherWidgetProvider : AppWidgetProvider() {
                 // depends on which rows the content shows, so rebuild that
                 // content from the same cached forecast the last render wrote.
                 val weather = WidgetPrefs.getCachedWeather(context, id)
-                val rows = weather?.let {
-                    WidgetContent.build(it, WidgetPrefs.getDensity(context, id), offline = false).rows()
-                } ?: WidgetMetrics.Rows.ALL
+                val content = weather?.let {
+                    WidgetContent.build(it, WidgetPrefs.getDensity(context, id), offline = false)
+                }
+                val rows = content?.rows() ?: WidgetMetrics.Rows.ALL
                 val m = WidgetSize.resolve(context, id).metrics(rows)
                 val iconPx = dpToPx(context, m.dayIconDp)
                 val nowIconPx = dpToPx(context, m.heroIconDp)
                 // Re-render each day's icon at the new frame from cached weather codes
                 // only — no network call, matching the "no new battery cost" tradeoff.
                 if (weather != null) {
+                    val offset = content?.dayOffset ?: 0
                     for (i in 0 until 4) {
-                        val entry = weather.daily.getOrNull(i) ?: continue
+                        val entry = weather.daily.getOrNull(offset + i) ?: continue
                         val kind = Wmo.wmoToKind(entry.weatherCode)
                         rv.setImageViewBitmap(ICON_IDS[i], WidgetGraphics.icon(context, kind, iconPx, frame))
                     }
@@ -395,9 +397,8 @@ class WeatherWidgetProvider : AppWidgetProvider() {
          * rendered into [R.id.widget_sparkline] — mirrors
          * WidgetMock4x2.tsx's popToSparkline()/spark.bars: proportional to
          * `pop / max(1, maxPop)` (never sorted — stays in day order so it
-         * reads as a trend), one char per of the first 4 forecast days. */
-        private fun popSparkline(weather: WeatherApi.WeatherData): String {
-            val pops = weather.daily.take(4).map { it.precipitationProbabilityMax }
+         * reads as a trend), one char per day shown in the grid. */
+        private fun popSparkline(pops: List<Int>): String {
             if (pops.isEmpty()) return ""
             val max = maxOf(1, pops.maxOrNull() ?: 0)
             val chars = charArrayOf('▁', '▂', '▃', '▄', '▅', '▆', '▇', '█')
@@ -768,15 +769,16 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             // One shared temperature scale for all four range bars, so their
             // offsets are comparable to each other rather than each bar being
             // normalized to itself (which would make every day look identical).
-            val days = weather.daily.take(4)
+            // The grid's four days: from today, or from tomorrow in the evening.
+            val days = weather.daily.drop(content.dayOffset).take(4)
             val globalMin = days.mapNotNull { it.tempMin.takeIf { t -> !t.isNaN() } }.minOrNull() ?: 0.0
             val globalMax = days.mapNotNull { it.tempMax.takeIf { t -> !t.isNaN() } }.maxOrNull() ?: 0.0
             val barWidthPx = dpToPx(context, metrics.colWidthDp.toInt() - 8)
             val barHeightPx = dpToPx(context, metrics.barHeightDp)
 
             for (i in 0 until 4) {
-                val entry = weather.daily.getOrNull(i) ?: continue
-                val dayLabel = if (i == 0) "dziś" else dowAbbrev(entry.date)
+                val entry = days.getOrNull(i) ?: continue
+                val dayLabel = if (i == 0) content.firstDayLabel else dowAbbrev(entry.date)
                 val kind = Wmo.wmoToKind(entry.weatherCode)
                 rv.setTextViewText(DAY_LABEL_IDS[i], dayLabel)
                 rv.setImageViewBitmap(ICON_IDS[i], WidgetGraphics.icon(context, kind, iconPx, frame))
@@ -831,11 +833,11 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             // Full density only: the 4-day rain sparkline and its maximum. Color
             // (amber if any day's PoP >= 50%, else cyan) matches WidgetMock4x2.tsx's
             // spark.hasRain rule and is shared by the bars and the "▽ max%" figure.
-            val next4Pops = weather.daily.take(4).map { it.precipitationProbabilityMax }
+            val next4Pops = days.map { it.precipitationProbabilityMax }
             val maxPop = next4Pops.maxOrNull() ?: 0
             val hasRain = next4Pops.any { it >= 50 }
             val sparkColor = context.getColor(if (hasRain) R.color.widget_amber else R.color.widget_cyan)
-            rv.setTextViewText(R.id.widget_sparkline, popSparkline(weather))
+            rv.setTextViewText(R.id.widget_sparkline, popSparkline(next4Pops))
             rv.setTextColor(R.id.widget_sparkline, sparkColor)
             rv.setTextViewText(R.id.widget_pop_max, "▽ $maxPop%")
             rv.setTextColor(R.id.widget_pop_max, sparkColor)

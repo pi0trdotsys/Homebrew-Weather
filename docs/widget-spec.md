@@ -732,3 +732,64 @@ Dashboard i ustawienia sprawdzone w przeglądarce (zero błędów konsoli).
 **Znane, poza zakresem:** webowe `reverseGeocode` wciąż woła martwy endpoint
 Open-Meteo `/v1/reverse` (natyw ma już `DeviceGeocoder`, §7), stąd
 `unknown_location` przy lokalizacji z GPS w aplikacji.
+
+## 11. Deszcz przypięty do dnia, wieczorna siatka (2026-09-27)
+
+User o 23:26: widget pokazywał „deszcz 08:00-18:00” pod „23°”, więc nie było wiadomo,
+czego to dotyczy. Dotyczyło jutra.
+
+**Dwie przyczyny.**
+
+1. Okno deszczu mogło zaczynać się do 12h od teraz, a wieczorem te 12h sięgają
+   jutrzejszego ranka.
+2. Błąd w `WeatherApi`: Open-Meteo podaje `current.time` co 15 minut („23:30”), więc
+   zwykle nie trafia w godzinę z serii `hourly`. W takim wypadku kod brał *następną*
+   godzinę. O 23:30 to jutrzejsza 00:00, więc jutro liczyło się jako „dziś” (a
+   `currentPrecipitationProbability` pochodziło z następnej godziny). Teraz bierzemy
+   ostatnią godzinę ≤ `current.time`.
+
+**Reguła (opcja C).** Każde okno należy do swojego dnia:
+
+- `RainWindow.today` zasila linię pod temperaturą i zwraca tylko okno startujące
+  dziś;
+- `RainWindow.forDay` zasila kolumny: „▽ 7–19” pod dniem, którego dotyczy;
+  - „+” oznacza drugi epizod tego samego dnia (np. „8–10+”), zamiast mylącego
+    „8–19”;
+  - „od 20” oznacza, że dane kończą się, gdy wciąż pada;
+- `RainWindow.find` (horyzont 12h) zostaje tylko dla powiadomienia „deszcz za
+  chwilę”, które musi działać przez północ.
+
+Kolumna „dziś” nie powtarza okna z linii głównej, a jej procent liczy się tylko z
+godzin, które zostały: dzienne maksimum obejmuje też poranny deszcz, który już minął.
+
+**Wieczorem (od 18:00) siatka startuje od „jutro”.** Maksimum i minimum dnia są wtedy
+historią (o 23:26 kafelek „dziś” pokazywał 26°/22°). To, co zostało z dnia
+(temperatura teraz i deszcz jeszcze dziś wieczorem), pokazuje linia główna.
+`WeatherApi` trzyma teraz 5 dni i 120 godzin.
+
+**Minimal pokazuje okna, bez procentów.** Wcześniej zdanie o deszczu żyło w linii
+głównej także w minimal. Po przeniesieniu do kolumn minimal straciłby jutrzejszy
+deszcz całkiem.
+
+**Godziny bez „:00”.** Jest „deszcz 15–19” i „pada do ~19”; koniec o północy to „24”.
+W pełnych zdaniach (powiadomienia, dashboard) zostaje „15:00”.
+
+**Solver.** Wiersz opadów i etykiety dni są liczone z faktycznego tekstu (`Rows.popCells`,
+`dayLabelCells`). „▽” i „–” pochodzą z fallbackowego fontu i są szersze: przy 170dp
+„▽ 13–20+” mieściło się idealnie na papierze, a na urządzeniu uciął się do
+„▽ 13–2…”. Stąd 1,5 komórki zapasu dla okien. Test mierzy teraz szerokość zmierzoną na
+urządzeniu (~0,66 em na znak) z marginesem.
+
+**Dashboard.** Ta sama reguła w `rain-window.ts`:
+
+- hero pokazuje tylko dzisiejsze okno;
+- wiersz dnia w `DailyForecast` pokazuje „rain 07:00–19:00” zamiast opisu;
+- wiersz „today” wieczorem jest wygaszony.
+
+**Weryfikacja.**
+
+- Testy: 49 JVM (`RainWindowTest` 18, `WidgetContentRulesTest` 16).
+- Telefon, Estepona 23:48: „pochmurno”, siatka „jutro/wt/śr/cz”, „▽ 7–19” pod jutrem.
+- Harness: nowy scenariusz `EVENING` przy 368×176 (standard i minimal), 180×90 i
+  170×170.
+- Dashboard sprawdzony w przeglądarce.

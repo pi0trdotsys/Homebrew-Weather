@@ -2,6 +2,7 @@ package dev.pi0trdotsys.homebrewweather.widget
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -17,8 +18,9 @@ class RainWindowTest {
     private fun hours(startHour: Int, vararg pops: Int, codes: List<Int>? = null) =
         pops.mapIndexed { i, p ->
             val h = (startHour + i) % 24
+            val day = 24 + (startHour + i) / 24
             WeatherApi.HourlyEntry(
-                time = "2026-09-24T%02d:00".format(h),
+                time = "2026-09-%02dT%02d:00".format(day, h),
                 precipitationProbability = p,
                 weatherCode = codes?.getOrNull(i) ?: if (p >= 50) rain else clear,
             )
@@ -42,7 +44,7 @@ class RainWindowTest {
         assertEquals("15:00", w.start)
         assertEquals("19:00", w.end)
         assertFalse(w.ongoing)
-        assertEquals("deszcz 15:00-19:00", RainWindow.short(w))
+        assertEquals("deszcz 15–19", RainWindow.short(w))
         assertEquals("deszcz od 15:00 do ok. 19:00", RainWindow.long(w))
     }
 
@@ -50,7 +52,7 @@ class RainWindowTest {
     fun `window running past the data is open-ended`() {
         val w = RainWindow.find(hours(11, 0, 0, 80, 80, 80), clear)!!
         assertNull(w.end)
-        assertEquals("deszcz od 13:00", RainWindow.short(w))
+        assertEquals("deszcz od 13", RainWindow.short(w))
     }
 
     @Test
@@ -59,14 +61,14 @@ class RainWindowTest {
         assertTrue(w.ongoing)
         assertEquals(0, w.startsInHours)
         assertEquals("13:00", w.end)
-        assertEquals("pada do ~13:00", RainWindow.short(w))
+        assertEquals("pada do ~13", RainWindow.short(w))
     }
 
     @Test
     fun `likely this hour but not observed yet is soon, not ongoing`() {
         val w = RainWindow.find(hours(11, 80, 80, 0), clear)!!
         assertFalse(w.ongoing)
-        assertEquals("deszcz wkrótce, do ~13:00", RainWindow.short(w))
+        assertEquals("deszcz wkrótce, do ~13", RainWindow.short(w))
     }
 
     @Test
@@ -82,19 +84,19 @@ class RainWindowTest {
             clear,
         )!!
         assertEquals(RainWindow.Kind.THUNDER, w.kind)
-        assertEquals("burza 15:00-18:00", RainWindow.short(w))
+        assertEquals("burza 15–18", RainWindow.short(w))
     }
 
     @Test
     fun `snow is named as snow`() {
         val w = RainWindow.find(hours(6, 0, 70, 70, 0, codes = listOf(clear, snow, snow, clear)), clear)!!
-        assertEquals("śnieg 07:00-09:00", RainWindow.short(w))
+        assertEquals("śnieg 7–9", RainWindow.short(w))
     }
 
     @Test
     fun `window crossing midnight keeps wall-clock times`() {
         val w = RainWindow.find(hours(22, 0, 80, 80, 80, 0), clear)!!
-        assertEquals("deszcz 23:00-02:00", RainWindow.short(w))
+        assertEquals("deszcz 23–2", RainWindow.short(w))
     }
 
     @Test
@@ -116,5 +118,56 @@ class RainWindowTest {
     @Test
     fun `empty hourly data yields nothing rather than guessing`() {
         assertNull(RainWindow.find(emptyList(), rain))
+        assertNull(RainWindow.today(emptyList(), rain))
+    }
+
+    // --- today() / forDay(): each window belongs to its own day -------------
+
+    /** The real case that prompted this: 23:00, dry tonight, rain 08-18 tomorrow. */
+    private val lateEvening = hours(23, 0, 0, 0, 0, 0, 0, 0, 20, 30, 58, 55, 50, 58, 78, 90, 90, 88, 83, 78, 70, 40, 20)
+
+    @Test
+    fun `tomorrow's rain is not today's hero sentence`() {
+        assertNull(RainWindow.today(lateEvening, clear))
+        // The notification's horizon rule still sees it — it just isn't "today".
+        assertNotNull(RainWindow.find(lateEvening, clear))
+    }
+
+    @Test
+    fun `tomorrow's rain lands on tomorrow's column`() {
+        val d = RainWindow.forDay(lateEvening, "2026-09-25")!!
+        assertEquals(8, d.startHour)
+        assertEquals(19, d.endHour)
+        assertEquals("8–19", RainWindow.dayShort(d))
+        assertNull("nothing wet left today", RainWindow.forDay(lateEvening, "2026-09-24"))
+    }
+
+    @Test
+    fun `rain later tonight is still today`() {
+        val w = RainWindow.today(hours(7, *IntArray(14) { 0 }, 80, 80, 0), clear)!!
+        assertEquals("21:00", w.start)
+        assertEquals("deszcz 21–23", RainWindow.short(w))
+    }
+
+    @Test
+    fun `a window ending at midnight reads 24`() {
+        val w = RainWindow.today(hours(20, 0, 80, 80, 80, 0), clear)!!
+        assertEquals("deszcz 21–24", RainWindow.short(w))
+        val d = RainWindow.forDay(hours(20, 0, 80, 80, 80, 0), "2026-09-24")!!
+        assertEquals("21–24", RainWindow.dayShort(d))
+    }
+
+    @Test
+    fun `a second spell the same day is flagged, not merged`() {
+        // 8-10 wet, dry, 16-19 wet: "8–10+" rather than a misleading "8–19".
+        val day = hours(0, *IntArray(8) { 0 }, 70, 70, 0, 0, 0, 0, 0, 0, 80, 80, 80, 0, 0, 0, 0, 0)
+        assertEquals("8–10+", RainWindow.dayShort(RainWindow.forDay(day, "2026-09-24")!!))
+    }
+
+    @Test
+    fun `data ending mid-day while wet is open-ended`() {
+        val d = RainWindow.forDay(hours(10, 0, 0, 80, 80), "2026-09-24")!!
+        assertNull(d.endHour)
+        assertEquals("od 12", RainWindow.dayShort(d))
     }
 }

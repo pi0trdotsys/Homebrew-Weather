@@ -124,6 +124,11 @@ data class WidgetMetrics(
         val stats: Boolean = true,
         val heroLineCells: Int = 20,
         val metaCells: Int = 34,
+        /** Longest per-day rain text: "▽ 100%" is 6 cells, a window such as
+         * "▽ 13–20+" is 8. */
+        val popCells: Int = 6,
+        /** Longest day label: "dziś" is 4 cells, the evening's "jutro" is 5. */
+        val dayLabelCells: Int = 4,
     ) {
         companion object {
             val ALL = Rows()
@@ -335,10 +340,19 @@ data class WidgetMetrics(
             val showTempPair = pairCap >= min(wantTempSp, 9.5f)
             val dayTempSp = min(wantTempSp, if (showTempPair) pairCap else singleCap)
 
-            // "▽ 100%" is 6 cells, one of them the wide fallback glyph.
-            val dayPopSp = min(10f * scale, colW / (5f * MONO_ADVANCE + GLYPH_ADVANCE))
-            // Day labels are 4 cells at most ("dziś").
-            val dayLabelSp = min(11f * scale, colW / (4.4f * MONO_ADVANCE))
+            // "▽ 100%" is 6 cells, one of them the wide fallback glyph; a rain
+            // window ("▽ 13–20+") runs to 8, sized to what this render has.
+            // A window also carries "–", which like "▽" comes from a fallback
+            // font and runs wider than the Latin cells, so windows get 1.5
+            // cells of slack: modelled as plain cells, "▽ 13–20+" measured
+            // right at the column's limit on a 170dp widget and ellipsized to
+            // "▽ 13–2…".
+            val popCells = max(6, rows.popCells)
+            val popUnits = (popCells - 1) * MONO_ADVANCE + GLYPH_ADVANCE +
+                if (rows.popCells > 6) 1.5f * MONO_ADVANCE else 0f
+            val dayPopSp = min(10f * scale, colW / popUnits)
+            // Day labels: "dziś" is 4 cells, the evening's "jutro" 5.
+            val dayLabelSp = min(11f * scale, colW / ((max(4, rows.dayLabelCells) + 0.4f) * MONO_ADVANCE))
 
             // The grid icon may grow with the column when there's width to spare,
             // but never past the room the row reserves for it.

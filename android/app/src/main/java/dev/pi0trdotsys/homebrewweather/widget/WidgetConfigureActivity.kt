@@ -340,7 +340,7 @@ class WidgetConfigureActivity : Activity() {
             btn.setBackgroundColor(if (density == selected) THEME_BTN_SELECTED_BG else THEME_BTN_UNSELECTED_BG)
         }
         densityHint.text = when (selected) {
-            WidgetDensity.MINIMAL -> "// temperatura + 4 dni, nic więcej"
+            WidgetDensity.MINIMAL -> "// temperatura + 4 dni, deszcz tylko z godzinami"
             WidgetDensity.STANDARD -> "// tylko to, co dziś odbiega od normy"
             WidgetDensity.FULL -> "// wszystkie odczyty, zawsze"
         }

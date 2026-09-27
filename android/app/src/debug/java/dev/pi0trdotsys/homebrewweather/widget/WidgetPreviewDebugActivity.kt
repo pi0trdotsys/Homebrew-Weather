@@ -60,7 +60,7 @@ class WidgetPreviewDebugActivity : Activity() {
             SIZES.forEach { (label, w, h, hideBanner, density, data) ->
                 root.addView(
                     caption(
-                        "${w}x${h}dp · ${density.label} · ${if (data == Data.CALM) "calm day" else "eventful day"} — $label",
+                        "${w}x${h}dp · ${density.label} · ${data.name.lowercase()} — $label",
                         Color.parseColor("#33ff66"),
                     ),
                 )
@@ -72,7 +72,15 @@ class WidgetPreviewDebugActivity : Activity() {
                 WidgetPrefs.setLastKnownMinWidthDp(this, FAKE_WIDGET_ID, w)
                 WidgetPrefs.setLastKnownMinHeightDp(this, FAKE_WIDGET_ID, h)
                 WidgetPrefs.setDensity(this, FAKE_WIDGET_ID, density)
-                WidgetPrefs.setCachedWeather(this, FAKE_WIDGET_ID, if (data == Data.CALM) CALM_DAY else EVENTFUL_DAY)
+                WidgetPrefs.setCachedWeather(
+                    this,
+                    FAKE_WIDGET_ID,
+                    when (data) {
+                        Data.CALM -> CALM_DAY
+                        Data.EVENTFUL -> EVENTFUL_DAY
+                        Data.EVENING -> EVENING
+                    },
+                )
 
                 val rv = WeatherWidgetProvider.buildRemoteViews(applicationContext, FAKE_WIDGET_ID)
                 // The status banner is a real content overlay by design, so one
@@ -184,7 +192,7 @@ class WidgetPreviewDebugActivity : Activity() {
         )
     }
 
-    private enum class Data { CALM, EVENTFUL }
+    private enum class Data { CALM, EVENTFUL, EVENING }
 
     private data class Preview(
         val label: String,
@@ -255,7 +263,42 @@ class WidgetPreviewDebugActivity : Activity() {
             hourly = hours(20, 20, 30, 40, 80, 90, 70, 60, 20, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
         )
 
+        /**
+         * 23:00, dry for the rest of today, rain tomorrow 13-20 and again
+         * later — the case that put tomorrow's rain under tonight's
+         * temperature. Now: the grid starts at "jutro", and the widest window
+         * text ("▽ 13–20+") sits under it.
+         */
+        private val EVENING = CALM_DAY.copy(
+            isDay = false,
+            currentWeatherCode = 3,
+            currentTemperature = 22.0,
+            daily = listOf(
+                WeatherApi.DailyEntry("2026-07-31", 3, 26.0, 22.0, 0),
+                WeatherApi.DailyEntry("2026-08-01", 95, 23.0, 20.0, 90),
+                WeatherApi.DailyEntry("2026-08-02", 3, 25.0, 20.0, 60),
+                WeatherApi.DailyEntry("2026-08-03", 3, 25.0, 21.0, 10),
+                WeatherApi.DailyEntry("2026-08-04", 3, 24.0, 19.0, 0),
+            ),
+            // From 23:00 on the 31st: dry to 13:00 on the 1st, wet 13-19, dry
+            // 20-21, wet again 22-23; the 2nd wet 10-11.
+            hourly = (23..71).map { h ->
+                val hod = h % 24
+                val day = h / 24
+                val wet = (day == 1 && (hod in 13..19 || hod >= 22)) || (day == 2 && hod in 10..11)
+                WeatherApi.HourlyEntry(
+                    time = "2026-%sT%02d:00".format(listOf("07-31", "08-01", "08-02")[day], hod),
+                    precipitationProbability = if (wet) 80 else 0,
+                    weatherCode = if (wet) 61 else 3,
+                )
+            },
+        )
+
         private val SIZES = listOf(
+            Preview("evening: rain pinned to tomorrow", 368, 176, data = Data.EVENING),
+            Preview("evening, minimal", 368, 176, density = WidgetDensity.MINIMAL, data = Data.EVENING),
+            Preview("evening at minResize", 180, 90, data = Data.EVENING),
+            Preview("evening, narrow square", 170, 170, data = Data.EVENING),
             Preview("real device, ordinary day", 368, 176, data = Data.CALM),
             Preview("real device, everything happening at once", 368, 176),
             Preview("real device, every readout", 368, 176, density = WidgetDensity.FULL),

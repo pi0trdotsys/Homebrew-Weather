@@ -38,8 +38,14 @@ data class WidgetContent(
     val showSparkline: Boolean,
     val showPopMax: Boolean,
     val showPopRow: Boolean,
-    /** Per-day rain text, 4 entries; blank for a day that doesn't merit one. */
+    /** Per-day rain text, 4 entries; blank for a day that doesn't merit one.
+     * A likely-rain window ("▽ 8–18") where the day has one, else a chance. */
     val dayPop: List<String>,
+    /** Index into `weather.daily` of the grid's first column: 0, or 1 in the
+     * evening (see [EVENING_HOUR]). */
+    val dayOffset: Int,
+    /** Label of the grid's first column: "dziś", or "jutro" in the evening. */
+    val firstDayLabel: String,
     val showBars: Boolean,
     /** Secondary conditions line, or null to hide the row entirely. */
     val metaLine: String?,
@@ -56,6 +62,8 @@ data class WidgetContent(
         stats = showStats,
         heroLineCells = heroLine.length,
         metaCells = metaLine?.length ?: 0,
+        popCells = dayPop.maxOfOrNull { it.length } ?: 0,
+        dayLabelCells = firstDayLabel.length,
     )
 
     companion object {
@@ -78,6 +86,17 @@ data class WidgetContent(
         const val HUMID_PCT = 90
         const val DRY_PCT = 20
 
+        /**
+         * From this local hour the grid starts at tomorrow.
+         *
+         * By evening today's column is history: its max was hours ago and its
+         * min was this morning, yet it sat highlighted as the current day — at
+         * 23:26 it still said 26°/22°. What's left of today (the temperature
+         * now, and any rain still to come tonight) is the hero's job, so the
+         * grid moves on to the days that are still ahead.
+         */
+        const val EVENING_HOUR = 18
+
         fun build(
             weather: WeatherApi.WeatherData,
             density: WidgetDensity,
@@ -86,10 +105,12 @@ data class WidgetContent(
             val nowKind = Wmo.wmoToKind(weather.currentWeatherCode).let {
                 if (!weather.isDay && (it == "sun" || it == "partly")) "moon" else it
             }
-            val window = RainWindow.find(weather.hourly, weather.currentWeatherCode)
+            // Today's rain only; any other day's goes under its own column.
+            val window = RainWindow.today(weather.hourly, weather.currentWeatherCode)
             val base = window?.let(RainWindow::short) ?: kindLabel(nowKind)
 
-            val pops = weather.daily.take(4).map { it.precipitationProbabilityMax }
+            val dayOffset = dayOffset(weather)
+            val days = weather.daily.drop(dayOffset).take(4)
             val full = density == WidgetDensity.FULL
             val minimal = density == WidgetDensity.MINIMAL
 
@@ -107,15 +128,31 @@ data class WidgetContent(
                 }
             }
 
-            val showPopRow = when (density) {
-                WidgetDensity.FULL -> pops.isNotEmpty()
-                WidgetDensity.STANDARD -> pops.any { it >= DAY_POP_MIN }
-                WidgetDensity.MINIMAL -> false
-            }
+            // Minimal keeps the windows and drops only the chances: when rain
+            // moved from the hero to its day's column, a minimal widget would
+            // otherwise have lost tomorrow's rain altogether — and "when will
+            // it rain" is the one thing even minimal is meant to say.
             val dayPop = (0 until 4).map { i ->
-                val p = pops.getOrNull(i) ?: return@map ""
+                val day = days.getOrNull(i) ?: return@map ""
+                val isToday = dayOffset == 0 && i == 0
+                if (minimal) {
+                    if (isToday) return@map ""
+                    return@map RainWindow.forDay(weather.hourly, day.date)?.let { "▽ ${RainWindow.dayShort(it)}" } ?: ""
+                }
+                if (isToday) {
+                    // The hero owns today's rain. Without a window there, the
+                    // column may still carry a chance, but only of the hours
+                    // still ahead: the daily max also covers a morning shower
+                    // that's already over.
+                    if (window != null) return@map ""
+                    val p = remainingTodayPop(weather) ?: day.precipitationProbabilityMax
+                    return@map if (full || p >= DAY_POP_MIN) "▽ $p%" else ""
+                }
+                RainWindow.forDay(weather.hourly, day.date)?.let { return@map "▽ ${RainWindow.dayShort(it)}" }
+                val p = day.precipitationProbabilityMax
                 if (full || p >= DAY_POP_MIN) "▽ $p%" else ""
             }
+            val showPopRow = dayPop.any { it.isNotEmpty() }
 
             return WidgetContent(
                 heroLine = heroLine,
@@ -125,10 +162,12 @@ data class WidgetContent(
                 // bad. The status banner already says "stale" / "offline" in
                 // words; the dot stays only as the persistent offline marker.
                 showOnlineDot = full || offline,
-                showSparkline = full && (pops.maxOrNull() ?: 0) > 0,
+                showSparkline = full && days.any { it.precipitationProbabilityMax > 0 },
                 showPopMax = full,
                 showPopRow = showPopRow,
                 dayPop = dayPop,
+                dayOffset = dayOffset,
+                firstDayLabel = if (dayOffset == 0) "dziś" else "jutro",
                 // A range bar restates the two numbers printed above it. On
                 // real data from a settled spell (30-33° highs, 18-21° lows)
                 // the four bars came out identical — ink that says nothing.
@@ -140,6 +179,25 @@ data class WidgetContent(
                 },
                 showFooter = !minimal,
             )
+        }
+
+        /**
+         * 1 from [EVENING_HOUR] on, when there's a fifth day to fill the grid
+         * with; otherwise 0. The hour is the location's, read off the hourly
+         * data's first entry (the current hour), same frame as everything else.
+         */
+        fun dayOffset(weather: WeatherApi.WeatherData): Int {
+            val hour = weather.hourly.firstOrNull()?.time
+                ?.substringAfter('T', "")?.take(2)?.toIntOrNull() ?: return 0
+            return if (hour >= EVENING_HOUR && weather.daily.size >= 5) 1 else 0
+        }
+
+        /** Highest hourly rain chance over what's left of today, or null
+         * without hourly data (caches written before it existed). */
+        private fun remainingTodayPop(weather: WeatherApi.WeatherData): Int? {
+            val date = weather.hourly.firstOrNull()?.time?.substringBefore('T') ?: return null
+            return weather.hourly.takeWhile { it.time.startsWith(date) }
+                .maxOfOrNull { it.precipitationProbability }
         }
 
         /** Only the secondary conditions that are out of the ordinary, or null. */

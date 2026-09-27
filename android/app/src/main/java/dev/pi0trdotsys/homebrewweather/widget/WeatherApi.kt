@@ -78,9 +78,14 @@ object WeatherApi {
         val hourly: List<HourlyEntry> = emptyList(),
     )
 
-    /** How many forecast hours [WeatherData.hourly] keeps. RainWindow only looks
-     * ~12h ahead for a start, but needs room past that to find the end. */
-    const val HOURLY_HORIZON = 24
+    /** How many forecast hours [WeatherData.hourly] keeps: enough to cover
+     * every grid day to midnight, so each column can carry its own rain window
+     * (RainWindow.forDay) — including the evening grid, which ends a day later. */
+    const val HOURLY_HORIZON = 120
+
+    /** How many days [WeatherData.daily] keeps: four for the grid, plus the one
+     * it moves on to in the evening (WidgetContent.EVENING_HOUR). */
+    const val DAILY_DAYS = 5
 
     private fun httpGetJson(urlStr: String): JSONObject {
         val conn = URL(urlStr).openConnection() as HttpURLConnection
@@ -172,17 +177,17 @@ object WeatherApi {
                 }
             }
             if (currentIdx == -1) {
-                // No exact match (shouldn't normally happen since `current` is
-                // itself derived from the same hourly series) — fall back to
-                // the first hourly time that is >= current time, else the last
-                // available hour.
+                // No exact match — which is in fact the usual case: Open-Meteo
+                // reports `current` in 15-minute steps ("23:30"), so it only
+                // lands on an hourly slot at :00. The current hour is the last
+                // slot at or before it. This used to take the first slot at or
+                // *after* it, i.e. the next hour, which at 23:30 is tomorrow's
+                // 00:00: the widget then treated tomorrow as "today" and put
+                // tomorrow morning's rain under the current temperature.
                 for (i in 0 until hTimes.length()) {
-                    if (hTimes.optString(i) >= currentTimeStr) {
-                        currentIdx = i
-                        break
-                    }
+                    if (hTimes.optString(i) <= currentTimeStr) currentIdx = i else break
                 }
-                if (currentIdx == -1) currentIdx = hTimes.length() - 1
+                if (currentIdx == -1) currentIdx = 0
             }
         }
 
@@ -217,7 +222,7 @@ object WeatherApi {
         val mins = daily.getJSONArray("temperature_2m_min")
         val pops = daily.optJSONArray("precipitation_probability_max")
 
-        val count = minOf(4, times.length())
+        val count = minOf(DAILY_DAYS, times.length())
         val entries = (0 until count).map { i ->
             DailyEntry(
                 date = times.getString(i),

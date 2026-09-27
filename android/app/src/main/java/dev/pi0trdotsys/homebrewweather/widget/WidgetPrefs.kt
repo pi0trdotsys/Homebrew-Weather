@@ -230,7 +230,7 @@ object WidgetPrefs {
             if (weather.usAqi >= 0) put("aqi", weather.usAqi)
             put("daily", dailyArr)
             // Short keys: this blob is rewritten on every refresh, per widget,
-            // and 24 hourly entries would otherwise dwarf everything else in it.
+            // and 120 hourly entries would otherwise dwarf everything else in it.
             put("hourly", org.json.JSONArray().apply {
                 weather.hourly.forEach { h ->
                     put(JSONObject().apply {
