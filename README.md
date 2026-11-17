@@ -36,6 +36,7 @@
 11  ─  a line for the next 24 hours temperature and rain on one curve (full density)
 12  ─  the sun, when it matters     "sunset in 40 min", only in that last hour
 13  ─  a tip or a fact, not a joke  well-being tips, or what happened on this day
+14  ─  a map of the city behind it  terrain contours, or a skyline on flat land (per widget)
 ```
 
 <br/>
@@ -55,7 +56,8 @@ To keep more than one place on a widget, open its setup, switch on *add as anoth
 and pick another city; from then on tapping the city name switches between them (the
 **≡** next to it opens the setup).
 Can't find the widget picker? **./settings** has an *add widget* button that asks your launcher
-to pin one. The widget's setup also offers a *Material You* colour theme (Android 12+), and
+to pin one. The widget's setup also offers a *Material You* colour theme (Android 12+), a *city map* background
+(terrain contours around the city, or a pixel skyline where the land is flat), and
 **./settings** a *high contrast* option for the dim text, in the app and on the widget.
 Language, brief and evening times, alert thresholds, tone and what the footer says (a joke, a
 well-being tip, or an event from this day in history) are under **./settings**,

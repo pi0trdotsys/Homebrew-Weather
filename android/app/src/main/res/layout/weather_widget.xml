@@ -34,6 +34,17 @@
     android:layout_height="match_parent"
     android:background="@drawable/widget_background">
 
+    <!-- The "city map" background (WidgetBackdropArt): behind everything, GONE
+         unless the widget has it switched on. A bitmap at half the widget's size,
+         scaled up and cropped to fill. -->
+    <ImageView
+        android:id="@+id/widget_backdrop"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:importantForAccessibility="no"
+        android:scaleType="centerCrop"
+        android:visibility="gone" />
+
     <LinearLayout
         android:id="@+id/widget_content"
         android:layout_width="match_parent"

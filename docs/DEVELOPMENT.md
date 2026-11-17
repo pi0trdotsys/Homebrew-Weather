@@ -76,6 +76,17 @@ Nothing checks it automatically, so change both in the same commit:
 Severe warnings are deliberately plain-voiced whatever the tone setting says, and a
 storm warning replaces the rain heads-up for that storm rather than doubling it.
 
+### City map background
+
+Per widget (`WidgetBackdrop`, off by default). `Terrain` fetches a 24 x 12 elevation grid
+(14 km wide) from Open-Meteo's elevation endpoint (3 calls of 100 points), once per 0.1°
+cell, off the render path, and keeps it in `terrain_prefs`; a failure is not retried for ten
+minutes because the free tier answers 429 when asked quickly. `WidgetBackdropArt` draws
+contour lines (`Contours`, marching squares) where the relief is at least 40 m, and a skyline
+made from the city's name (`Skyline`) otherwise — on flat land contours only trace noise in the
+elevation model — and while the grid is still coming. Everything is the theme's colour at low
+alpha, lower with high contrast, rendered at half size so RemoteViews carries little memory.
+
 ### Places
 
 A widget holds up to five places (`Places.kt`, stored per widget by `WidgetPrefs`).

@@ -65,3 +65,19 @@ enum class WidgetTransparency(val storageId: Int, val label: String, val drawabl
         fun fromStorageId(id: Int): WidgetTransparency = values().firstOrNull { it.storageId == id } ?: DEFAULT
     }
 }
+
+/**
+ * Per-widget-instance background picture, independent of [WidgetTheme] and
+ * [WidgetTransparency]. [CITY] is the "city map": contour lines of the terrain
+ * around the place, or a skyline where the land is flat (see [WidgetBackdropArt]).
+ */
+enum class WidgetBackdrop(val storageId: Int) {
+    NONE(0),
+    CITY(1);
+
+    companion object {
+        val DEFAULT = NONE
+
+        fun fromStorageId(id: Int): WidgetBackdrop = entries.firstOrNull { it.storageId == id } ?: DEFAULT
+    }
+}

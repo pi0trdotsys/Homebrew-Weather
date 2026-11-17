@@ -47,6 +47,8 @@ class WidgetConfigureActivity : Activity() {
     private lateinit var transparencyValueText: TextView
     private lateinit var densityButtons: Map<WidgetDensity, TextView>
     private lateinit var densityHint: TextView
+    private lateinit var backdropButtons: Map<WidgetBackdrop, TextView>
+    private lateinit var backdropHint: TextView
 
     private lateinit var placesSection: View
     private lateinit var placesContainer: LinearLayout
@@ -444,6 +446,27 @@ class WidgetConfigureActivity : Activity() {
         densityHint = findViewById(R.id.density_hint)
         densityButtons.forEach { (density, btn) -> btn.setOnClickListener { selectDensity(density) } }
         highlightSelectedDensity(WidgetPrefs.getDensity(this, appWidgetId))
+
+        backdropButtons = mapOf(
+            WidgetBackdrop.NONE to findViewById<TextView>(R.id.backdrop_none_btn),
+            WidgetBackdrop.CITY to findViewById<TextView>(R.id.backdrop_city_btn),
+        )
+        backdropHint = findViewById(R.id.backdrop_hint)
+        backdropButtons.forEach { (backdrop, btn) -> btn.setOnClickListener { selectBackdrop(backdrop) } }
+        highlightSelectedBackdrop(WidgetPrefs.getBackdrop(this, appWidgetId))
+    }
+
+    private fun selectBackdrop(backdrop: WidgetBackdrop) {
+        WidgetPrefs.setBackdrop(this, appWidgetId, backdrop)
+        highlightSelectedBackdrop(backdrop)
+        pushWidgetUpdate()
+    }
+
+    private fun highlightSelectedBackdrop(selected: WidgetBackdrop) {
+        backdropButtons.forEach { (backdrop, btn) ->
+            btn.setBackgroundColor(if (backdrop == selected) THEME_BTN_SELECTED_BG else THEME_BTN_UNSELECTED_BG)
+        }
+        backdropHint.text = texts.cfgBackdropHint(selected)
     }
 
     private fun selectDensity(density: WidgetDensity) {

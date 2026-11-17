@@ -1028,6 +1028,39 @@ class WeatherWidgetProvider : AppWidgetProvider() {
                 rv.setViewVisibility(R.id.widget_aqi_line, View.GONE)
             }
 
+            // The "city map" background, if this widget has it on: terrain contours
+            // where the grid for this place is known and hilly, a skyline otherwise —
+            // and while the grid is still being fetched (off this render path), which
+            // then triggers a redraw. Drawn in the theme's own colour.
+            if (WidgetPrefs.getBackdrop(context, appWidgetId) == WidgetBackdrop.CITY) {
+                val grid = Terrain.cached(context, city.lat, city.lon)
+                if (grid == null) {
+                    Terrain.request(context, city.lat, city.lon) {
+                        refreshWidget(context, AppWidgetManager.getInstance(context), appWidgetId, announce = false)
+                    }
+                }
+                val primaryRes = if (theme == WidgetTheme.AUTO_HEALTH) {
+                    computeHealthTheme(weather).primaryColorRes
+                } else {
+                    theme.primaryColorRes
+                }
+                rv.setImageViewBitmap(
+                    R.id.widget_backdrop,
+                    WidgetBackdropArt.render(
+                        context,
+                        dpToPx(context, metrics.widthDp),
+                        dpToPx(context, metrics.heightDp),
+                        context.getColor(primaryRes),
+                        city.name,
+                        grid,
+                        quiet = CapacitorStorage.highContrast(context),
+                    ),
+                )
+                rv.setViewVisibility(R.id.widget_backdrop, View.VISIBLE)
+            } else {
+                rv.setViewVisibility(R.id.widget_backdrop, View.GONE)
+            }
+
             // Seed by current hour so the joke is stable within a refresh cycle but
             // varies across refreshes/hours, matching pickSigma()'s intent.
             val seed = (System.currentTimeMillis() / (60 * 60 * 1000L)).toInt()

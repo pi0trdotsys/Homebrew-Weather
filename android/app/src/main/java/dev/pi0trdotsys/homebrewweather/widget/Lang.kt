@@ -185,6 +185,7 @@ interface Texts {
     fun cfgPlaceLabel(name: String, live: Boolean, current: Boolean): String
     fun cfgPlaceAdded(name: String): String
     val cfgPlacesFull: String
+    fun cfgBackdropHint(b: WidgetBackdrop): String
 
     // ---- saved cities and confirmation toasts on the setup screen ---------------------
     val cfgSavedHeader: String
@@ -430,6 +431,10 @@ object PlTexts : Texts {
         (if (current) "> " else "  ") + (if (live) "◎ " else "") + name
     override fun cfgPlaceAdded(name: String) = "// dodano $name"
     override val cfgPlacesFull = "// lista pełna — zastąpiono bieżące miejsce"
+    override fun cfgBackdropHint(b: WidgetBackdrop) = when (b) {
+        WidgetBackdrop.NONE -> "// bez tła"
+        WidgetBackdrop.CITY -> "// poziomice terenu wokół miasta, a na równinie pikselowy skyline"
+    }
 
     override val cfgSavedHeader = "// miasta z aplikacji — dotknij, aby wybrać"
     override val cfgInWidget = " ✓"
@@ -665,6 +670,10 @@ object EnTexts : Texts {
         (if (current) "> " else "  ") + (if (live) "◎ " else "") + name
     override fun cfgPlaceAdded(name: String) = "// added $name"
     override val cfgPlacesFull = "// list is full — replaced the current place"
+    override fun cfgBackdropHint(b: WidgetBackdrop) = when (b) {
+        WidgetBackdrop.NONE -> "// no background"
+        WidgetBackdrop.CITY -> "// terrain contours around the city, or a pixel skyline on flat land"
+    }
 
     override val cfgSavedHeader = "// cities from the app — tap to pick"
     override val cfgInWidget = " ✓"

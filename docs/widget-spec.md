@@ -964,3 +964,21 @@ jak dotąd:
   dekoracyjne (kursor, kropka, separatory, sparkline z blokowych znaków) mają
   `importantForAccessibility="no"`.
 - **Stopka:** żart, porada well-being albo wydarzenie z tego dnia (`FooterContent`).
+
+## Tło „mapa miasta” (0.6.0-beta.14)
+
+Ustawienie osobne dla każdego widgetu (`WidgetBackdrop`, domyślnie wyłączone, żeby widget
+wyglądał jak dotąd). Za całą treścią leży `ImageView` `widget_backdrop` z bitmapą o połowie
+rozmiaru widgetu (`centerCrop`), więc RemoteViews przenosi mało pamięci.
+
+- **Poziomice** (`Contours`, marching squares) z siatki wysokości 24 × 12 (`Terrain`), gdy
+  różnica wysokości w obszarze 14 km wynosi co najmniej 40 m (`RELIEF_MIN_M`).
+- **Skyline** z nazwy miasta (`Skyline`, deterministyczny) na równinie, gdzie poziomice
+  rysowałyby tylko szum modelu terenu (Wrocław: 16 m różnicy daje przypadkowe pętle), oraz
+  zawsze zanim siatka zostanie pobrana. Tło nigdy nie jest puste.
+- Kolor motywu przy niskim kryciu (poziomice 19–33%, skyline 9% i okna 19%), w wysokim
+  kontraście mocniej przyciemnione; skyline sięga najwyżej 36% wysokości, żeby nie wchodził
+  pod małe napisy meta i stopki.
+- Siatka jest pobierana raz na komórkę 0,1° w tle (`Terrain.request`), a po jej zapisaniu
+  widget odświeża się sam.
+
