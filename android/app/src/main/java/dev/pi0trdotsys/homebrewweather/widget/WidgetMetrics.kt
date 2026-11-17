@@ -68,7 +68,7 @@ data class WidgetMetrics(
     val dayTempSp: Float,
     /** Height of the per-day rain row (PixelFont bitmaps), in dp. */
     val popRowDp: Float,
-    val barHeightDp: Int,
+    val curveHeightDp: Int,
 
     // footer / meta / banner
     val metaSp: Float,
@@ -79,7 +79,7 @@ data class WidgetMetrics(
     val showMeta: Boolean,
     val showFooter: Boolean,
     val showPop: Boolean,
-    val showBars: Boolean,
+    val showCurve: Boolean,
     val showStats: Boolean,
     val showAqi: Boolean,
     val showSync: Boolean,
@@ -121,7 +121,7 @@ data class WidgetMetrics(
         val meta: Boolean = true,
         val footer: Boolean = true,
         val pop: Boolean = true,
-        val bars: Boolean = true,
+        val curve: Boolean = true,
         val stats: Boolean = true,
         val heroLineCells: Int = 20,
         val metaCells: Int = 34,
@@ -174,7 +174,7 @@ data class WidgetMetrics(
         private const val REF_GRID_LABEL = 13f // 11sp (x1.16)
         private const val REF_GRID_ICON = 20f
         private const val REF_GRID_TEMP = 16.3f // 14sp (x1.16)
-        private const val REF_GRID_BAR = 5f
+        private const val REF_CURVE = 26f // the 24-hour temperature curve (a PixelFont label band + plot)
         private const val REF_GRID_POP = 13.6f // PixelFont row (was 10sp text with a "▽" glyph)
         private const val REF_META = 11.7f // 10sp (x1.17)
         private const val REF_FOOTER = 12.8f // 11sp (x1.16)
@@ -184,7 +184,7 @@ data class WidgetMetrics(
         private const val FIX_HERO_MARGIN = 3f // widget_hero_row marginTop
         private const val FIX_RULE = 9f // widget_rule marginTop + 1dp + marginBottom
         private const val FIX_GRID_BASE = 4f // column paddings + icon margins
-        private const val FIX_GRID_BAR = 3f // bar marginTop + marginBottom
+        private const val FIX_CURVE = 4f // curve marginTop + marginBottom
         private const val FIX_META = 4f // widget_meta_line marginTop
         private const val FIX_FOOTER = 3f // widget_footer_joke marginTop
 
@@ -250,7 +250,7 @@ data class WidgetMetrics(
          * less, legibly" rather than "show everything, unreadably". They're
          * dropped in reverse order of how much anyone looks at them: the
          * feels-like/humidity/wind meta line first, then the sigma joke, then
-         * the per-day rain figures and range bars, then the hero condition
+         * the per-day rain figures and the temperature curve, then the hero condition
          * line. The header never drops: it is the only row carrying controls.
          */
         private fun refHeight(tier: Tier, rows: Rows): Pair<Float, Float> {
@@ -266,11 +266,11 @@ data class WidgetMetrics(
             if (tier >= Tier.XS) scalable += REF_GRID_LABEL
             // ...then the hero condition line, below S.
             if (tier >= Tier.S) scalable += REF_HERO_NOW
-            // ...then the per-day rain figures and range bars, below M.
+            // ...then the per-day rain figures and the temperature curve, below M.
             if (tier >= Tier.M && rows.pop) scalable += REF_GRID_POP
-            if (tier >= Tier.M && rows.bars) {
-                scalable += REF_GRID_BAR
-                fixed += FIX_GRID_BAR
+            if (tier >= Tier.M && rows.curve) {
+                scalable += REF_CURVE
+                fixed += FIX_CURVE
             }
             // ...then the footer line, below L.
             if (tier >= Tier.L && rows.footer) {
@@ -320,7 +320,7 @@ data class WidgetMetrics(
             val showFooter = tier >= Tier.L && rows.footer
             val showMeta = tier >= Tier.XL && rows.meta
             val showPop = tier >= Tier.M && rows.pop
-            val showBars = tier >= Tier.M && rows.bars
+            val showCurve = tier >= Tier.M && rows.curve
             val showStats = rows.stats && w >= STATS_MIN_WIDTH_DP && tier >= Tier.S
             val showAqi = showStats && w >= AQI_MIN_WIDTH_DP
             val showSync = showStats && w >= SYNC_MIN_WIDTH_DP && tier >= Tier.L
@@ -403,7 +403,7 @@ data class WidgetMetrics(
                 dayIconDp = dayIconDp,
                 dayTempSp = dayTempSp.coerceAtLeast(8f),
                 popRowDp = popRowDp,
-                barHeightDp = (5f * scale).roundToInt().coerceIn(3, 10),
+                curveHeightDp = (REF_CURVE * scale).roundToInt().coerceIn(14, 56),
 
                 metaSp = min(10f * scale, innerW / (max(34, rows.metaCells) * MONO_ADVANCE)).coerceAtLeast(6.5f),
                 footerSp = min(11f * scale, innerW / (30f * MONO_ADVANCE)).coerceAtLeast(6.5f),
@@ -413,7 +413,7 @@ data class WidgetMetrics(
                 showMeta = showMeta,
                 showFooter = showFooter,
                 showPop = showPop,
-                showBars = showBars,
+                showCurve = showCurve,
                 showStats = showStats,
                 showAqi = showAqi,
                 showSync = showSync,

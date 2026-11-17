@@ -32,6 +32,8 @@ public class MainActivity extends BridgeActivity {
     public static final String EXTRA_CITY_LAT = "dev.pi0trdotsys.homebrewweather.CITY_LAT";
     public static final String EXTRA_CITY_LON = "dev.pi0trdotsys.homebrewweather.CITY_LON";
     public static final String EXTRA_CITY_NAME = "dev.pi0trdotsys.homebrewweather.CITY_NAME";
+    /** True when the tapped widget follows the device's location (its city is a moving point, not a place). */
+    public static final String EXTRA_CITY_LIVE = "dev.pi0trdotsys.homebrewweather.CITY_LIVE";
     /** A day ("2026-09-28") to open on — set when a widget's day column is tapped. */
     public static final String EXTRA_DAY = "dev.pi0trdotsys.homebrewweather.DAY";
 
@@ -74,11 +76,14 @@ public class MainActivity extends BridgeActivity {
         String name = intent.getStringExtra(EXTRA_CITY_NAME);
         if (Double.isNaN(lat) || Double.isNaN(lon)) return null;
         String day = intent.getStringExtra(EXTRA_DAY);
+        boolean live = intent.getBooleanExtra(EXTRA_CITY_LIVE, false);
         try {
             JSONObject city = new JSONObject()
                 .put("lat", lat)
                 .put("lon", lon)
                 .put("name", name != null ? name : "?");
+            // Only written when true: the web app reads a missing flag as a fixed city.
+            if (live) city.put("live", true);
             android.content.SharedPreferences.Editor edit = getSharedPreferences(CAPACITOR_PREFS, Context.MODE_PRIVATE)
                 .edit()
                 .putString(COORDS_KEY, city.toString());

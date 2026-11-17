@@ -10,6 +10,8 @@ type HbwPlugin = {
   requestNotifications(): Promise<{ granted: boolean }>;
   sendTestNotifications(): Promise<{ granted: boolean; sent: number }>;
   refreshWidgets(): Promise<{ count: number }>;
+  widgetStatus(): Promise<{ pinSupported: boolean; count: number }>;
+  requestPinWidget(): Promise<{ requested: boolean }>;
 };
 
 const Hbw = registerPlugin<HbwPlugin>("Hbw");
@@ -46,4 +48,34 @@ export async function sendTestNotifications(): Promise<{ granted: boolean; sent:
 export function refreshWidgets(): void {
   if (!isNative()) return;
   Hbw.refreshWidgets().catch(() => {});
+}
+
+export type WidgetStatus = { pinSupported: boolean; count: number };
+
+/**
+ * Whether the launcher lets the app pin a widget, and how many are placed.
+ * Never throws: in a browser — or an older build of the app that lacks the
+ * method — it answers "not supported, none".
+ */
+export async function widgetStatus(): Promise<WidgetStatus> {
+  if (!isNative()) return { pinSupported: false, count: 0 };
+  try {
+    const s = await Hbw.widgetStatus();
+    return { pinSupported: s.pinSupported === true, count: Number(s.count) || 0 };
+  } catch {
+    return { pinSupported: false, count: 0 };
+  }
+}
+
+/**
+ * Asks the launcher to pin a widget (it shows its own confirmation, then opens
+ * the widget's setup screen). True if the request was handed over; never throws.
+ */
+export async function requestPinWidget(): Promise<boolean> {
+  if (!isNative()) return false;
+  try {
+    return (await Hbw.requestPinWidget()).requested === true;
+  } catch {
+    return false;
+  }
 }

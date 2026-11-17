@@ -33,6 +33,9 @@
 08  ─  how much, not just whether   "downpour 15–19" or "drizzle", with the millimetres
 09  ─  warnings are not jokes       storm, hail, gale, extreme heat: plain and immediate
 10  ─  one widget, several places   tap the city name to switch: home, work, anywhere
+11  ─  a line for the next 24 hours temperature and rain on one curve (full density)
+12  ─  the sun, when it matters     "sunset in 40 min", only in that last hour
+13  ─  a tip or a fact, not a joke  well-being tips, or what happened on this day
 ```
 
 <br/>
@@ -51,7 +54,11 @@ Tap the widget to open the full forecast for that city, or tap a day to see its 
 To keep more than one place on a widget, open its setup, switch on *add as another place*
 and pick another city; from then on tapping the city name switches between them (the
 **≡** next to it opens the setup).
-Language, brief and evening times, alert thresholds and tone are under **./settings**,
+Can't find the widget picker? **./settings** has an *add widget* button that asks your launcher
+to pin one. The widget's setup also offers a *Material You* colour theme (Android 12+), and
+**./settings** a *high contrast* option for the dim text, in the app and on the widget.
+Language, brief and evening times, alert thresholds, tone and what the footer says (a joke, a
+well-being tip, or an event from this day in history) are under **./settings**,
 along with a button that sends one of each notification so you can see them right away.
 
 > **Updating from beta.11 or earlier?** Uninstall the old version once, then install:

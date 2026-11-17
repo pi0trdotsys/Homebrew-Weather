@@ -65,10 +65,20 @@ const ASCII: Record<string, string[]> = {
  * the removed table used to show). Nothing that was on the dashboard is gone;
  * each reading just appears once.
  *
- * [joke] comes from the caller so it follows the app-wide tone setting and
- * stays stable between re-renders.
+ * [joke] is the footer line — a joke, a well-being tip or an "on this day"
+ * event, as the footer-source setting says — and comes from the caller so it
+ * follows the app-wide settings and stays stable between re-renders. [source]
+ * is a small dim attribution under it, for a line that is someone else's words.
  */
-export function TerminalOutput({ data, joke }: { data: WeatherResponse; joke: string }) {
+export function TerminalOutput({
+  data,
+  joke,
+  source,
+}: {
+  data: WeatherResponse;
+  joke: string;
+  source?: string;
+}) {
   const kind = wmoToKind(data.current.weather_code);
   const art = ASCII[kind] ?? ASCII.cloud;
   const c = data.current;
@@ -131,6 +141,11 @@ export function TerminalOutput({ data, joke }: { data: WeatherResponse; joke: st
         {lines.slice(0, shown).join("\n")}
         {shown >= lines.length && <span className="blink">_</span>}
       </pre>
+      {source && shown >= lines.length && (
+        <p className="mt-1 text-right text-[10px] uppercase tracking-widest text-[color:var(--phosphor-dim)]">
+          {source}
+        </p>
+      )}
     </div>
   );
 }

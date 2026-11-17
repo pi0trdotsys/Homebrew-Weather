@@ -34,6 +34,9 @@ object WeatherApi {
         val uvIndexMax: Double = Double.NaN,
         /** The day's strongest wind gust, km/h. NaN when unknown. */
         val windGustMaxKmh: Double = Double.NaN,
+        /** Local "2026-11-17T07:12"; null when unknown, and in polar day or night. */
+        val sunrise: String? = null,
+        val sunset: String? = null,
     )
 
     /**
@@ -182,10 +185,12 @@ object WeatherApi {
         longitude = o.optDouble("longitude"),
     )
 
-    fun geocode(query: String): List<GeoResult> {
+    /** City search in the app's language ([language]: "pl" or "en"): it used to be
+     * hard-wired to English, so a Polish setup screen listed "Lesser Poland". */
+    fun geocode(query: String, language: String = "en"): List<GeoResult> {
         if (query.isBlank()) return emptyList()
         val q = URLEncoder.encode(query, "UTF-8")
-        val url = "https://geocoding-api.open-meteo.com/v1/search?name=$q&count=6&language=en&format=json"
+        val url = "https://geocoding-api.open-meteo.com/v1/search?name=$q&count=6&language=$language&format=json"
         val json = httpGetJson(url)
         val results = json.optJSONArray("results") ?: return emptyList()
         return (0 until results.length()).map { parseGeoResult(results.getJSONObject(it)) }
@@ -302,6 +307,8 @@ object WeatherApi {
         val dPrecip = daily.optJSONArray("precipitation_sum")
         val dUv = daily.optJSONArray("uv_index_max")
         val dGusts = daily.optJSONArray("wind_gusts_10m_max")
+        val dSunrise = daily.optJSONArray("sunrise")
+        val dSunset = daily.optJSONArray("sunset")
 
         val count = minOf(DAILY_DAYS, times.length())
         val entries = (0 until count).map { i ->
@@ -314,6 +321,8 @@ object WeatherApi {
                 precipitationSumMm = dPrecip.optNaN(i),
                 uvIndexMax = dUv.optNaN(i),
                 windGustMaxKmh = dGusts.optNaN(i),
+                sunrise = dSunrise.optClock(i),
+                sunset = dSunset.optClock(i),
             )
         }
         return WeatherData(
@@ -330,6 +339,17 @@ object WeatherApi {
             utcOffsetSeconds = if (json.has("utc_offset_seconds")) json.optInt("utc_offset_seconds") else null,
             windGustKmh = windGust,
         )
+    }
+
+    /** A non-blank string, or null for a missing array, index or JSON null. */
+    private fun JSONArray?.optClock(i: Int): String? =
+        if (this == null || i !in 0 until length() || isNull(i)) null else optString(i).takeIf { it.isNotBlank() }
+
+    /** "2026-11-17T16:05" — the current minute in a location [offsetSeconds] from UTC. */
+    fun localMinuteIso(nowMillis: Long, offsetSeconds: Int): String {
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm", java.util.Locale.US)
+        sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
+        return sdf.format(java.util.Date(nowMillis + offsetSeconds * 1000L))
     }
 
     /** `optDouble` that reads a missing array, an out-of-range index and a JSON

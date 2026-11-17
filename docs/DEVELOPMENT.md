@@ -50,7 +50,10 @@ They cover:
 - the rain windows, and how hard it rains (`RainAmountTest`);
 - severe-weather warnings (`SevereWeatherTest`);
 - UV and gusts (`UvAndGustTest`);
-- the places a widget cycles through (`PlacesTest`);
+- the places a widget cycles through (`PlacesTest`) and the app's saved cities (`AppCitiesTest`);
+- the sun about to set or rise (`SunEventsTest`);
+- high-contrast colours reaching WCAG AA (`HighContrastTest`);
+- tips and "on this day" (`WellbeingTipsTest`, `OnThisDayTest`);
 - the pixel font;
 - the rebase of a stale forecast;
 - the brief, the evening preview and rain-stop;
@@ -66,6 +69,9 @@ Nothing checks it automatically, so change both in the same commit:
 | rain windows, intensity (drizzle < 0.5 mm/h, downpour ≥ 4), amounts | `RainWindow.kt` | `src/lib/rain-window.ts` |
 | severe weather (hail, storm, gusts ≥ 75 km/h, heat ≥ 35 °C) | `SevereWeather.kt` | `src/lib/severe-weather.ts` |
 | forecast rebased onto the real clock | `WeatherApi.rebasedTo` | `src/lib/rebase.ts` |
+| "on this day": parsing, which event, how it is cut | `OnThisDay.kt` | `src/lib/on-this-day.ts` |
+| which well-being tip situation applies | `WellbeingTips.situation` | `src/lib/wellbeing.ts` |
+| saved cities: order, one live slot, cap of 8 | `AppCities.with` | `withCity` in `src/lib/settings.ts` |
 
 Severe warnings are deliberately plain-voiced whatever the tone setting says, and a
 storm warning replaces the rain heads-up for that storm rather than doubling it.
@@ -83,6 +89,16 @@ forecast offline, and switching places renders without firing notifications
 Every native string lives in `Lang.kt` (`PlTexts` / `EnTexts`); every web string in
 `src/lib/i18n.ts`. The setting is shared (`settings:lang`), and unset it follows the
 device.
+
+### Footer: joke, tip or this day
+
+`settings:footer-source` (`joke` / `wellbeing` / `history`) picks what the widget footer and
+the dashboard line say. Tips are `WellbeingTips.kt` (one pool per situation, same 50-character
+ceiling as the jokes, checked by `WellbeingTipsTest`) and, like the jokes, are generated into
+`src/lib/wellbeing.generated.ts` by `bun scripts/gen-jokes.ts`, which CI diffs. "On this day"
+is a real Wikipedia event: English from Wikimedia's curated feed, Polish from the Polish
+Wikipedia's day page (the feed has no Polish). It is fetched once a day and cached
+(`on_this_day_prefs`), a failure is not retried for 30 minutes, and a miss falls back to a joke.
 
 ### Joke pools
 

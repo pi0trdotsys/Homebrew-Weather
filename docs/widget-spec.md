@@ -938,3 +938,29 @@ jak dotąd:
   nazwy przełącza (broadcast, nie aktywność), a małe „≡” obok otwiera ekran ustawień,
   do którego pojedyncze miejsce wchodzi nadal przez samą nazwę. Przełączenie nigdy nie
   wysyła powiadomień.
+
+## Krzywa 24 h, słońce, motywy i dostępność (0.6.0-beta.13)
+
+- **Krzywa temperatury zamiast słupków.** Tryb pełny pokazuje kolejne 24 godziny jako jedną
+  linię (`WidgetGraphics.tempCurve`): temperatura jako krzywa, deszcz jako kolumny od dołu
+  (wysokość z mm, ulewa od 4 mm/h to pełna wysokość), biały kwadrat „teraz”, etykiety maksimum
+  (bursztyn) i minimum (cyjan) w `PixelFont`, znaczniki co 6 godzin. Zastąpiła cztery słupki
+  zakresu dnia, które powtarzały dwie liczby wypisane tuż nad nimi (po stabilnym okresie
+  wszystkie cztery wychodziły takie same). Wiersz jest budżetowany w solverze jak każdy inny
+  (`Rows.curve`, `REF_CURVE`), pojawia się od progu M i tylko gdy jest co najmniej
+  `CURVE_MIN_POINTS` godzin z temperaturą.
+- **Słońce jako wyjątek.** „zachód za 40 min” / „wschód za 40 min” pojawia się na początku
+  linii meta tylko w ciągu godziny przed zdarzeniem (`SunEvents`), w trybach standard i pełnym.
+  Odliczanie odświeża się co minutę przy tyknięciu `BlinkAlarm` (sam tekst, bez przeliczania
+  wierszy).
+- **Motyw Material You** (Android 12+): `widget_monet*` z `values-v31` wskazuje na
+  `system_accent1_200/500`; poniżej API 31 opcji nie ma, a zapisany wybór czyta się jako zieleń.
+- **Wysoki kontrast** (`settings:high-contrast`): ciemne odcienie („dim”) zastępuje odcień tego
+  samego koloru, który osiąga WCAG AA (4,5:1) na tle widgetu (`HighContrast.dim`). Zaprojektowana
+  cicha zieleń `#4a6a4a` ma tylko ok. 3:1, stąd opcja.
+- **TalkBack.** Widget ma jeden opis podsumowujący (miasto, temperatura, linia pod nią, meta,
+  AQI), osobny opis każdej kolumny dnia („sobota: maksymalnie 22°, minimalnie 11°, deszcz 8–18”),
+  przycisków (odśwież, miasto / następne miejsce, ustawienia) i krzywej. Widoki czysto
+  dekoracyjne (kursor, kropka, separatory, sparkline z blokowych znaków) mają
+  `importantForAccessibility="no"`.
+- **Stopka:** żart, porada well-being albo wydarzenie z tego dnia (`FooterContent`).

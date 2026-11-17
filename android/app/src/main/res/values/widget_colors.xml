@@ -14,6 +14,11 @@
          for the header/footer role — these dim shades don't correspond to
          anything else in the app so they get their own entries here. -->
     <color name="widget_amber_dim">#806000</color>
+    <!-- "Material You" theme: the device's own accent colours on Android 12+
+         (see values-v31/widget_colors.xml). Below that the option isn't offered
+         and a widget that somehow has it reads as the default green. -->
+    <color name="widget_monet">#33ff66</color>
+    <color name="widget_monet_dim">#4a6a4a</color>
     <color name="widget_cyan_dim">#2a6666</color>
     <!-- Per-day rain row: snow gets its own colour, distinct from rain (cyan)
          and storms (amber). -->

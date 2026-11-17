@@ -80,6 +80,22 @@ interface Texts {
     fun uv(index: Int): String
     fun gusts(kmh: Int): String
 
+    /** "zachód za 40 min" — the sun about to set or rise, on the widget's meta line. */
+    fun sunsetIn(min: Int): String
+    fun sunriseIn(min: Int): String
+
+    // ---- accessibility: what TalkBack says -------------------------------------
+    val a11yRefresh: String
+    val a11ySetup: String
+    fun a11yCityButton(name: String): String
+    fun a11yNextPlace(name: String, index: Int, count: Int): String
+
+    /** Full day name for a spoken label, [dow] 0 = Sunday .. 6 = Saturday. */
+    fun dowLong(dow: Int): String
+    fun a11ySummary(city: String, tempC: Int?, line: String, meta: String?): String
+    fun a11yDay(label: String, max: Int, min: Int, rain: String?): String
+    fun a11yCurve(min: Int, max: Int): String
+
     /** Grid form of a window that runs past the end of the data: "od 20". */
     fun dayOpen(start: Int): String
 
@@ -169,6 +185,11 @@ interface Texts {
     fun cfgPlaceLabel(name: String, live: Boolean, current: Boolean): String
     fun cfgPlaceAdded(name: String): String
     val cfgPlacesFull: String
+
+    // ---- saved cities and confirmation toasts on the setup screen ---------------------
+    val cfgSavedHeader: String
+    val cfgInWidget: String
+    fun cfgDone(name: String, live: Boolean, added: Boolean): String
 }
 
 /** "0,2 mm" below 10 (one decimal), "12 mm" from 10 (whole number). */
@@ -248,6 +269,21 @@ object PlTexts : Texts {
     override fun rainAmount(mm: Double) = "opady ${mm(mm)}"
     override fun uv(index: Int) = "UV $index"
     override fun gusts(kmh: Int) = "porywy $kmh km/h"
+    override fun sunsetIn(min: Int) = "zachód za $min min"
+    override fun sunriseIn(min: Int) = "wschód za $min min"
+
+    override val a11yRefresh = "Odśwież prognozę"
+    override val a11ySetup = "Ustawienia widgetu"
+    override fun a11yCityButton(name: String) = "Miasto: $name. Dotknij, aby zmienić"
+    override fun a11yNextPlace(name: String, index: Int, count: Int) =
+        "Miejsce: $name, $index z $count. Dotknij, aby przejść do następnego"
+    private val DOW_LONG = arrayOf("niedziela", "poniedziałek", "wtorek", "środa", "czwartek", "piątek", "sobota")
+    override fun dowLong(dow: Int) = DOW_LONG[Math.floorMod(dow, 7)]
+    override fun a11ySummary(city: String, tempC: Int?, line: String, meta: String?) =
+        listOfNotNull(city, tempC?.let { "$it°" }, line, meta).joinToString(", ") + ". Dotknij, aby otworzyć pełną prognozę"
+    override fun a11yCurve(min: Int, max: Int) = "Temperatura w ciągu najbliższej doby, od $min° do $max°"
+    override fun a11yDay(label: String, max: Int, min: Int, rain: String?) =
+        "$label: maksymalnie $max°, minimalnie $min°" + (rain?.let { ", $it" } ?: "") + ". Dotknij, aby zobaczyć godziny"
 
     override fun rainShort(
         kind: RainWindow.Kind, ongoing: Boolean, soon: Boolean, start: Int, end: Int?, intensity: RainWindow.Intensity,
@@ -394,6 +430,14 @@ object PlTexts : Texts {
         (if (current) "> " else "  ") + (if (live) "◎ " else "") + name
     override fun cfgPlaceAdded(name: String) = "// dodano $name"
     override val cfgPlacesFull = "// lista pełna — zastąpiono bieżące miejsce"
+
+    override val cfgSavedHeader = "// miasta z aplikacji — dotknij, aby wybrać"
+    override val cfgInWidget = " ✓"
+    override fun cfgDone(name: String, live: Boolean, added: Boolean) = when {
+        live -> "Widget śledzi Twoją lokalizację ($name)"
+        added -> "Dodano miejsce: $name"
+        else -> "Miasto widgetu: $name"
+    }
 }
 
 object EnTexts : Texts {
@@ -460,6 +504,21 @@ object EnTexts : Texts {
     override fun rainAmount(mm: Double) = "rain ${mm(mm)}"
     override fun uv(index: Int) = "UV $index"
     override fun gusts(kmh: Int) = "gusts $kmh km/h"
+    override fun sunsetIn(min: Int) = "sunset in $min min"
+    override fun sunriseIn(min: Int) = "sunrise in $min min"
+
+    override val a11yRefresh = "Refresh the forecast"
+    override val a11ySetup = "Widget setup"
+    override fun a11yCityButton(name: String) = "City: $name. Tap to change"
+    override fun a11yNextPlace(name: String, index: Int, count: Int) =
+        "Place: $name, $index of $count. Tap for the next one"
+    private val DOW_LONG = arrayOf("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday")
+    override fun dowLong(dow: Int) = DOW_LONG[Math.floorMod(dow, 7)]
+    override fun a11ySummary(city: String, tempC: Int?, line: String, meta: String?) =
+        listOfNotNull(city, tempC?.let { "$it°" }, line, meta).joinToString(", ") + ". Tap to open the full forecast"
+    override fun a11yCurve(min: Int, max: Int) = "Temperature over the next 24 hours, from $min° to $max°"
+    override fun a11yDay(label: String, max: Int, min: Int, rain: String?) =
+        "$label: high $max°, low $min°" + (rain?.let { ", $it" } ?: "") + ". Tap to see the hours"
 
     override fun rainShort(
         kind: RainWindow.Kind, ongoing: Boolean, soon: Boolean, start: Int, end: Int?, intensity: RainWindow.Intensity,
@@ -606,4 +665,12 @@ object EnTexts : Texts {
         (if (current) "> " else "  ") + (if (live) "◎ " else "") + name
     override fun cfgPlaceAdded(name: String) = "// added $name"
     override val cfgPlacesFull = "// list is full — replaced the current place"
+
+    override val cfgSavedHeader = "// cities from the app — tap to pick"
+    override val cfgInWidget = " ✓"
+    override fun cfgDone(name: String, live: Boolean, added: Boolean) = when {
+        live -> "Widget follows your location ($name)"
+        added -> "Place added: $name"
+        else -> "Widget city: $name"
+    }
 }

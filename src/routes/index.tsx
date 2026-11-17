@@ -11,13 +11,18 @@ import { DayDetail } from "@/components/DayDetail";
 import { TerminalOutput } from "@/components/TerminalOutput";
 import { LocationBar } from "@/components/LocationBar";
 import { Welcome } from "@/components/Welcome";
+import { AddWidgetPrompt } from "@/components/AddWidget";
+import { ChannelStatic } from "@/components/fx/ChannelStatic";
 import { pickFooterJoke } from "@/lib/jokes.generated";
+import { pickWellbeingTip } from "@/lib/wellbeing.generated";
+import { wellbeingSituation } from "@/lib/wellbeing";
+import { useOnThisDayLine } from "@/hooks/useOnThisDay";
 import { wmoToKind } from "@/lib/wmo";
 import { APP_VERSION } from "@/lib/version";
 import { useI18n } from "@/lib/i18n";
 import { rebaseWeather } from "@/lib/rebase";
 import { fetchWeather, reverseGeocode, type GeoResult } from "@/lib/weather-api";
-import { loadWeatherCache, loadLastWeatherCache, saveWeatherCache } from "@/lib/weather-cache";
+import { loadWeatherCache, saveWeatherCache } from "@/lib/weather-cache";
 import { useOnlineStatus } from "@/hooks/useOnlineStatus";
 import {
   loadRefreshInterval,
@@ -31,7 +36,10 @@ import {
   takeFocusDay,
   loadTone,
   DEFAULT_TONE,
+  loadFooterSource,
+  DEFAULT_FOOTER_SOURCE,
   type Tone,
+  type FooterSource,
   type RefreshInterval,
   type Coords as SavedCoords,
 } from "@/lib/settings";
@@ -76,7 +84,8 @@ function Index() {
   }, []);
 
   // The current city is saved as "the" location (the widget's "use last app
-  // location" reads it) and moved to the front of the saved list.
+  // location" reads it) and added to the saved list — or, if it is already
+  // there, refreshed in place, so tapping a chip never reorders the chips.
   useEffect(() => {
     if (!coords || !booted) return;
     saveCoords(coords);
@@ -96,7 +105,8 @@ function Index() {
       const c = (e as CustomEvent<SavedCoords & { day?: string }>).detail;
       if (c && Number.isFinite(c.lat) && Number.isFinite(c.lon)) {
         setGeoError(null);
-        setCoords({ lat: c.lat, lon: c.lon, name: c.name });
+        // `live`: the tapped widget follows the phone's location.
+        setCoords({ lat: c.lat, lon: c.lon, name: c.name, ...(c.live === true && { live: true }) });
         setFocusDay(c.day ?? null);
       }
     };
@@ -118,7 +128,9 @@ function Index() {
         const lat = pos.coords.latitude;
         const lon = pos.coords.longitude;
         const name = await reverseGeocode(lat, lon, lang);
-        setCoords({ lat, lon, name });
+        // A position from the device, not a chosen city: it shares one slot in
+        // the saved list instead of pushing favourites out.
+        setCoords({ lat, lon, name, live: true });
         setFocusDay(null);
         setLocating(false);
       },
@@ -190,15 +202,17 @@ function Index() {
         throw e;
       }
     },
+    // Only this city's own saved forecast. Falling back to the last one saved
+    // showed the previous city's weather under the new city's name until the
+    // fetch landed — and for good if it failed. A city never fetched shows the
+    // loading state instead.
     initialData: () => {
       if (!coords) return undefined;
-      return loadWeatherCache(coords.lat, coords.lon)?.data ?? loadLastWeatherCache()?.data;
+      return loadWeatherCache(coords.lat, coords.lon)?.data;
     },
     initialDataUpdatedAt: () => {
       if (!coords) return undefined;
-      return (
-        loadWeatherCache(coords.lat, coords.lon)?.updatedAt ?? loadLastWeatherCache()?.updatedAt
-      );
+      return loadWeatherCache(coords.lat, coords.lon)?.updatedAt;
     },
     staleTime: interval * 60 * 1000,
     refetchInterval: online ? interval * 60 * 1000 : false,
@@ -238,6 +252,30 @@ function Index() {
     return pickFooterJoke(tone, lang, kind, night, Math.floor(Date.now() / 3_600_000));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view?.current.time, view?.current.weather_code, tone, lang]);
+
+  // What the footer line shows: the joke above, a well-being tip for the
+  // weather, or an event from Wikipedia for today's date (see settings).
+  const [footerSource, setFooterSource] = useState<FooterSource>(DEFAULT_FOOTER_SOURCE);
+  useEffect(() => {
+    loadFooterSource().then(setFooterSource);
+  }, []);
+  const tip = useMemo(
+    () =>
+      view
+        ? pickWellbeingTip(lang, wellbeingSituation(view), Math.floor(Date.now() / 3_600_000))
+        : "",
+    [view, lang],
+  );
+  // Fetched only when chosen; null while loading or if Wikipedia can't be
+  // reached, and the joke stands in so the footer is never empty.
+  const historyLine = useOnThisDayLine(footerSource === "history", lang);
+  const footerLine =
+    footerSource === "wellbeing"
+      ? tip
+      : footerSource === "history" && historyLine
+        ? historyLine
+        : joke;
+  const footerAttribution = footerSource === "history" && historyLine ? t.wikipedia : undefined;
 
   // A tapped day that the forecast no longer covers (stale widget) is dropped.
   const shownDay = focusDay && view?.daily.time.includes(focusDay) ? focusDay : null;
@@ -284,6 +322,8 @@ function Index() {
         />
       )}
 
+      {coords && <AddWidgetPrompt />}
+
       {geoError && (
         <div className="terminal-box p-3 text-sm text-[color:var(--crimson)]">
           <span className="text-[color:var(--phosphor-dim)]">stderr:</span> {t.geoError(geoError)}
@@ -296,37 +336,46 @@ function Index() {
         </div>
       )}
 
-      {isLoading && coords && (
-        <div className="terminal-box p-4 text-sm">
-          <span className="blink">▓</span> GET api.open-meteo.com …
-        </div>
-      )}
+      {coords && (
+        // The relative box the channel-change static is drawn over.
+        <div className="relative flex flex-col gap-4">
+          {isLoading && (
+            <div className="terminal-box p-4 text-sm">
+              <span className="blink">▓</span> GET api.open-meteo.com …
+            </div>
+          )}
 
-      {error && !data && (
-        <div className="terminal-box p-4 text-sm text-[color:var(--crimson)]">
-          {t.fetchFailed((error as Error).message)}
-        </div>
-      )}
+          {error && !data && (
+            <div className="terminal-box p-4 text-sm text-[color:var(--crimson)]">
+              {t.fetchFailed((error as Error).message)}
+            </div>
+          )}
 
-      {view && coords && (
-        <>
-          <SevereBanner data={view} />
-          <HeroPanel data={view} />
-          <StatusLine
-            online={online}
-            fromCache={fromCache}
-            isStale={isStale}
-            updatedAt={dataUpdatedAt}
-            interval={interval}
-            timezone={view.timezone}
-          />
-          {shownDay && <DayDetail data={view} date={shownDay} onClose={() => setFocusDay(null)} />}
-          <HourlyStrip data={view} />
-          <div className="grid gap-4 lg:grid-cols-2">
-            <DailyForecast data={view} focusDay={shownDay} onFocusDay={setFocusDay} />
-            <TerminalOutput data={view} joke={joke} />
-          </div>
-        </>
+          {view && (
+            <>
+              <SevereBanner data={view} />
+              <HeroPanel data={view} />
+              <StatusLine
+                online={online}
+                fromCache={fromCache}
+                isStale={isStale}
+                updatedAt={dataUpdatedAt}
+                interval={interval}
+                timezone={view.timezone}
+              />
+              {shownDay && (
+                <DayDetail data={view} date={shownDay} onClose={() => setFocusDay(null)} />
+              )}
+              <HourlyStrip data={view} />
+              <div className="grid gap-4 lg:grid-cols-2">
+                <DailyForecast data={view} focusDay={shownDay} onFocusDay={setFocusDay} />
+                <TerminalOutput data={view} joke={footerLine} source={footerAttribution} />
+              </div>
+            </>
+          )}
+
+          <ChannelStatic cityKey={`${coords.lat.toFixed(2)},${coords.lon.toFixed(2)}`} />
+        </div>
       )}
 
       <div className="mt-auto">

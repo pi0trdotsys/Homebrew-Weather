@@ -13,6 +13,36 @@ import { useEffect, type ReactNode } from "react";
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { EasterEgg } from "../components/EasterEgg";
+import { PowerOn } from "../components/fx/PowerOn";
+import {
+  applyContrast,
+  applyStoredContrast,
+  CONTRAST_BOOT_SCRIPT,
+  watchSystemContrast,
+} from "../lib/contrast";
+import { loadHighContrastChoice } from "../lib/settings";
+
+// Apply the remembered contrast before anything renders. The Capacitor build is
+// a client-only render (nothing exists before this module runs), so this is
+// already before the first paint; the server-rendered page gets the same rule
+// from the inline script in <head> (see RootShell).
+applyStoredContrast();
+
+/** Settles the contrast mode from the stored setting, which is the source of truth. */
+function ContrastBoot() {
+  useEffect(() => {
+    let cancelled = false;
+    void loadHighContrastChoice().then((choice) => {
+      if (!cancelled) applyContrast(choice);
+    });
+    const stopWatching = watchSystemContrast();
+    return () => {
+      cancelled = true;
+      stopWatching();
+    };
+  }, []);
+  return null;
+}
 
 function NotFoundComponent() {
   return (
@@ -121,8 +151,9 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
 
 function RootShell({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" suppressHydrationWarning>
       <head>
+        <script dangerouslySetInnerHTML={{ __html: CONTRAST_BOOT_SCRIPT }} />
         <HeadContent />
       </head>
       <body>
@@ -145,6 +176,8 @@ function RootComponent() {
         <div className="crt-scanlines" />
         <div className="crt-vignette" />
         <EasterEgg />
+        <PowerOn />
+        <ContrastBoot />
       </I18nProvider>
     </QueryClientProvider>
   );

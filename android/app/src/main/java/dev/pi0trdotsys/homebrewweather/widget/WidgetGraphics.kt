@@ -4,9 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.LinearGradient
 import android.graphics.Paint
-import android.graphics.Shader
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -44,84 +42,129 @@ object WidgetGraphics {
     fun icon(context: Context, kind: String, sizePx: Int, frame: Int): Bitmap =
         sized(context, PixelIcons.render(kind, max(4, sizePx), frame))
 
+    /** The curve's stretch: how many hourly points it plots, "now" included. */
+    const val CURVE_HOURS = 24
+
+    /** Fewer valid temperatures than this and there is no curve worth drawing. */
+    const val CURVE_MIN_POINTS = 6
+
     /**
-     * One day column's temperature-range bar: where that day's low..high sits
-     * inside the whole 4-day range.
+     * The next 24 hours as one line: temperature as the curve, rain as columns
+     * rising from the floor, "now" as the white square at the left end.
      *
-     * Reading four "24°/14°" pairs and mentally ranking them is work; four bars
-     * offset against a shared track is not. It's the one piece of information
-     * the grid already had but never actually *showed*, and as a row of aligned
-     * segments it also gives the grid a horizontal rhythm the stacked text
-     * rows never had.
+     * Replaces the four per-day range bars of the full density. Those restated
+     * the day's two figures printed right above them — on a settled spell all
+     * four came out the same bar — while this shows what the numbers cannot: the
+     * shape of the day, when it is warmest, and when the rain falls against it.
+     * It is the one view in the widget that answers "when" for temperature the
+     * way the rain windows do for rain.
      *
-     * The segment is drawn cyan at the cold end grading to amber at the warm
-     * end — the same cold/warm split [WeatherWidgetProvider.tempSpannable]
-     * already uses for the night/day figures directly above it, so the bar
-     * restates the colors rather than introducing new ones. Ends get a bright
-     * 1px cap so a near-flat day (min ≈ max) is still visible as a tick instead
-     * of vanishing.
+     * Same pixel language as the icons and the rain row: hard-edged lines
+     * (no antialiasing), labels in [PixelFont]. Cyan line like the night figure,
+     * the high labelled in amber like the day figure; rain columns are cyan, a
+     * storm's amber, translucent so the line stays readable over them. A column
+     * is as tall as the hour's rainfall when it is known (4 mm/h and up is
+     * full height, the downpour line), else a fixed middling height.
      *
-     * [globalMin]/[globalMax] are the extremes across all four days, so the
-     * bars share one scale and can be compared to each other. A degenerate
-     * range (all four days identical) falls back to a centered full-width
-     * segment rather than dividing by zero.
+     * Returns null without [CURVE_MIN_POINTS] usable temperatures.
+     *
+     * @param hours the forecast hours from now; the first [CURVE_HOURS] are used.
      */
-    fun rangeBar(
-        context: Context,
-        widthPx: Int,
-        heightPx: Int,
-        dayMin: Double,
-        dayMax: Double,
-        globalMin: Double,
-        globalMax: Double,
-    ): Bitmap {
-        val w = max(8, widthPx)
-        val h = max(2, heightPx)
+    fun tempCurve(context: Context, widthPx: Int, heightPx: Int, hours: List<WeatherApi.HourlyEntry>): Bitmap? {
+        val pts = hours.take(CURVE_HOURS)
+        if (pts.count { !it.temperature.isNaN() } < CURVE_MIN_POINTS) return null
+
+        val w = max(40, widthPx)
+        val h = max(16, heightPx)
         val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bmp)
+        val density = context.resources.displayMetrics.density
+        val px = max(1f, density.roundToInt().toFloat())
         val paint = Paint().apply {
             isAntiAlias = false
             style = Paint.Style.FILL
         }
 
-        // The track is a 1px axis line rather than a filled bar. Filled, it read
-        // as a second bar competing with the segment on top of it and the whole
-        // row turned into indistinct stripes; as a hairline the segment sits
-        // *on* a scale, which is what it actually means.
+        val cyan = Color.parseColor("#55ffff")
+        val amber = Color.parseColor("#ffb000")
+        val padX = (3 * px)
+        val floor = h - px
+        val scale = max(1, ((h * 0.3f) / PixelFont.ROWS).toInt())
+        val labelH = PixelFont.ROWS * scale
+        // Leave room above the plot for the high's label, none below the floor.
+        val top = labelH + px
+        val plotH = max(4f, floor - top)
+
+        val n = pts.size
+        fun xOf(i: Int) = padX + i * (w - 2 * padX) / max(1, n - 1)
+
+        val known = pts.mapNotNull { it.temperature.takeIf { t -> !t.isNaN() } }
+        var lo = known.min()
+        var hi = known.max()
+        if (hi - lo < 2.0) { // a near-flat day shouldn't look like a mountain range
+            val mid = (hi + lo) / 2
+            lo = mid - 1.0
+            hi = mid + 1.0
+        }
+        fun yOf(t: Double) = (top + (hi - t) / (hi - lo) * plotH).toFloat()
+
+        // Rain columns first, so the line is drawn over them.
+        pts.forEachIndexed { i, hour ->
+            if (hour.precipitationProbability < RainWindow.LIKELY_POP) return@forEachIndexed
+            val frac = if (hour.precipitationMm.isNaN()) 0.35f
+            else (hour.precipitationMm / RainWindow.HEAVY_FROM_MM).toFloat().coerceIn(0.15f, 1f)
+            val colH = max(2f, frac * plotH * 0.7f)
+            val storm = Wmo.wmoToKind(hour.weatherCode) == "thunder"
+            paint.color = if (storm) 0x66FFB000 else 0x6655FFFF
+            val x = xOf(i)
+            val half = max(px, (w - 2 * padX) / max(1, n - 1) / 2f - px)
+            canvas.drawRect(x - half, floor - colH, x + half, floor, paint)
+        }
+
+        // Floor, with a tick every six hours (by the location's own clock).
         paint.color = 0x3355FFFF
-        val axisTop = ((h - 1) / 2).toFloat()
-        canvas.drawRect(0f, axisTop, w.toFloat(), axisTop + 1f, paint)
-
-        val span = globalMax - globalMin
-        val (startFrac, endFrac) = if (span < 0.5) {
-            0.15f to 0.85f
-        } else {
-            val s = ((dayMin - globalMin) / span).toFloat().coerceIn(0f, 1f)
-            val e = ((dayMax - globalMin) / span).toFloat().coerceIn(0f, 1f)
-            s to e
+        canvas.drawRect(0f, floor, w.toFloat(), floor + px, paint)
+        pts.forEachIndexed { i, hour ->
+            val hh = hour.time.substringAfter('T', "").take(2).toIntOrNull() ?: return@forEachIndexed
+            if (hh % 6 == 0) canvas.drawRect(xOf(i), floor - 2 * px, xOf(i) + px, floor, paint)
         }
 
-        var left = startFrac * w
-        var right = endFrac * w
-        // Guarantee a visible segment even for a flat day.
-        if (right - left < 2f) {
-            val mid = (left + right) / 2f
-            left = (mid - 1f).coerceAtLeast(0f)
-            right = (left + 2f).coerceAtMost(w.toFloat())
+        // The line, hour to hour; a missing hour is bridged to the next known one.
+        paint.color = cyan
+        paint.strokeWidth = px
+        var prev: Pair<Float, Float>? = null
+        pts.forEachIndexed { i, hour ->
+            if (hour.temperature.isNaN()) return@forEachIndexed
+            val here = xOf(i) to yOf(hour.temperature)
+            prev?.let { canvas.drawLine(it.first, it.second, here.first, here.second, paint) }
+            prev = here
         }
 
-        val cold = Color.parseColor("#55ffff")
-        val warm = Color.parseColor("#ffb000")
-        paint.shader = LinearGradient(left, 0f, right, 0f, cold, warm, Shader.TileMode.CLAMP)
-        canvas.drawRect(left, 0f, right, h.toFloat(), paint)
-        paint.shader = null
+        // "Now": a white square on the first point.
+        pts.indexOfFirst { !it.temperature.isNaN() }.takeIf { it >= 0 }?.let { i ->
+            paint.color = Color.WHITE
+            val x = xOf(i)
+            val y = yOf(pts[i].temperature)
+            canvas.drawRect(x - px, y - px, x + 2 * px, y + 2 * px, paint)
+        }
 
-        // End caps: 1px of the pure hue at each end, so the extremes of the
-        // gradient read as deliberate ticks rather than a fade-out.
-        paint.color = cold
-        canvas.drawRect(left, 0f, left + 1f, h.toFloat(), paint)
-        paint.color = warm
-        canvas.drawRect(right - 1f, 0f, right, h.toFloat(), paint)
+        // Labels at the high and the low, in whole degrees.
+        fun label(text: String, color: Int, cx: Float, y: Float) {
+            val glyphs = PixelFont.render(text.replace('-', '–'), color, scale, labelH)
+            val x = (cx - glyphs.width / 2f).coerceIn(0f, (w - glyphs.width).toFloat())
+            val yy = y.coerceIn(0f, (h - labelH).toFloat())
+            // A plate in the widget's own background colour, so the label stays
+            // readable where the line passes behind it.
+            paint.color = 0xE60A0F0A.toInt()
+            canvas.drawRect(x - px, yy, x + glyphs.width + px, yy + labelH, paint)
+            canvas.drawBitmap(glyphs, x, yy, null)
+        }
+        val iHi = pts.indices.filter { !pts[it].temperature.isNaN() }.maxBy { pts[it].temperature }
+        val iLo = pts.indices.filter { !pts[it].temperature.isNaN() }.minBy { pts[it].temperature }
+        label("${Math.round(pts[iHi].temperature)}°", amber, xOf(iHi), yOf(pts[iHi].temperature) - labelH - px)
+        if (iLo != iHi) {
+            label("${Math.round(pts[iLo].temperature)}°", cyan, xOf(iLo), yOf(pts[iLo].temperature) + 2 * px)
+        }
 
         return sized(context, bmp)
     }

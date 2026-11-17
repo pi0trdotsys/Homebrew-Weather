@@ -10,6 +10,7 @@ import {
 import { GUST_NOTABLE, UV_NOTABLE, uvBand } from "@/lib/conditions";
 import { useI18n } from "@/lib/i18n";
 import { PixelIcon } from "./PixelIcon";
+import { Precipitation, type PrecipitationKind } from "./fx/Precipitation";
 
 /** Feels-like is only information when it disagrees with the thermometer — the
  * same threshold the widget's standard density uses (WidgetContent.FEELS_DELTA). */
@@ -55,10 +56,14 @@ export function HeroPanel({ data }: { data: WeatherResponse }) {
     uv != null && uv >= UV_NOTABLE ? t.uvNotable(uv, t.uvBands[uvBand(uv)]) : null,
     gust != null && gust >= GUST_NOTABLE ? t.gustsNotable(Math.round(gust)) : null,
   ].filter((x): x is string => x !== null);
+  // Falling pixels behind the numbers while it is actually raining or snowing.
+  const falling: PrecipitationKind | null =
+    baseKind === "rain" || baseKind === "thunder" ? "rain" : baseKind === "snow" ? "snow" : null;
   const feelsDiffers = Math.abs(c.apparent_temperature - c.temperature_2m) >= FEELS_DELTA;
 
   return (
-    <div className="terminal-box flex items-center gap-5 p-5">
+    <div className="terminal-box relative isolate flex items-center gap-5 overflow-hidden p-5">
+      <Precipitation kind={falling} />
       <PixelIcon kind={kind} size={88} />
       <div className="min-w-0">
         <div className="flex items-baseline gap-1">

@@ -89,6 +89,31 @@
             android:textSize="13sp"
             android:visibility="gone" />
 
+        <!-- The cities the app has saved: one tap to pick, instead of searching again. -->
+        <LinearLayout
+            android:id="@+id/saved_cities_section"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/saved_cities_header"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="monospace"
+                android:textColor="#4a6a4a"
+                android:textSize="12sp" />
+
+            <LinearLayout
+                android:id="@+id/saved_cities_list"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:orientation="vertical" />
+        </LinearLayout>
+
         <EditText
             android:id="@+id/city_input"
             android:layout_width="match_parent"
@@ -242,6 +267,21 @@
             android:text="auto (health)"
             android:textColor="#33ff66"
             android:textSize="12sp" />
+
+        <!-- Android 12+ only: the device's own accent colour. Hidden below that. -->
+        <TextView
+            android:id="@+id/theme_monet_btn"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:background="#0a0f0a"
+            android:fontFamily="monospace"
+            android:gravity="center"
+            android:padding="10dp"
+            android:text="system (Material You)"
+            android:textColor="#33ff66"
+            android:textSize="12sp"
+            android:visibility="gone" />
 
         <TextView
             android:layout_width="wrap_content"

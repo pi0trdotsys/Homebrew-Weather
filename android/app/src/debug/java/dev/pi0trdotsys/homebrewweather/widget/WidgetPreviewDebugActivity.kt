@@ -219,12 +219,14 @@ class WidgetPreviewDebugActivity : Activity() {
             WidgetCity(lat = 51.0, lon = 17.0, name = "Piekoszów", isLive = true),
         )
 
-        private fun hours(vararg pops: Int, codes: List<Int> = emptyList()) =
+        private fun hours(vararg pops: Int, codes: List<Int> = emptyList(), base: Double = 18.0) =
             pops.mapIndexed { i, p ->
                 WeatherApi.HourlyEntry(
                     time = "2026-07-31T%02d:00".format((11 + i) % 24),
                     precipitationProbability = p,
                     weatherCode = codes.getOrNull(i) ?: if (p >= 50) 61 else 2,
+                    // A day's rise and fall, warmest mid-afternoon, so the 24-hour curve has a shape.
+                    temperature = base + 6.0 * kotlin.math.sin((((11 + i) % 24) - 9) * Math.PI / 12.0),
                 )
             }
 
@@ -248,7 +250,7 @@ class WidgetPreviewDebugActivity : Activity() {
                 WeatherApi.DailyEntry("2026-08-02", 2, 33.0, 18.0, 0),
                 WeatherApi.DailyEntry("2026-08-03", 3, 32.0, 21.0, 0),
             ),
-            hourly = hours(*IntArray(24)),
+            hourly = hours(*IntArray(24), base = 24.0),
         )
 
         /**

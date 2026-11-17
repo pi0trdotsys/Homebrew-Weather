@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Android 12+: the wallpaper-derived accent. 200 is the light tint that
+         reads on the widget's dark background; 500 is the quieter mid tone. -->
+    <color name="widget_monet">@android:color/system_accent1_200</color>
+    <color name="widget_monet_dim">@android:color/system_accent1_500</color>
+</resources>

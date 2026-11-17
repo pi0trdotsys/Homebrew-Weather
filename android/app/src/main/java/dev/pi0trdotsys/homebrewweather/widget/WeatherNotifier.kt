@@ -123,6 +123,7 @@ object WeatherNotifier {
                     putExtra(MainActivity.EXTRA_CITY_LAT, city.lat)
                     putExtra(MainActivity.EXTRA_CITY_LON, city.lon)
                     putExtra(MainActivity.EXTRA_CITY_NAME, city.name)
+                    putExtra(MainActivity.EXTRA_CITY_LIVE, city.isLive)
                 }
             }
             val pending = PendingIntent.getActivity(

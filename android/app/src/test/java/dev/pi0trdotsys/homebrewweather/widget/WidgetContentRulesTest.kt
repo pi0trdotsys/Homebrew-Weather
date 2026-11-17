@@ -55,7 +55,7 @@ class WidgetContentRulesTest {
         assertNull("AQI 36 is good; not news", c.aqi)
         assertFalse("no day reaches 30% rain", c.showPopRow)
         assertNull("feels-like within 3°, light wind, normal humidity", c.metaLine)
-        assertFalse(c.showBars)
+        assertFalse(c.showCurve)
         assertFalse(c.showSparkline)
         assertFalse(c.showSync)
         assertFalse("online is the normal case", c.showOnlineDot)
@@ -95,7 +95,7 @@ class WidgetContentRulesTest {
         assertEquals(36, c.aqi)
         assertTrue(c.showPopRow)
         assertEquals(listOf("▽ 0%", "▽ 0%", "▽ 0%", "▽ 0%"), c.dayPop)
-        assertTrue(c.showBars)
+        assertFalse("no hourly temperatures in this fixture, so no curve to draw", c.showCurve)
         assertTrue(c.showSync)
         assertTrue(c.showPopMax)
         assertNotNull(c.metaLine)
@@ -103,6 +103,22 @@ class WidgetContentRulesTest {
         // otherwise render as a stray "▁▁▁▁" rule.
         assertFalse(c.showSparkline)
         assertTrue(WidgetContent.build(eventful, WidgetDensity.FULL, false).showSparkline)
+    }
+
+    @Test
+    fun `full density draws the 24-hour curve once the hours carry temperatures`() {
+        val withTemps = calm.copy(hourly = calm.hourly.mapIndexed { i, h -> h.copy(temperature = 15.0 + i % 10) })
+        val c = WidgetContent.build(withTemps, WidgetDensity.FULL, offline = false)
+        assertTrue(c.showCurve)
+        assertTrue("the solver budgets a row for it", c.rows().curve)
+        assertFalse("standard keeps it out", WidgetContent.build(withTemps, WidgetDensity.STANDARD, false).showCurve)
+        assertFalse("minimal too", WidgetContent.build(withTemps, WidgetDensity.MINIMAL, false).showCurve)
+    }
+
+    @Test
+    fun `too few temperatures is no curve`() {
+        val sparse = calm.copy(hourly = calm.hourly.mapIndexed { i, h -> if (i < 3) h.copy(temperature = 20.0) else h })
+        assertFalse(WidgetContent.build(sparse, WidgetDensity.FULL, offline = false).showCurve)
     }
 
     @Test
@@ -120,7 +136,7 @@ class WidgetContentRulesTest {
         val rows = WidgetContent.build(calm, WidgetDensity.STANDARD, false).rows()
         assertFalse(rows.meta)
         assertFalse(rows.pop)
-        assertFalse(rows.bars)
+        assertFalse(rows.curve)
         assertFalse(rows.stats)
         assertTrue(rows.footer)
         assertEquals("słonecznie".length, rows.heroLineCells)

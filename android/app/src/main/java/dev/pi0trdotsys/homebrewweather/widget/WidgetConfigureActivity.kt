@@ -84,7 +84,7 @@ class WidgetConfigureActivity : Activity() {
         findViewById<Button>(R.id.search_btn).apply { text = texts.cfgSearch }.setOnClickListener { doSearch() }
         findViewById<Button>(R.id.locate_btn).apply { text = texts.cfgUseLocation }.setOnClickListener { useCurrentLocation() }
 
-        showLastAppCitySuggestion()
+        showSavedCities()
         maybeRequestNotificationPermission()
         setupPlaces()
         setupPersonalization()
@@ -182,11 +182,37 @@ class WidgetConfigureActivity : Activity() {
         bgExecutor.shutdown()
     }
 
-    private fun showLastAppCitySuggestion() {
-        val last = CapacitorStorage.lastAppCity(this) ?: return
-        suggestionBtn.text = texts.cfgUseLast(last.name)
-        suggestionBtn.visibility = View.VISIBLE
-        suggestionBtn.setOnClickListener { selectCity(last) }
+    /**
+     * The app's saved cities as one-tap picks. With none saved (a fresh install,
+     * or one that never opened the app) it falls back to the old single
+     * "last app city" suggestion, which is all there used to be.
+     */
+    private fun showSavedCities() {
+        val saved = AppCities.load(this)
+        if (saved.isEmpty()) {
+            val last = CapacitorStorage.lastAppCity(this) ?: return
+            suggestionBtn.text = texts.cfgUseLast(last.name)
+            suggestionBtn.visibility = View.VISIBLE
+            suggestionBtn.setOnClickListener { selectCity(last) }
+            return
+        }
+        val inWidget = WidgetPrefs.getPlaceState(this, appWidgetId).list
+        findViewById<TextView>(R.id.saved_cities_header).text = texts.cfgSavedHeader
+        val list = findViewById<LinearLayout>(R.id.saved_cities_list)
+        saved.forEach { city ->
+            val here = inWidget.any { Places.same(it, city) }
+            list.addView(
+                TextView(this).apply {
+                    text = "> " + (if (city.isLive) "◎ " else "") + city.name + (if (here) texts.cfgInWidget else "")
+                    setTextColor(if (here) 0xFF4A6A4A.toInt() else 0xFF33FF66.toInt())
+                    textSize = 14f
+                    setPadding(8, 14, 8, 14)
+                    typeface = android.graphics.Typeface.MONOSPACE
+                    setOnClickListener { selectCity(city) }
+                },
+            )
+        }
+        findViewById<View>(R.id.saved_cities_section).visibility = View.VISIBLE
     }
 
     private fun doSearch() {
@@ -199,7 +225,7 @@ class WidgetConfigureActivity : Activity() {
         resultsContainer.removeAllViews()
         bgExecutor.execute {
             val results = try {
-                WeatherApi.geocode(query)
+                WeatherApi.geocode(query, texts.lang.storageValue)
             } catch (e: Exception) {
                 null
             }
@@ -339,7 +365,12 @@ class WidgetConfigureActivity : Activity() {
     private fun selectCity(city: WidgetCity) {
         statusText.text = texts.cfgSaving(city.name)
         val before = WidgetPrefs.getPlaceState(this, appWidgetId)
+        // What was picked here is a city the user cares about: keep it in the
+        // app's list too, so the app and the widget agree on "my cities".
+        AppCities.add(this, city)
+        var added = false
         if (addAsPlace && before.size >= 1) {
+            added = true
             val full = before.size >= Places.MAX && before.list.none { Places.same(it, city) }
             WidgetPrefs.addPlace(this, appWidgetId, city)
             statusText.text = if (full) texts.cfgPlacesFull else texts.cfgPlaceAdded(city.name)
@@ -356,7 +387,7 @@ class WidgetConfigureActivity : Activity() {
                 // widget will retry on the next periodic/manual refresh
             }
             WeatherWorker.enqueuePeriodic(applicationContext)
-            mainHandler.post { finishAfterSelection(city.isLive) }
+            mainHandler.post { finishAfterSelection(city, added) }
         }
     }
 
@@ -376,7 +407,14 @@ class WidgetConfigureActivity : Activity() {
             WidgetTheme.CYAN to findViewById<TextView>(R.id.theme_cyan_btn),
             WidgetTheme.CRIMSON to findViewById<TextView>(R.id.theme_crimson_btn),
             WidgetTheme.AUTO_HEALTH to findViewById<TextView>(R.id.theme_auto_btn),
-        )
+        ).let { fixed ->
+            // The device's accent colours exist from Android 12.
+            if (Build.VERSION.SDK_INT >= 31) {
+                fixed + (WidgetTheme.MATERIAL_YOU to findViewById<TextView>(R.id.theme_monet_btn).apply { visibility = View.VISIBLE })
+            } else {
+                fixed
+            }
+        }
         themeButtons.forEach { (theme, btn) -> btn.setOnClickListener { selectTheme(theme) } }
         highlightSelectedTheme(WidgetPrefs.getTheme(this, appWidgetId))
 
@@ -449,13 +487,8 @@ class WidgetConfigureActivity : Activity() {
         }
     }
 
-    private fun finishAfterSelection(isLive: Boolean) {
-        val message = if (isLive) {
-            "Widget will follow your current location"
-        } else {
-            "Widget city set to saved location"
-        }
-        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    private fun finishAfterSelection(city: WidgetCity, added: Boolean) {
+        Toast.makeText(this, texts.cfgDone(city.name, city.isLive, added), Toast.LENGTH_SHORT).show()
         if (intent?.action == AppWidgetManager.ACTION_APPWIDGET_CONFIGURE) {
             val resultValue = android.content.Intent().putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
             setResult(RESULT_OK, resultValue)

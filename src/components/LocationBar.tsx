@@ -122,7 +122,7 @@ export function LocationBar({
             const active = current != null && sameCity(c, current);
             return (
               <span
-                key={`${c.lat},${c.lon}`}
+                key={`${c.live ? "live:" : ""}${c.lat},${c.lon}`}
                 className={
                   "flex items-center border " +
                   (active
@@ -131,6 +131,8 @@ export function LocationBar({
                 }
               >
                 <button type="button" onClick={() => onSelectCity(c)} className="px-2 py-0.5">
+                  {/* ◎ = where the phone is, one slot that follows it around */}
+                  {c.live ? "◎ " : ""}
                   {c.name.split(",")[0]}
                 </button>
                 {!active && (

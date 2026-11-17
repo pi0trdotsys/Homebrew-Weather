@@ -7,12 +7,21 @@ import {
   saveNotificationSettings,
   loadTone,
   saveTone,
+  loadFooterSource,
+  saveFooterSource,
+  loadHighContrastChoice,
+  saveHighContrast,
   DEFAULT_NOTIFICATION_SETTINGS,
   DEFAULT_TONE,
+  DEFAULT_FOOTER_SOURCE,
   type RefreshInterval,
   type NotificationSettings,
   type Tone,
+  type FooterSource,
 } from "@/lib/settings";
+import { applyContrast, resolveContrast } from "@/lib/contrast";
+import { AddWidgetButton } from "@/components/AddWidget";
+import { useWidgetStatus } from "@/hooks/useWidgetStatus";
 import { useI18n, type Lang } from "@/lib/i18n";
 import {
   ensureNotificationPermission,
@@ -22,6 +31,7 @@ import {
 } from "@/lib/native";
 
 const TONES: Tone[] = ["clean", "sigma", "rude"];
+const FOOTER_SOURCES: FooterSource[] = ["joke", "wellbeing", "history"];
 const LANGS: Array<{ id: Lang; label: string }> = [
   { id: "pl", label: "polski" },
   { id: "en", label: "english" },
@@ -163,18 +173,28 @@ function Settings() {
   const [interval, setInterval] = useState<RefreshInterval>(30);
   const [notif, setNotif] = useState<NotificationSettings>(DEFAULT_NOTIFICATION_SETTINGS);
   const [tone, setTone] = useState<Tone>(DEFAULT_TONE);
+  const [footerSource, setFooterSource] = useState<FooterSource>(DEFAULT_FOOTER_SOURCE);
+  // null = never chosen: the system's "more contrast" setting decides.
+  const [contrastChoice, setContrastChoice] = useState<boolean | null>(null);
+  const { status: widget } = useWidgetStatus();
   const [loaded, setLoaded] = useState(false);
   const [testState, setTestState] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([loadRefreshInterval(), loadNotificationSettings(), loadTone()]).then(
-      ([i, n, t]) => {
-        setInterval(i);
-        setNotif(n);
-        setTone(t);
-        setLoaded(true);
-      },
-    );
+    Promise.all([
+      loadRefreshInterval(),
+      loadNotificationSettings(),
+      loadTone(),
+      loadFooterSource(),
+      loadHighContrastChoice(),
+    ]).then(([i, n, t, f, c]) => {
+      setInterval(i);
+      setNotif(n);
+      setTone(t);
+      setFooterSource(f);
+      setContrastChoice(c);
+      setLoaded(true);
+    });
   }, []);
 
   // Language and tone show on the home screen too, so widgets are re-rendered
@@ -187,6 +207,20 @@ function Settings() {
       else refreshWidgets();
     });
   }, [tone, loaded]);
+
+  // The widget's footer and colours follow these two as well, so it is
+  // re-rendered once the new value is stored.
+  const changeFooterSource = (id: FooterSource) => {
+    setFooterSource(id);
+    void saveFooterSource(id).then(refreshWidgets);
+  };
+
+  const contrastOn = resolveContrast(contrastChoice) === "high";
+  const changeContrast = (on: boolean) => {
+    setContrastChoice(on);
+    applyContrast(on);
+    void saveHighContrast(on).then(refreshWidgets);
+  };
 
   const changeLang = (l: Lang) => {
     setLang(l);
@@ -451,6 +485,57 @@ function Settings() {
             {"// "}
             {t.toneHints[tone]} · {t.toneApplies}
           </p>
+        </div>
+
+        <div>
+          <div className="mb-2 text-[color:var(--phosphor-dim)] uppercase tracking-widest">
+            {t.footerSource}
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {FOOTER_SOURCES.map((id) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => changeFooterSource(id)}
+                aria-pressed={footerSource === id}
+                className={
+                  "border px-2 py-2 text-xs uppercase tracking-widest sm:text-sm " +
+                  (footerSource === id
+                    ? "border-[color:var(--phosphor)] bg-[color:var(--phosphor)] text-black"
+                    : "border-[color:var(--phosphor-dim)]/40 hover:border-[color:var(--phosphor)]")
+                }
+              >
+                {t.footerSourceNames[id]}
+              </button>
+            ))}
+          </div>
+          <p className="px-1 pt-2 text-[10px] uppercase tracking-widest text-[color:var(--phosphor-dim)]">
+            {"// "}
+            {t.footerSourceHints[footerSource]} · {t.footerSourceApplies}
+          </p>
+        </div>
+
+        <div>
+          <div className="mb-2 text-[color:var(--phosphor-dim)] uppercase tracking-widest">
+            {t.displaySection}
+          </div>
+          <Toggle label={t.contrastToggle} checked={contrastOn} onChange={changeContrast} />
+          <p className="px-1 pt-2 text-[10px] uppercase tracking-widest text-[color:var(--phosphor-dim)]">
+            {t.contrastHint}
+          </p>
+        </div>
+
+        <div>
+          <div className="mb-2 text-[color:var(--phosphor-dim)] uppercase tracking-widest">
+            {t.widgetSection}
+          </div>
+          {widget?.pinSupported ? (
+            <AddWidgetButton />
+          ) : (
+            <p className="px-1 text-[10px] uppercase tracking-widest text-[color:var(--phosphor-dim)]">
+              {t.widgetManualHint}
+            </p>
+          )}
         </div>
 
         <p className="text-[10px] uppercase tracking-widest text-[color:var(--phosphor-dim)]">

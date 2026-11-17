@@ -25,7 +25,7 @@ jobs:
       - name: Joke pools are in sync with the Kotlin source
         run: |
           bun scripts/gen-jokes.ts
-          git diff --exit-code -- src/lib/jokes.generated.ts
+          git diff --exit-code -- src/lib/jokes.generated.ts src/lib/wellbeing.generated.ts
 
   android:
     runs-on: ubuntu-latest

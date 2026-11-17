@@ -33,7 +33,10 @@ enum class WidgetTheme(val storageId: Int, val label: String, val primaryColorRe
     AMBER_TERMINAL(1, "Amber Terminal", R.color.widget_amber, R.color.widget_amber_dim),
     CYAN(2, "Cyan", R.color.widget_cyan, R.color.widget_cyan_dim),
     CRIMSON(3, "Crimson", R.color.widget_crimson, R.color.widget_crimson_dim),
-    AUTO_HEALTH(4, "Auto (health)", R.color.widget_green, R.color.widget_green_dim);
+    AUTO_HEALTH(4, "Auto (health)", R.color.widget_green, R.color.widget_green_dim),
+
+    /** The device's own accent colour (Android 12+); offered only there. */
+    MATERIAL_YOU(5, "Material You", R.color.widget_monet, R.color.widget_monet_dim);
 
     companion object {
         val DEFAULT = PHOSPHOR_GREEN

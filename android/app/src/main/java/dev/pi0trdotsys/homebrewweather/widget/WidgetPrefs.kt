@@ -34,7 +34,8 @@ data class WidgetCity(val lat: Double, val lon: Double, val name: String, val is
                     name = o.optString("name", "?"),
                     // Missing key = older entries written before "follow my
                     // location" mode existed -> default false (fixed point).
-                    isLive = o.optBoolean("isLive", false),
+                    // The web app writes the same flag as "live".
+                    isLive = o.optBoolean("isLive", o.optBoolean("live", false)),
                 )
             } catch (e: Exception) {
                 null
@@ -245,6 +246,8 @@ object WidgetPrefs {
                     precipitationSumMm = d.optDouble("mm", Double.NaN),
                     uvIndexMax = d.optDouble("uv", Double.NaN),
                     windGustMaxKmh = d.optDouble("gust", Double.NaN),
+                    sunrise = d.optString("sr", "").takeIf { it.isNotBlank() },
+                    sunset = d.optString("ss", "").takeIf { it.isNotBlank() },
                 )
             }
             WeatherApi.WeatherData(
@@ -307,6 +310,8 @@ object WidgetPrefs {
                 if (!entry.precipitationSumMm.isNaN()) put("mm", entry.precipitationSumMm)
                 if (!entry.uvIndexMax.isNaN()) put("uv", entry.uvIndexMax)
                 if (!entry.windGustMaxKmh.isNaN()) put("gust", entry.windGustMaxKmh)
+                entry.sunrise?.let { put("sr", it) }
+                entry.sunset?.let { put("ss", it) }
             })
         }
         val o = JSONObject().apply {
@@ -377,12 +382,23 @@ object CapacitorStorage {
     private const val NOTIF_GUST_ENABLED_KEY = "settings:notif-gust-enabled"
     private const val NOTIF_GUST_THRESHOLD_KEY = "settings:notif-gust-threshold"
     private const val NOTIF_SEVERE_ENABLED_KEY = "settings:notif-severe-enabled"
+    private const val FOOTER_SOURCE_KEY = "settings:footer-source"
+    private const val HIGH_CONTRAST_KEY = "settings:high-contrast"
+    private const val CITIES_KEY = "brew-wx:cities"
     private const val BRIEF_ENABLED_KEY = "settings:brief-enabled"
     private const val BRIEF_HOUR_KEY = "settings:brief-hour"
     private const val TONE_KEY = "settings:tone"
     private const val LANG_KEY = "settings:lang"
     private const val EVENING_ENABLED_KEY = "settings:evening-enabled"
     private const val EVENING_HOUR_KEY = "settings:evening-hour"
+
+    /** The app's saved-cities list as stored (see [AppCities]), or null. */
+    fun rawCities(context: Context): String? =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).getString(CITIES_KEY, null)
+
+    fun saveRawCities(context: Context, json: String) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().putString(CITIES_KEY, json).apply()
+    }
 
     fun lastAppCity(context: Context): WidgetCity? {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -439,6 +455,15 @@ object CapacitorStorage {
 
     /** Local hour (0-23) the brief goes out from, default 7. */
     fun briefHour(context: Context): Int = getDouble(context, BRIEF_HOUR_KEY, 7.0).toInt().coerceIn(0, 23)
+
+    /** What the widget footer shows: a joke, a well-being tip or an event from this day in history. */
+    fun footerSource(context: Context): FooterSource {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return FooterSource.fromStorage(prefs.getString(FOOTER_SOURCE_KEY, null))
+    }
+
+    /** Brighter secondary text on the widget; off by default (see [HighContrast]). */
+    fun highContrast(context: Context): Boolean = getBool(context, HIGH_CONTRAST_KEY, false)
 
     fun tone(context: Context): Tone {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)

@@ -34,6 +34,10 @@ import java.util.concurrent.Executors
  *   moment it's obviously needed — rather than only when adding a widget.
  * - [sendTestNotifications]: one of each notification, right now, from real
  *   data (WeatherNotifier.sendTest).
+ * - [widgetStatus] / [requestPinWidget]: whether the launcher can pin a widget
+ *   from inside the app (Android 8+, launcher permitting), how many are placed,
+ *   and asking it to. Adding a widget otherwise means knowing to long-press the
+ *   home screen.
  * - [refreshWidgets]: re-render every widget, so a language or tone change in
  *   the app shows on the home screen immediately rather than at the next
  *   scheduled refresh.
@@ -110,6 +114,35 @@ class HbwPlugin : Plugin() {
         ids.forEach { WeatherWidgetProvider.refreshWidget(context, manager, it) }
         call.resolve(JSObject().apply { put("count", ids.size) })
     }
+
+    @PluginMethod
+    fun widgetStatus(call: PluginCall) {
+        call.resolve(
+            JSObject().apply {
+                put("pinSupported", canPinWidget())
+                put("count", WeatherWidgetProvider.allWidgetIds(context).size)
+            },
+        )
+    }
+
+    /** The launcher shows its own confirmation and then opens the widget's setup screen. */
+    @PluginMethod
+    fun requestPinWidget(call: PluginCall) {
+        if (!canPinWidget()) {
+            call.resolve(JSObject().apply { put("requested", false) })
+            return
+        }
+        val requested = try {
+            AppWidgetManager.getInstance(context)
+                .requestPinAppWidget(WeatherWidgetProvider.componentName(context), null, null)
+        } catch (e: Exception) {
+            false
+        }
+        call.resolve(JSObject().apply { put("requested", requested) })
+    }
+
+    private fun canPinWidget(): Boolean =
+        Build.VERSION.SDK_INT >= 26 && AppWidgetManager.getInstance(context).isRequestPinAppWidgetSupported
 
     /** The app's own city, else the first widget's. */
     private fun testCity(): WidgetCity? =

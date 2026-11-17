@@ -48,7 +48,8 @@ data class WidgetContent(
     val dayOffset: Int,
     /** Label of the grid's first column: "dziś", or "jutro" in the evening. */
     val firstDayLabel: String,
-    val showBars: Boolean,
+    /** The 24-hour temperature curve (full density), which replaced the per-day range bars. */
+    val showCurve: Boolean,
     /** Secondary conditions line, or null to hide the row entirely. */
     val metaLine: String?,
     val showFooter: Boolean,
@@ -60,7 +61,7 @@ data class WidgetContent(
         meta = metaLine != null,
         footer = showFooter,
         pop = showPopRow,
-        bars = showBars,
+        curve = showCurve,
         stats = showStats,
         heroLineCells = heroLine.length,
         metaCells = metaLine?.length ?: 0,
@@ -118,6 +119,7 @@ data class WidgetContent(
             density: WidgetDensity,
             offline: Boolean,
             texts: Texts = PlTexts,
+            nowMillis: Long = System.currentTimeMillis(),
         ): WidgetContent {
             val nowKind = Wmo.wmoToKind(weather.currentWeatherCode).let {
                 if (!weather.isDay && (it == "sun" || it == "partly")) "moon" else it
@@ -192,13 +194,14 @@ data class WidgetContent(
                 dayPopStyle = cells.map { it.second },
                 dayOffset = dayOffset,
                 firstDayLabel = if (dayOffset == 0) texts.today else texts.tomorrow,
-                // A range bar restates the two numbers printed above it. On
-                // real data from a settled spell (30-33° highs, 18-21° lows)
-                // the four bars came out identical — ink that says nothing.
-                showBars = full,
+                // The full density's temperature row: the next 24 hours as a curve
+                // with the rain against it, in place of four range bars that
+                // restated the two numbers printed above them (on a settled spell
+                // all four came out the same bar). Only when there are enough hours.
+                showCurve = full && weather.hourly.count { !it.temperature.isNaN() } >= WidgetGraphics.CURVE_MIN_POINTS,
                 metaLine = when (density) {
-                    WidgetDensity.FULL -> fullMeta(weather, texts)
-                    WidgetDensity.STANDARD -> notableMeta(weather, texts)
+                    WidgetDensity.FULL -> fullMeta(weather, texts, nowMillis)
+                    WidgetDensity.STANDARD -> notableMeta(weather, texts, nowMillis)
                     WidgetDensity.MINIMAL -> null
                 },
                 showFooter = !minimal,
@@ -226,8 +229,13 @@ data class WidgetContent(
 
         /** Only the secondary conditions that are out of the ordinary, or null.
          * Most useful first, and at most three: the line is one row wide. */
-        fun notableMeta(weather: WeatherApi.WeatherData, texts: Texts = PlTexts): String? {
+        fun notableMeta(
+            weather: WeatherApi.WeatherData,
+            texts: Texts = PlTexts,
+            nowMillis: Long = System.currentTimeMillis(),
+        ): String? {
             val parts = mutableListOf<String>()
+            sunEventText(weather, texts, nowMillis)?.let { parts += it }
             remainingTodayMm(weather)?.takeIf { it >= RAIN_AMOUNT_NOTABLE_MM }?.let { parts += texts.rainAmount(it) }
             val gust = weather.windGustKmh
             if (!gust.isNaN() && gust >= GUST_NOTABLE_KMH) parts += texts.gusts(gust.roundToInt())
@@ -245,6 +253,13 @@ data class WidgetContent(
                 hum in 0..DRY_PCT -> parts += texts.dry(hum)
             }
             return parts.take(3).takeIf { it.isNotEmpty() }?.joinToString(" · ")
+        }
+
+        /** "zachód za 40 min" when the sun is about to set or rise, else null. */
+        private fun sunEventText(weather: WeatherApi.WeatherData, texts: Texts, nowMillis: Long): String? {
+            val offset = weather.utcOffsetSeconds ?: return null
+            val next = SunEvents.next(weather, WeatherApi.localMinuteIso(nowMillis, offset)) ?: return null
+            return SunEvents.text(next, texts)
         }
 
         /** The local hour of the forecast's first entry, in the location's own frame. */
@@ -269,7 +284,14 @@ data class WidgetContent(
         }
 
         /** Everything, always — the pre-standard-mode meta line. */
-        fun fullMeta(weather: WeatherApi.WeatherData, texts: Texts = PlTexts): String? = texts.fullMeta(
+        fun fullMeta(
+            weather: WeatherApi.WeatherData,
+            texts: Texts = PlTexts,
+            nowMillis: Long = System.currentTimeMillis(),
+        ): String? = listOfNotNull(sunEventText(weather, texts, nowMillis), fullReadouts(weather, texts))
+            .takeIf { it.isNotEmpty() }?.joinToString("  ·  ")
+
+        private fun fullReadouts(weather: WeatherApi.WeatherData, texts: Texts): String? = texts.fullMeta(
             feels = weather.apparentTemperature.takeIf { !it.isNaN() }?.roundToInt(),
             humidity = weather.humidityPercent.takeIf { it >= 0 },
             windKmh = weather.windSpeedKmh.takeIf { !it.isNaN() }?.roundToInt(),

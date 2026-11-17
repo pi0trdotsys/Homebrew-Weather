@@ -11,7 +11,14 @@ export type RefreshInterval = 15 | 30 | 60 | 180 | 360;
 export const REFRESH_INTERVAL_KEY = "brew-wx:interval";
 export const COORDS_KEY = "brew-wx:coords";
 
-export type Coords = { lat: number; lon: number; name: string };
+/**
+ * A place. `live` marks a position that came from the device (the "locate"
+ * button, or a widget that follows the phone's location) rather than a city
+ * someone chose: it is where you happen to be, not a favourite, so the saved
+ * list gives all such places ONE shared slot (see [withCity]). Entries stored
+ * before the flag existed have none, and are ordinary fixed cities.
+ */
+export type Coords = { lat: number; lon: number; name: string; live?: boolean };
 
 export async function loadCoords(): Promise<Coords | null> {
   const { value } = await Preferences.get({ key: COORDS_KEY });
@@ -39,7 +46,7 @@ export async function loadCities(): Promise<Coords[]> {
   try {
     const list = JSON.parse(value) as Coords[];
     return Array.isArray(list)
-      ? list.filter((c) => Number.isFinite(c.lat) && Number.isFinite(c.lon))
+      ? list.filter((c) => c && Number.isFinite(c.lat) && Number.isFinite(c.lon))
       : [];
   } catch {
     return [];
@@ -50,13 +57,41 @@ export async function saveCities(cities: Coords[]): Promise<void> {
   await Preferences.set({ key: CITIES_KEY, value: JSON.stringify(cities.slice(0, MAX_CITIES)) });
 }
 
-/** Two entries are the same place if they are within ~1 km. */
-export const sameCity = (a: Coords, b: Coords) =>
-  Math.abs(a.lat - b.lat) < 0.01 && Math.abs(a.lon - b.lon) < 0.01;
+/**
+ * Whether two entries are the same place — the mirror of the native rule:
+ * two live entries always are (there is only one "where I am"), a live and a
+ * fixed one never are (a favourite is not "here" just because you are
+ * standing next to it), and two fixed ones are within ~1 km of each other.
+ */
+export const sameCity = (a: Coords, b: Coords) => {
+  if (a.live && b.live) return true;
+  if (a.live || b.live) return false;
+  return Math.abs(a.lat - b.lat) < 0.01 && Math.abs(a.lon - b.lon) < 0.01;
+};
 
-/** [c] moved (or added) to the front of [list]. */
+/**
+ * [c] added to [list], or refreshed in it.
+ *
+ * - A city already in the list keeps its position and just takes the new
+ *   name and coordinates. Moving it to the front used to reorder the chips
+ *   under your finger every time you tapped one.
+ * - A live city takes the place of the existing live entry, in place — it
+ *   occupies one slot however far you wander — or goes to the front if there
+ *   is none yet.
+ * - Any other new city goes to the front.
+ *
+ * The list is capped at [MAX_CITIES], dropping from the end, so the entry that
+ * was just added is never the one that is evicted.
+ */
 export function withCity(list: Coords[], c: Coords): Coords[] {
-  return [c, ...list.filter((x) => !sameCity(x, c))].slice(0, MAX_CITIES);
+  const at = list.findIndex((x) => sameCity(x, c));
+  if (at < 0) return [c, ...list].slice(0, MAX_CITIES);
+  const next: Coords[] = [];
+  list.forEach((x, i) => {
+    if (i === at) next.push(c);
+    else if (!sameCity(x, c)) next.push(x); // a stored duplicate of the same place goes
+  });
+  return next.slice(0, MAX_CITIES);
 }
 
 // A day to open on, written by the Android side when a widget's day column is
@@ -152,6 +187,38 @@ export async function loadTone(): Promise<Tone> {
 
 export async function saveTone(tone: Tone): Promise<void> {
   await Preferences.set({ key: TONE_KEY, value: tone });
+}
+
+// What the footer line shows — on the dashboard and on the widget (the native
+// side reads this same key). A joke is what the app always showed, so it stays
+// the default.
+export type FooterSource = "joke" | "wellbeing" | "history";
+export const FOOTER_SOURCE_KEY = "settings:footer-source";
+export const DEFAULT_FOOTER_SOURCE: FooterSource = "joke";
+
+export async function loadFooterSource(): Promise<FooterSource> {
+  const { value } = await Preferences.get({ key: FOOTER_SOURCE_KEY });
+  return value === "joke" || value === "wellbeing" || value === "history"
+    ? value
+    : DEFAULT_FOOTER_SOURCE;
+}
+
+export async function saveFooterSource(source: FooterSource): Promise<void> {
+  await Preferences.set({ key: FOOTER_SOURCE_KEY, value: source });
+}
+
+// High contrast: brighter secondary text, less glow. The widget reads the same
+// key ("true"/"false"). `null` = never chosen, in which case the system's own
+// "more contrast" preference decides (see contrast.ts).
+export const HIGH_CONTRAST_KEY = "settings:high-contrast";
+
+export async function loadHighContrastChoice(): Promise<boolean | null> {
+  const { value } = await Preferences.get({ key: HIGH_CONTRAST_KEY });
+  return value === "true" ? true : value === "false" ? false : null;
+}
+
+export async function saveHighContrast(on: boolean): Promise<void> {
+  await Preferences.set({ key: HIGH_CONTRAST_KEY, value: String(on) });
 }
 
 export async function loadRefreshInterval(): Promise<RefreshInterval> {

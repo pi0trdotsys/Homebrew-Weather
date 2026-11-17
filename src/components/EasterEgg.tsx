@@ -41,7 +41,7 @@ export function EasterEgg() {
       )}
       {unlocked && !flashing && (
         <div
-          className="fixed bottom-2 right-2 z-40 select-none text-[10px] uppercase tracking-widest text-[color:var(--phosphor-dim)] opacity-60"
+          className="fixed bottom-2 right-2 z-40 select-none text-[10px] uppercase tracking-widest text-[color:var(--phosphor-dim)] egg-badge"
           title="you know the code"
         >
           [root]<span className="blink">_</span>
