@@ -199,7 +199,26 @@ checks three things:
    powershell -ExecutionPolicy Bypass -File scripts/readme-widget-shot.ps1
    ```
 
-5. Commit, push, check CI, then create the GitHub release with the APK.
+5. Commit, push, and wait for CI.
+6. Tag it and push the tag:
+
+   ```bash
+   git tag v0.6.0-beta.15 && git push origin v0.6.0-beta.15
+   ```
+
+   `.github/workflows/release.yml` then runs the tests, builds and signs the APK with the key
+   in the Actions secrets, refuses to publish unless it is signed with the release key
+   (`EXPECTED_CERT_SHA256` in the workflow) and is the version the tag names, and attaches it
+   to the release, creating the release with generated notes if there isn't one. Edit the
+   notes afterwards, or write the release yourself first and the workflow will only add the
+   APK. The tag must equal `v` + the `package.json` version.
+
+   Steps 2 and 3 on your own machine are still worth doing before tagging: the workflow
+   proves the build and the signature, not that the update works on a real phone.
+
+   **Run workflow** on the Actions tab (no tag) does everything except publish and leaves
+   the APK as an artifact — the way to test the pipeline or the secrets. Without the
+   workflow, `gh release create` with the APK you built locally does the same job.
 
 ## Widget internals
 

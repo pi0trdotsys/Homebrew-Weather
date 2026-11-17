@@ -1,0 +1,141 @@
+# Builds the signed release APK and publishes it as a GitHub release.
+#
+#   git tag v0.6.0-beta.15 && git push origin v0.6.0-beta.15
+#
+# On a tag push it runs the unit tests, builds and signs the APK with the key in
+# the repository's Actions secrets, checks it really is signed with *that* key and
+# is the version the tag says, and attaches it to the release (creating the release,
+# with generated notes, if there isn't one yet; edit the notes afterwards).
+#
+# Run by hand from the Actions tab ("Run workflow") it does everything except
+# publish, and leaves the APK as a downloadable artifact: the way to try the
+# pipeline, or the signing secrets, without cutting a release.
+#
+# Secrets: ANDROID_KEYSTORE_BASE64 (the .jks, base64), ANDROID_KEYSTORE_PASSWORD,
+# ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD. GitHub secrets can't be read back, so
+# they are not a backup of the key (see docs/DEVELOPMENT.md).
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # The certificate every release since v0.6.0-beta.12 is signed with. A build
+  # signed with any other key can't update an installed app, so it must never be
+  # published; change this only when the key is deliberately replaced.
+  EXPECTED_CERT_SHA256: 6c73b5ac9861985335f0de4e7592945f9a45ce302066d3b224d4331ed4d26237
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install
+
+      - name: The tag matches package.json
+        id: version
+        run: |
+          version=$(bun -e 'console.log(require("./package.json").version)')
+          if [ "$GITHUB_REF_TYPE" = "tag" ] && [ "$GITHUB_REF_NAME" != "v$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match package.json version v$version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # The Android project includes Capacitor's generated plugin module and the
+      # web bundle, neither of which is committed.
+      - name: Build the web bundle and sync Capacitor
+        run: |
+          bun run build:capacitor
+          bun x cap sync android
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Restore the signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          for name in KEYSTORE_BASE64 STORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::the ANDROID_* signing secrets are not all set"
+              exit 1
+            fi
+          done
+          keystore="$RUNNER_TEMP/homebrew-weather-release.jks"
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          {
+            echo "storeFile=$keystore"
+            echo "storePassword=$STORE_PASSWORD"
+            echo "keyAlias=$KEY_ALIAS"
+            echo "keyPassword=$KEY_PASSWORD"
+          } > android/keystore.properties
+
+      - name: Unit tests and the signed release build
+        working-directory: android
+        run: ./gradlew testDebugUnitTest assembleRelease --no-daemon
+
+      - name: Check the APK is signed with the release key and is this version
+        id: apk
+        run: |
+          tools=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          built=android/app/build/outputs/apk/release/app-release.apk
+
+          digest=$("$tools/apksigner" verify --print-certs "$built" | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)
+          echo "signing certificate SHA-256: $digest"
+          if [ "$digest" != "$EXPECTED_CERT_SHA256" ]; then
+            echo "::error::the APK is not signed with the release key (expected $EXPECTED_CERT_SHA256)"
+            exit 1
+          fi
+
+          built_version=$("$tools/aapt2" dump badging "$built" | sed -n "s/^package:.* versionName='\([^']*\)'.*/\1/p")
+          if [ "$built_version" != "${{ steps.version.outputs.version }}" ]; then
+            echo "::error::the APK says version $built_version, package.json says ${{ steps.version.outputs.version }}"
+            exit 1
+          fi
+
+          mkdir -p dist
+          apk="dist/homebrew-weather-v${{ steps.version.outputs.version }}.apk"
+          cp "$built" "$apk"
+          echo "path=$apk" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: homebrew-weather-v${{ steps.version.outputs.version }}
+          path: ${{ steps.apk.outputs.path }}
+          retention-days: 14
+
+      - name: Publish the release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          apk="${{ steps.apk.outputs.path }}"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            # A release made by hand first: keep its notes, add (or replace) the APK.
+            gh release upload "$GITHUB_REF_NAME" "$apk" --clobber
+          else
+            flags=(--generate-notes)
+            case "$GITHUB_REF_NAME" in *-*) flags+=(--prerelease) ;; esac
+            gh release create "$GITHUB_REF_NAME" "$apk" --title "Homebrew Weather $GITHUB_REF_NAME" "${flags[@]}"
+          fi
+
+      - name: Remove the signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/homebrew-weather-release.jks" android/keystore.properties
