@@ -117,6 +117,15 @@ cd android && ./gradlew assembleRelease
 Without that file the build still works, but it produces an unsigned APK. Both the
 keystore and `keystore.properties` are gitignored. Never commit them.
 
+The key in use since beta.12 was generated once (`homebrew-weather-release.jks`, alias
+`homebrew-weather`, RSA 4096, valid 10 000 days) and a copy lives in the repository's
+Actions secrets: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
+`ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`. GitHub secrets can't be read back, so
+**the secrets are not a backup**: keep the `.jks` and its password somewhere that
+survives this machine. Older beta.8–beta.11 builds were signed with a different key;
+that is why updating from them needs one uninstall. (Secrets named `RELEASE_*` also
+exist in the repo; nothing uses them.)
+
 ### Debug build and widget harness
 
 Debug builds carry a `.debug` application id. They install *next to* a release build

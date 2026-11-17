@@ -54,8 +54,10 @@ and pick another city; from then on tapping the city name switches between them 
 Language, brief and evening times, alert thresholds and tone are under **./settings**,
 along with a button that sends one of each notification so you can see them right away.
 
-> **Updating from beta.7 or earlier?** Uninstall the old version once, then install. From
-> beta.8 onwards, new versions install right over the top and your widgets stay put.
+> **Updating from beta.11 or earlier?** Uninstall the old version once, then install:
+> beta.12 is signed with a new key, and Android won't replace an app signed with a
+> different one. From beta.12 onwards, new versions install right over the top and your
+> widgets stay put.
 
 <br/>
 
