@@ -57,7 +57,7 @@ class WidgetPreviewDebugActivity : Activity() {
 
         WeatherWidgetProvider.debugForceOfflineCache = true
         try {
-            SIZES.forEach { (label, w, h, hideBanner, density, data) ->
+            SIZES.forEach { (label, w, h, hideBanner, density, data, places) ->
                 root.addView(
                     caption(
                         "${w}x${h}dp · ${density.label} · ${data.name.lowercase()} — $label",
@@ -72,6 +72,12 @@ class WidgetPreviewDebugActivity : Activity() {
                 WidgetPrefs.setLastKnownMinWidthDp(this, FAKE_WIDGET_ID, w)
                 WidgetPrefs.setLastKnownMinHeightDp(this, FAKE_WIDGET_ID, h)
                 WidgetPrefs.setDensity(this, FAKE_WIDGET_ID, density)
+                // A widget with several places shows "n/m" and the setup button.
+                WidgetPrefs.setPlaceState(
+                    this,
+                    FAKE_WIDGET_ID,
+                    Places.State(if (places) FAKE_PLACES else FAKE_PLACES.take(1), 0),
+                )
                 WidgetPrefs.setCachedWeather(
                     this,
                     FAKE_WIDGET_ID,
@@ -201,10 +207,17 @@ class WidgetPreviewDebugActivity : Activity() {
         val hideBanner: Boolean = true,
         val density: WidgetDensity = WidgetDensity.STANDARD,
         val data: Data = Data.EVENTFUL,
+        val places: Boolean = false,
     )
 
     companion object {
         private const val FAKE_WIDGET_ID = -777
+
+        private val FAKE_PLACES = listOf(
+            WidgetCity(lat = 52.2297, lon = 21.0122, name = "Warszawa-Śródmieście", isLive = false),
+            WidgetCity(lat = 50.0647, lon = 19.9450, name = "Kraków", isLive = false),
+            WidgetCity(lat = 51.0, lon = 17.0, name = "Piekoszów", isLive = true),
+        )
 
         private fun hours(vararg pops: Int, codes: List<Int> = emptyList()) =
             pops.mapIndexed { i, p ->
@@ -254,13 +267,19 @@ class WidgetPreviewDebugActivity : Activity() {
             windSpeedKmh = 42.0,
             currentPrecipitationProbability = 20,
             usAqi = 142, // -> "sensitive", the longest short AQI label
+            windGustKmh = 71.0,
             daily = listOf(
-                WeatherApi.DailyEntry("2026-07-31", 61, 22.0, 14.0, 70),
+                WeatherApi.DailyEntry("2026-07-31", 61, 22.0, 14.0, 70, precipitationSumMm = 11.0, uvIndexMax = 9.0, windGustMaxKmh = 71.0),
                 WeatherApi.DailyEntry("2026-08-01", 2, 22.0, 11.0, 12),
                 WeatherApi.DailyEntry("2026-08-02", 95, 19.0, 9.0, 100),
                 WeatherApi.DailyEntry("2026-08-03", 71, -2.0, -8.0, 45),
             ),
-            hourly = hours(20, 20, 30, 40, 80, 90, 70, 60, 20, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0),
+            // A 4.5 mm peak makes the afternoon spell a downpour ("ulewa"), 11 mm in all.
+            hourly = hours(20, 20, 30, 40, 80, 90, 70, 60, 20, 10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+                .mapIndexed { i, h ->
+                    h.copy(precipitationMm = listOf(0.0, 0.0, 0.1, 0.2, 2.0, 4.5, 3.0, 1.5)
+                        .getOrElse(i) { 0.0 })
+                },
         )
 
         /**
@@ -303,6 +322,8 @@ class WidgetPreviewDebugActivity : Activity() {
             Preview("real device, ordinary day", 368, 176, data = Data.CALM),
             Preview("real device, everything happening at once", 368, 176),
             Preview("real device, every readout", 368, 176, density = WidgetDensity.FULL),
+            Preview("real device, several places (n/m + setup button)", 368, 176, places = true),
+            Preview("several places at minResize", 180, 90, places = true),
             Preview("real device, temperature and 4 days", 368, 176, density = WidgetDensity.MINIMAL),
             Preview("status-banner overlay showing", 368, 176, hideBanner = false),
             Preview("declared default (minWidth x minHeight)", 250, 165),

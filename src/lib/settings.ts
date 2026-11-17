@@ -79,6 +79,13 @@ export type NotificationSettings = {
   swingThreshold: number; // °C, |today.max - yesterday.max| or day-to-day delta
   aqiEnabled: boolean;
   aqiThreshold: number; // US AQI (0-500), notify when crossed
+  uvEnabled: boolean;
+  uvThreshold: number; // UV index (daily max)
+  gustEnabled: boolean;
+  gustThreshold: number; // km/h
+  // Storm, hail, gale and extreme heat, derived from the forecast. Always sent
+  // immediately — never folded into the brief.
+  severeEnabled: boolean;
   // One morning summary instead of separate high/low/swing/AQI alerts; the
   // thresholds above then decide what the brief mentions (MorningBrief.kt).
   briefEnabled: boolean;
@@ -99,6 +106,11 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   swingThreshold: 8,
   aqiEnabled: true,
   aqiThreshold: 100,
+  uvEnabled: true,
+  uvThreshold: 8,
+  gustEnabled: true,
+  gustThreshold: 60,
+  severeEnabled: true,
   briefEnabled: true,
   briefHour: 7,
   eveningEnabled: false,
@@ -115,6 +127,11 @@ const NOTIF_KEYS: Record<keyof NotificationSettings, string> = {
   swingThreshold: "settings:notif-swing-threshold",
   aqiEnabled: "settings:notif-aqi-enabled",
   aqiThreshold: "settings:notif-aqi-threshold",
+  uvEnabled: "settings:notif-uv-enabled",
+  uvThreshold: "settings:notif-uv-threshold",
+  gustEnabled: "settings:notif-gust-enabled",
+  gustThreshold: "settings:notif-gust-threshold",
+  severeEnabled: "settings:notif-severe-enabled",
   briefEnabled: "settings:brief-enabled",
   briefHour: "settings:brief-hour",
   eveningEnabled: "settings:evening-enabled",

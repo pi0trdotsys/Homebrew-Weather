@@ -87,6 +87,18 @@ data class WidgetContent(
         const val FEELS_DELTA = 3
 
         const val WINDY_KMH = 30
+
+        /** Gusts from here are worth a mention on their own: this is where
+         * umbrellas turn inside out and loose things start to move. */
+        const val GUST_NOTABLE_KMH = 60
+
+        /** "Very high" on the UV scale starts at 8 — below that the sun is
+         * ordinary summer sun, and the widget stays quiet about it. */
+        const val UV_NOTABLE = 8
+
+        /** Rain still to come today that is worth a number. Under this it's a
+         * drizzle or a shower, and the hero's own word ("mżawka") says enough. */
+        const val RAIN_AMOUNT_NOTABLE_MM = 2.0
         const val HUMID_PCT = 90
         const val DRY_PCT = 20
 
@@ -212,9 +224,14 @@ data class WidgetContent(
                 .maxOfOrNull { it.precipitationProbability }
         }
 
-        /** Only the secondary conditions that are out of the ordinary, or null. */
+        /** Only the secondary conditions that are out of the ordinary, or null.
+         * Most useful first, and at most three: the line is one row wide. */
         fun notableMeta(weather: WeatherApi.WeatherData, texts: Texts = PlTexts): String? {
             val parts = mutableListOf<String>()
+            remainingTodayMm(weather)?.takeIf { it >= RAIN_AMOUNT_NOTABLE_MM }?.let { parts += texts.rainAmount(it) }
+            val gust = weather.windGustKmh
+            if (!gust.isNaN() && gust >= GUST_NOTABLE_KMH) parts += texts.gusts(gust.roundToInt())
+            todayUv(weather)?.takeIf { it >= UV_NOTABLE }?.let { parts += texts.uv(it) }
             val t = weather.currentTemperature
             val feels = weather.apparentTemperature
             if (!t.isNaN() && !feels.isNaN() && abs(feels - t) >= FEELS_DELTA) {
@@ -227,7 +244,28 @@ data class WidgetContent(
                 hum >= HUMID_PCT -> parts += texts.humid(hum)
                 hum in 0..DRY_PCT -> parts += texts.dry(hum)
             }
-            return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
+            return parts.take(3).takeIf { it.isNotEmpty() }?.joinToString(" · ")
+        }
+
+        /** The local hour of the forecast's first entry, in the location's own frame. */
+        private fun localHour(weather: WeatherApi.WeatherData): Int? =
+            weather.hourly.firstOrNull()?.time?.substringAfter('T', "")?.take(2)?.toIntOrNull()
+
+        /** Today's UV peak, or null when unknown — and null from the evening
+         * on, when "UV 9" would be about a sun that has already set. */
+        private fun todayUv(weather: WeatherApi.WeatherData): Int? {
+            if ((localHour(weather) ?: 0) >= EVENING_HOUR) return null
+            return weather.daily.firstOrNull()?.uvIndexMax?.takeIf { !it.isNaN() }?.roundToInt()
+        }
+
+        /** Rain still to fall today, mm — summed over the hours that are left,
+         * not the whole day's total (which includes a morning that's over).
+         * Null without any amounts (a cache from before they were kept). */
+        fun remainingTodayMm(weather: WeatherApi.WeatherData): Double? {
+            val date = weather.hourly.firstOrNull()?.time?.substringBefore('T') ?: return null
+            val known = weather.hourly.takeWhile { it.time.startsWith(date) }
+                .map { it.precipitationMm }.filter { !it.isNaN() }
+            return if (known.isEmpty()) null else known.sum()
         }
 
         /** Everything, always — the pre-standard-mode meta line. */
@@ -235,6 +273,9 @@ data class WidgetContent(
             feels = weather.apparentTemperature.takeIf { !it.isNaN() }?.roundToInt(),
             humidity = weather.humidityPercent.takeIf { it >= 0 },
             windKmh = weather.windSpeedKmh.takeIf { !it.isNaN() }?.roundToInt(),
+            gustKmh = weather.windGustKmh.takeIf { !it.isNaN() }?.roundToInt(),
+            uv = todayUv(weather),
+            rainMm = remainingTodayMm(weather),
         )
     }
 }

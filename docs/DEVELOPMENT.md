@@ -47,11 +47,36 @@ cd android && ./gradlew testDebugUnitTest
 They cover:
 
 - the widget's content rules;
-- the rain windows;
+- the rain windows, and how hard it rains (`RainAmountTest`);
+- severe-weather warnings (`SevereWeatherTest`);
+- UV and gusts (`UvAndGustTest`);
+- the places a widget cycles through (`PlacesTest`);
 - the pixel font;
 - the rebase of a stale forecast;
 - the brief, the evening preview and rain-stop;
 - both languages.
+
+### Rules the web app mirrors
+
+Three rules exist twice, in Kotlin and in TypeScript, and have to stay identical.
+Nothing checks it automatically, so change both in the same commit:
+
+| Rule | Native | Web |
+|---|---|---|
+| rain windows, intensity (drizzle < 0.5 mm/h, downpour ≥ 4), amounts | `RainWindow.kt` | `src/lib/rain-window.ts` |
+| severe weather (hail, storm, gusts ≥ 75 km/h, heat ≥ 35 °C) | `SevereWeather.kt` | `src/lib/severe-weather.ts` |
+| forecast rebased onto the real clock | `WeatherApi.rebasedTo` | `src/lib/rebase.ts` |
+
+Severe warnings are deliberately plain-voiced whatever the tone setting says, and a
+storm warning replaces the rain heads-up for that storm rather than doubling it.
+
+### Places
+
+A widget holds up to five places (`Places.kt`, stored per widget by `WidgetPrefs`).
+The header cycles them on tap; the setup screen adds and removes them. Cached
+forecasts are keyed per place, so a widget never falls back to another place's
+forecast offline, and switching places renders without firing notifications
+(`WeatherNotifier.primeState` brings the edge-triggered state up to date silently).
 
 ### Language
 

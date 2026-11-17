@@ -53,6 +53,31 @@ object RainWindow {
 
     enum class Kind { RAIN, SNOW, THUNDER }
 
+    /**
+     * How hard it rains, from the *peak* hourly amount in the window — the
+     * difference between "take a jacket" and "stay in". Only plain rain gets
+     * one: snow and storms keep their own noun, and a window with no amount
+     * data (a cache from before it was kept) reads as plain rain rather than
+     * guessing. Mirrored in src/lib/rain-window.ts.
+     */
+    enum class Intensity { DRIZZLE, RAIN, HEAVY }
+
+    /** Below this peak (mm/h) a wet spell is a drizzle. */
+    const val DRIZZLE_BELOW_MM = 0.5
+
+    /** From this peak (mm/h) it is a downpour — the usual "heavy rain" line. */
+    const val HEAVY_FROM_MM = 4.0
+
+    fun intensity(kind: Kind, peakMm: Double): Intensity = when {
+        kind != Kind.RAIN || peakMm.isNaN() -> Intensity.RAIN
+        peakMm < DRIZZLE_BELOW_MM -> Intensity.DRIZZLE
+        peakMm >= HEAVY_FROM_MM -> Intensity.HEAVY
+        else -> Intensity.RAIN
+    }
+
+    /** Smallest amount worth printing; "0.0 mm" is not information. */
+    const val MIN_SHOWN_MM = 0.1
+
     data class Window(
         val kind: Kind,
         /** Hours from now until it starts; 0 = the current hour. */
@@ -65,7 +90,13 @@ object RainWindow {
         val ongoing: Boolean,
         /** Hours from now until the first dry hour, or null if the data runs out first. */
         val endsInHours: Int? = null,
-    )
+        /** Total precipitation over the window, mm. NaN when the forecast had no amounts. */
+        val totalMm: Double = Double.NaN,
+        /** The wettest hour in the window, mm/h. NaN when unknown. */
+        val peakMm: Double = Double.NaN,
+    ) {
+        val intensity: Intensity get() = intensity(kind, peakMm)
+    }
 
     /** One day's rain, for that day's grid column: hours of the day, 0..24. */
     data class DayWindow(
@@ -78,6 +109,8 @@ object RainWindow {
         /** Most severe precipitation in the run, so the grid can colour a
          * storm differently from plain rain. */
         val kind: Kind = Kind.RAIN,
+        val totalMm: Double = Double.NaN,
+        val peakMm: Double = Double.NaN,
     )
 
     /** First window starting within [START_HORIZON_HOURS] of now, today or not. */
@@ -117,7 +150,9 @@ object RainWindow {
             else -> null
         }
         val moreLater = (end until day.size).any { day[it].precipitationProbability >= LIKELY_POP }
-        return DayWindow(hourOf(day[first].time), endHour, moreLater, severest(day.subList(first, end).map { it.weatherCode }))
+        val run = day.subList(first, end)
+        val (total, peak) = amounts(run)
+        return DayWindow(hourOf(day[first].time), endHour, moreLater, severest(run.map { it.weatherCode }), total, peak)
     }
 
     /**
@@ -148,6 +183,7 @@ object RainWindow {
         val span = hourly.subList(startIdx, endIdx)
         val codes = span.map { it.weatherCode } + if (startIdx == 0 && nowIsWet) listOf(currentWeatherCode) else emptyList()
 
+        val (total, peak) = amounts(span)
         return Window(
             kind = severest(codes),
             startsInHours = startIdx,
@@ -155,7 +191,15 @@ object RainWindow {
             end = hourly.getOrNull(endIdx)?.let { clock(it.time) },
             ongoing = startIdx == 0 && nowIsWet,
             endsInHours = if (endIdx < hourly.size) endIdx else null,
+            totalMm = total,
+            peakMm = peak,
         )
+    }
+
+    /** (sum, peak) of the hours' precipitation, both NaN when none of them carries an amount. */
+    private fun amounts(hours: List<WeatherApi.HourlyEntry>): Pair<Double, Double> {
+        val known = hours.map { it.precipitationMm }.filter { !it.isNaN() }
+        return if (known.isEmpty()) Double.NaN to Double.NaN else known.sum() to known.max()
     }
 
     private fun severest(codes: List<Int>): Kind = when {
@@ -174,14 +218,16 @@ object RainWindow {
      * ":00" was two cells of nothing, which the solver now spends on type size.
      */
     fun short(w: Window, texts: Texts = PlTexts): String =
-        texts.rainShort(w.kind, w.ongoing, w.startsInHours == 0, hourOf(w.start), w.end?.let { endHourLabel(it) })
+        texts.rainShort(w.kind, w.ongoing, w.startsInHours == 0, hourOf(w.start), w.end?.let { endHourLabel(it) }, w.intensity)
 
     /**
      * Full-sentence form for notifications, where there's room to say it the
      * way a person would.
      */
-    fun long(w: Window, texts: Texts = PlTexts): String =
-        texts.rainLong(w.kind, w.ongoing, w.startsInHours == 0, w.start, w.end)
+    fun long(w: Window, texts: Texts = PlTexts): String {
+        val sentence = texts.rainLong(w.kind, w.ongoing, w.startsInHours == 0, w.start, w.end, w.intensity)
+        return if (!w.totalMm.isNaN() && w.totalMm >= MIN_SHOWN_MM) "$sentence, ${texts.rainTotal(w.totalMm)}" else sentence
+    }
 
     private fun isPrecip(code: Int): Boolean =
         Wmo.wmoToKind(code).let { it == "rain" || it == "snow" || it == "thunder" }

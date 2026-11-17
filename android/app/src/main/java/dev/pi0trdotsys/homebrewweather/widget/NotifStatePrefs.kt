@@ -87,4 +87,35 @@ object NotifStatePrefs {
     fun setAqiNotifiedDate(context: Context, appWidgetId: Int, isoDate: String) {
         prefs(context).edit().putString("aqi_date_$appWidgetId", isoDate).apply()
     }
+
+    /** Whether a severe-weather warning of this kind is currently in force for
+     * the widget — edge-triggered like rain, so one storm is one notification
+     * rather than one per refresh while it lasts. */
+    fun severeActive(context: Context, appWidgetId: Int, kind: SevereWeather.Kind): Boolean =
+        prefs(context).getBoolean("severe_${kind.name.lowercase()}_$appWidgetId", false)
+
+    fun setSevereActive(context: Context, appWidgetId: Int, kind: SevereWeather.Kind, value: Boolean) {
+        prefs(context).edit().putBoolean("severe_${kind.name.lowercase()}_$appWidgetId", value).apply()
+    }
+
+    fun lastHeatWarningDate(context: Context, appWidgetId: Int): String? =
+        prefs(context).getString("heat_warn_date_$appWidgetId", null)
+
+    fun setHeatWarningDate(context: Context, appWidgetId: Int, isoDate: String) {
+        prefs(context).edit().putString("heat_warn_date_$appWidgetId", isoDate).apply()
+    }
+
+    fun lastUvNotifiedDate(context: Context, appWidgetId: Int): String? =
+        prefs(context).getString("uv_date_$appWidgetId", null)
+
+    fun setUvNotifiedDate(context: Context, appWidgetId: Int, isoDate: String) {
+        prefs(context).edit().putString("uv_date_$appWidgetId", isoDate).apply()
+    }
+
+    fun lastGustNotifiedDate(context: Context, appWidgetId: Int): String? =
+        prefs(context).getString("gust_date_$appWidgetId", null)
+
+    fun setGustNotifiedDate(context: Context, appWidgetId: Int, isoDate: String) {
+        prefs(context).edit().putString("gust_date_$appWidgetId", isoDate).apply()
+    }
 }

@@ -153,6 +153,27 @@ object RudeNotifications {
         String.format(pick(if (lang == Lang.EN) EN_AQI else AQI, seed), city, aqiValue, label)
 
     // ---------------------------------------------------------------------
+    // UV and wind gusts (separate alerts, brief off). The severe-weather
+    // warnings are deliberately NOT here: a warning is never a joke.
+    // ---------------------------------------------------------------------
+    private val UV = listOf(
+        "%s: UV %d, usmażysz się jak kotlet, smaruj się kremem",
+        "%s: UV %d, słońce nie żartuje, ty też nie bądź ofiarą i weź krem",
+        "%s: UV %d, spalisz się jak ostatni frajer, okulary i krem, ruchy",
+    )
+    private val GUST = listOf(
+        "%s: porywy do %d km/h, fryzura pożegna się z tobą, trzymaj się czegoś",
+        "%s: wieje jak skurwysyn, %d km/h, nie lataj dziś z parasolem",
+        "%s: porywy %d km/h, uważaj na gałęzie i nie graj bohatera",
+    )
+
+    fun uv(city: String, index: Int, seed: Int = randomSeed(), lang: Lang = Lang.PL): String =
+        String.format(pick(if (lang == Lang.EN) EN_UV else UV, seed), city, index)
+
+    fun gust(city: String, kmh: Int, seed: Int = randomSeed(), lang: Lang = Lang.PL): String =
+        String.format(pick(if (lang == Lang.EN) EN_GUST else GUST, seed), city, kmh)
+
+    // ---------------------------------------------------------------------
     // English (Lang.EN): the same register, in English slang.
     // ---------------------------------------------------------------------
     private val EN_RAIN = listOf(
@@ -195,5 +216,15 @@ object RudeNotifications {
         "%s: AQI %d (%s), air worse than your decisions, stay in",
         "%s: smog as hell, AQI %d, don't jog out there like a fool",
         "%s: AQI %d (%s), you're breathing garbage, train indoors",
+    )
+    private val EN_UV = listOf(
+        "%s: UV %d, you'll fry like a schnitzel, put on sunscreen",
+        "%s: UV %d, the sun isn't joking, don't be a clown, sunscreen",
+        "%s: UV %d, you'll burn like a rookie, shades and sunscreen, move",
+    )
+    private val EN_GUST = listOf(
+        "%s: gusts up to %d km/h, your hair says goodbye, hold onto something",
+        "%s: blowing like hell, %d km/h, leave the umbrella at home",
+        "%s: gusts %d km/h, watch for branches and don't play hero",
     )
 }

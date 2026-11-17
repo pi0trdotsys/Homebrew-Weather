@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { HeroPanel } from "@/components/HeroPanel";
+import { SevereBanner } from "@/components/SevereBanner";
 import { StatusLine } from "@/components/StatusLine";
 import { HourlyStrip } from "@/components/HourlyStrip";
 import { DailyForecast } from "@/components/DailyForecast";
@@ -309,6 +310,7 @@ function Index() {
 
       {view && coords && (
         <>
+          <SevereBanner data={view} />
           <HeroPanel data={view} />
           <StatusLine
             online={online}

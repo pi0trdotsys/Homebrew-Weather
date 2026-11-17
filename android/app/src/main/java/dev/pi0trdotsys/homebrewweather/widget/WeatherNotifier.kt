@@ -37,6 +37,11 @@ import kotlin.math.roundToInt
  * - **Morning brief** — one summary of the day ([MorningBrief]), replacing the
  *   separate high / low / swing / air-quality alerts.
  * - **Evening preview** — opt-in, tomorrow in one line ([EveningPreview]).
+ * - **Severe weather** — storm, hail, violent gusts and extreme heat, as soon as
+ *   one is in the forecast ([SevereWeather]). Always plain-voiced, whatever the
+ *   tone, and independent of the brief and the rain toggle. A storm warning
+ *   replaces the rain heads-up for that storm rather than doubling it.
+ * - **UV and wind gusts** — brief lines; their own alerts when the brief is off.
  *
  * With the brief switched off in settings, the separate alerts come back
  * exactly as before — nothing that was configurable has stopped being so.
@@ -52,10 +57,16 @@ object WeatherNotifier {
     private const val CHANNEL_TEMP_EXTREME = "temp_extreme_alerts"
     private const val CHANNEL_TEMP_SWING = "temp_swing_alerts"
     private const val CHANNEL_AQI = "aqi_alerts"
+    private const val CHANNEL_UV = "uv_alerts"
+    private const val CHANNEL_GUST = "gust_alerts"
+    private const val CHANNEL_SEVERE = "severe_alerts"
 
     /** How close a rain window has to be to warn about it: the current hour
      * or the next one, i.e. roughly a 0-2 hour heads-up. */
     private const val RAIN_SOON_HOURS = 1
+
+    /** Local hours a UV alert may go out in: from the morning, until the sun is past its worst. */
+    private val UV_ALERT_HOURS = 6..16
 
     private fun todayIso(): String = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
 
@@ -70,9 +81,14 @@ object WeatherNotifier {
             CHANNEL_TEMP_EXTREME to texts.channelTempExtreme,
             CHANNEL_TEMP_SWING to texts.channelTempSwing,
             CHANNEL_AQI to texts.channelAqi,
+            CHANNEL_UV to texts.channelUv,
+            CHANNEL_GUST to texts.channelGust,
+            CHANNEL_SEVERE to texts.channelSevere,
         ).forEach { (id, label) ->
+            // A warning is the one notification that should be allowed to make a sound.
+            val importance = if (id == CHANNEL_SEVERE) NotificationManager.IMPORTANCE_HIGH else NotificationManager.IMPORTANCE_DEFAULT
             nm.createNotificationChannel(
-                NotificationChannel(id, label.first, NotificationManager.IMPORTANCE_DEFAULT).apply {
+                NotificationChannel(id, label.first, importance).apply {
                     description = label.second
                 },
             )
@@ -96,6 +112,7 @@ object WeatherNotifier {
         text: String,
         expanded: String? = null,
         city: WidgetCity? = null,
+        priority: Int = NotificationCompat.PRIORITY_DEFAULT,
     ) {
         try {
             // Opening a notification opens the app on the city it's about,
@@ -120,7 +137,7 @@ object WeatherNotifier {
                 .setContentText(text)
                 .setAutoCancel(true)
                 .setContentIntent(pending)
-                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setPriority(priority)
             if (expanded != null && expanded != text) {
                 builder.setStyle(NotificationCompat.BigTextStyle().bigText(expanded))
             }
@@ -141,6 +158,7 @@ object WeatherNotifier {
         val texts = lang.texts
         ensureChannels(context, texts)
         val tone = CapacitorStorage.tone(context)
+        checkSevere(context, appWidgetId, city, weather, texts)
         checkRainSoon(context, appWidgetId, city, weather, tone, texts)
         checkRainStop(context, appWidgetId, city, weather, texts)
         if (CapacitorStorage.briefEnabled(context)) {
@@ -149,6 +167,8 @@ object WeatherNotifier {
             checkHighLow(context, appWidgetId, city, weather, tone, texts)
             checkSwing(context, appWidgetId, city, weather, tone, texts)
             checkAqi(context, appWidgetId, city, weather, tone, texts)
+            checkUv(context, appWidgetId, city, weather, tone, texts)
+            checkGust(context, appWidgetId, city, weather, tone, texts)
         }
         if (CapacitorStorage.eveningEnabled(context)) checkEvening(context, appWidgetId, city, weather, texts)
     }
@@ -177,6 +197,9 @@ object WeatherNotifier {
         NotifStatePrefs.setWasRaining(context, appWidgetId, imminent)
 
         if (!CapacitorStorage.rainEnabled(context) || window == null || was) return
+        // A storm is the severe alert's to announce (plain voice, own channel);
+        // sending the rain heads-up as well would be the same storm twice.
+        if (window.kind == RainWindow.Kind.THUNDER && CapacitorStorage.severeEnabled(context)) return
         sendRainSoon(context, appWidgetId, city, window, tone, texts, prefix = "")
     }
 
@@ -244,6 +267,10 @@ object WeatherNotifier {
         swingThreshold = CapacitorStorage.swingThreshold(context),
         aqiEnabled = CapacitorStorage.aqiEnabled(context),
         aqiThreshold = CapacitorStorage.aqiThreshold(context),
+        uvEnabled = CapacitorStorage.uvEnabled(context),
+        uvThreshold = CapacitorStorage.uvThreshold(context),
+        gustEnabled = CapacitorStorage.gustEnabled(context),
+        gustThreshold = CapacitorStorage.gustThreshold(context),
     )
 
     private fun composeBrief(
@@ -342,11 +369,121 @@ object WeatherNotifier {
             notify(context, id * 100 + 8, CHANNEL_EVENING, texts.testPrefix + it.title, it.summary, city = city)
             sent++
         }
+        // A real warning if there is one, otherwise a sample storm — either way
+        // titled "[test]", so nobody mistakes the sample for a forecast.
+        val warning = SevereWeather.find(weather).firstOrNull() ?: SevereWeather.Warning(SevereWeather.Kind.STORM, 1)
+        notify(
+            context, id * 100 + 10, CHANNEL_SEVERE,
+            texts.testPrefix + texts.severeTitle(warning.kind), texts.severeText(city.name, warning),
+            city = city, priority = NotificationCompat.PRIORITY_HIGH,
+        )
+        sent++
         return sent
     }
 
     /** Notification id base for test sends — no real widget id is this large. */
     private const val TEST_ID_BASE = 9_999_990
+
+    /**
+     * Storm, hail, violent gusts or extreme heat in the forecast (see
+     * [SevereWeather]). Edge-triggered per kind — one storm is one warning, and
+     * a later, separate one warns again — except heat, which stays true all day
+     * and is therefore capped at one a day.
+     *
+     * Deliberately outside the tone and the brief: it is plain-voiced whatever
+     * the tone, and it goes out on the refresh that sees it, not at 7am.
+     */
+    private fun checkSevere(
+        context: Context,
+        appWidgetId: Int,
+        city: WidgetCity,
+        weather: WeatherApi.WeatherData,
+        texts: Texts,
+    ) {
+        val enabled = CapacitorStorage.severeEnabled(context)
+        val found = SevereWeather.find(weather).associateBy { it.kind }
+        for (kind in SevereWeather.Kind.entries) {
+            val warning = found[kind]
+            val wasActive = NotifStatePrefs.severeActive(context, appWidgetId, kind)
+            NotifStatePrefs.setSevereActive(context, appWidgetId, kind, warning != null)
+            if (!enabled || warning == null || wasActive) continue
+            if (kind == SevereWeather.Kind.HEAT) {
+                val today = todayIso()
+                if (NotifStatePrefs.lastHeatWarningDate(context, appWidgetId) == today) continue
+                NotifStatePrefs.setHeatWarningDate(context, appWidgetId, today)
+            }
+            notify(
+                context, appWidgetId * 100 + 10 + kind.ordinal, CHANNEL_SEVERE,
+                texts.severeTitle(kind), texts.severeText(city.name, warning),
+                city = city, priority = NotificationCompat.PRIORITY_HIGH,
+            )
+        }
+    }
+
+    /**
+     * Brings the edge-triggered state (rain heads-up, severe warnings) in line
+     * with [weather] *without* sending anything. Used when the user switches a
+     * widget to another place: what that place's forecast says is already on
+     * the widget in front of them, and the next scheduled refresh must not
+     * announce it a second time as if it had just appeared.
+     */
+    fun primeState(context: Context, appWidgetId: Int, weather: WeatherApi.WeatherData) {
+        val imminent = RainWindow.find(weather.hourly, weather.currentWeatherCode)
+            ?.takeIf { it.startsInHours <= RAIN_SOON_HOURS } != null
+        NotifStatePrefs.setWasRaining(context, appWidgetId, imminent)
+        val found = SevereWeather.find(weather).associateBy { it.kind }
+        for (kind in SevereWeather.Kind.entries) {
+            NotifStatePrefs.setSevereActive(context, appWidgetId, kind, found[kind] != null)
+        }
+    }
+
+    private fun localHour(weather: WeatherApi.WeatherData): Int =
+        weather.hourly.firstOrNull()?.time?.substringAfter('T', "")?.take(2)?.toIntOrNull()
+            ?: Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+
+    /** UV alert (brief off): today's peak at or over the threshold, once a day,
+     * and only while there's a sun to protect yourself from. */
+    private fun checkUv(
+        context: Context,
+        appWidgetId: Int,
+        city: WidgetCity,
+        weather: WeatherApi.WeatherData,
+        tone: Tone,
+        texts: Texts,
+    ) {
+        if (!CapacitorStorage.uvEnabled(context)) return
+        val uv = weather.daily.firstOrNull()?.uvIndexMax ?: return
+        if (uv.isNaN() || uv < CapacitorStorage.uvThreshold(context)) return
+        if (localHour(weather) !in UV_ALERT_HOURS) return
+        val today = todayIso()
+        if (NotifStatePrefs.lastUvNotifiedDate(context, appWidgetId) == today) return
+        NotifStatePrefs.setUvNotifiedDate(context, appWidgetId, today)
+
+        val index = uv.roundToInt()
+        val text = if (tone == Tone.RUDE) RudeNotifications.uv(city.name, index, lang = texts.lang) else texts.uvAlert(city.name, index)
+        notify(context, appWidgetId * 100 + 14, CHANNEL_UV, titleFor(city), text, city = city)
+    }
+
+    /** Gust alert (brief off): today's strongest gust at or over the threshold, once a day. */
+    private fun checkGust(
+        context: Context,
+        appWidgetId: Int,
+        city: WidgetCity,
+        weather: WeatherApi.WeatherData,
+        tone: Tone,
+        texts: Texts,
+    ) {
+        if (!CapacitorStorage.gustEnabled(context)) return
+        val gust = weather.daily.firstOrNull()?.windGustMaxKmh ?: return
+        if (gust.isNaN() || gust < CapacitorStorage.gustThreshold(context)) return
+        val today = todayIso()
+        if (NotifStatePrefs.lastGustNotifiedDate(context, appWidgetId) == today) return
+        NotifStatePrefs.setGustNotifiedDate(context, appWidgetId, today)
+
+        val kmh = gust.roundToInt()
+        val text = if (tone == Tone.RUDE) RudeNotifications.gust(city.name, kmh, lang = texts.lang) else texts.gustAlert(city.name, kmh)
+        notify(context, appWidgetId * 100 + 15, CHANNEL_GUST, titleFor(city), text, city = city)
+    }
 
     // -------------------------------------------------------------------------
     // Separate threshold alerts — only when the morning brief is switched off.

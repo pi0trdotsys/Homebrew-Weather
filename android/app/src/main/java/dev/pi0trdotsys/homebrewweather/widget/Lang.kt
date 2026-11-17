@@ -43,17 +43,42 @@ interface Texts {
     fun wind(kmh: Int): String
     fun humid(pct: Int): String
     fun dry(pct: Int): String
-    fun fullMeta(feels: Int?, humidity: Int?, windKmh: Int?): String?
+    fun fullMeta(
+        feels: Int?, humidity: Int?, windKmh: Int?,
+        gustKmh: Int? = null, uv: Int? = null, rainMm: Double? = null,
+    ): String?
 
     // ---- rain phrasing ------------------------------------------------------
     fun rainNoun(kind: RainWindow.Kind): String
     fun rainOngoing(kind: RainWindow.Kind): String
 
+    /** The word for a spell of precipitation: "mżawka" / "ulewa" for light and
+     * heavy rain, otherwise [rainNoun]. */
+    fun nounFor(kind: RainWindow.Kind, intensity: RainWindow.Intensity): String
+
     /** Widget hero form: "deszcz 15–19". Hours are whole numbers. */
-    fun rainShort(kind: RainWindow.Kind, ongoing: Boolean, soon: Boolean, start: Int, end: Int?): String
+    fun rainShort(
+        kind: RainWindow.Kind, ongoing: Boolean, soon: Boolean, start: Int, end: Int?,
+        intensity: RainWindow.Intensity = RainWindow.Intensity.RAIN,
+    ): String
 
     /** Full sentence for notifications: "deszcz od 15:00 do ok. 19:00". */
-    fun rainLong(kind: RainWindow.Kind, ongoing: Boolean, soon: Boolean, start: String, end: String?): String
+    fun rainLong(
+        kind: RainWindow.Kind, ongoing: Boolean, soon: Boolean, start: String, end: String?,
+        intensity: RainWindow.Intensity = RainWindow.Intensity.RAIN,
+    ): String
+
+    /** An amount of rain: "0,2 mm", "12 mm". */
+    fun mm(mm: Double): String
+
+    /** A window's total, tacked onto its sentence: "12 mm łącznie". */
+    fun rainTotal(mm: Double): String
+
+    /** Today's rain amount for the widget's meta line: "opady 12 mm". */
+    fun rainAmount(mm: Double): String
+
+    fun uv(index: Int): String
+    fun gusts(kmh: Int): String
 
     /** Grid form of a window that runs past the end of the data: "od 20". */
     fun dayOpen(start: Int): String
@@ -86,11 +111,24 @@ interface Texts {
     fun tomorrowSwing(delta: Int): String
     fun eveningTitle(city: String): String
 
+    /** Brief lines: a stronger sun and a gusty day. */
+    fun briefUv(index: Int): String
+    fun briefGusts(kmh: Int): String
+
+    /** Rain amount on a day without a rain window: "możliwe opady (40%), ok. 3 mm". */
+    fun possibleRainMm(pop: Int, mm: Double): String
+
+    // ---- severe weather warnings (always plain: a warning is not a punchline) ----
+    fun severeTitle(kind: SevereWeather.Kind): String
+    fun severeText(city: String, warning: SevereWeather.Warning): String
+
     // ---- separate threshold alerts (plain voice) -------------------------------
     fun highTemp(city: String, t: Int): String
     fun lowTemp(city: String, t: Int): String
     fun swing(city: String, todayMax: Int, tomorrowMax: Int, warming: Boolean): String
     fun aqiAlert(city: String, aqi: Int, label: String): String
+    fun uvAlert(city: String, index: Int): String
+    fun gustAlert(city: String, kmh: Int): String
 
     // ---- notification channels ---------------------------------------------------
     val channelRain: Pair<String, String>
@@ -99,6 +137,9 @@ interface Texts {
     val channelTempExtreme: Pair<String, String>
     val channelTempSwing: Pair<String, String>
     val channelAqi: Pair<String, String>
+    val channelUv: Pair<String, String>
+    val channelGust: Pair<String, String>
+    val channelSevere: Pair<String, String>
     val testPrefix: String
     val testNoRain: String
 
@@ -119,6 +160,21 @@ interface Texts {
     val cfgResolving: String
     fun cfgSaving(name: String): String
     fun densityHint(d: WidgetDensity): String
+
+    // ---- places (one widget, several cities) ---------------------------------------
+    val cfgPlacesHeader: String
+    fun cfgAddPlaceToggle(on: Boolean): String
+    val cfgAddPlaceHint: String
+    val cfgRemovePlace: String
+    fun cfgPlaceLabel(name: String, live: Boolean, current: Boolean): String
+    fun cfgPlaceAdded(name: String): String
+    val cfgPlacesFull: String
+}
+
+/** "0,2 mm" below 10 (one decimal), "12 mm" from 10 (whole number). */
+internal fun formatMm(mm: Double, decimalComma: Boolean): String {
+    val number = if (mm < 9.95) String.format(Locale.US, "%.1f", mm) else Math.round(mm).toString()
+    return (if (decimalComma) number.replace('.', ',') else number) + " mm"
 }
 
 object PlTexts : Texts {
@@ -151,9 +207,23 @@ object PlTexts : Texts {
     override fun wind(kmh: Int) = "wiatr $kmh km/h"
     override fun humid(pct: Int) = "wilgotno $pct%"
     override fun dry(pct: Int) = "sucho $pct%"
-    override fun fullMeta(feels: Int?, humidity: Int?, windKmh: Int?): String? =
-        listOfNotNull(feels?.let { "odcz. $it°" }, humidity?.let { "wilg. $it%" }, windKmh?.let { "wiatr ${it}km/h" })
-            .takeIf { it.isNotEmpty() }?.joinToString("  ·  ")
+    override fun fullMeta(
+        feels: Int?, humidity: Int?, windKmh: Int?, gustKmh: Int?, uv: Int?, rainMm: Double?,
+    ): String? {
+        val wind = when {
+            windKmh != null && gustKmh != null && gustKmh > windKmh -> "wiatr $windKmh/${gustKmh}km/h"
+            windKmh != null -> "wiatr ${windKmh}km/h"
+            gustKmh != null -> "porywy ${gustKmh}km/h"
+            else -> null
+        }
+        val parts = listOfNotNull(
+            feels?.let { "odcz. $it°" }, humidity?.let { "wilg. $it%" }, wind,
+            uv?.let { "UV $it" }, rainMm?.takeIf { it >= RainWindow.MIN_SHOWN_MM }?.let { rainAmount(it) },
+        )
+        // More readouts than fit at the usual spacing: tighten the separators
+        // rather than let the line's type size collapse.
+        return parts.takeIf { it.isNotEmpty() }?.joinToString(if (parts.size > 3) " · " else "  ·  ")
+    }
 
     override fun rainNoun(kind: RainWindow.Kind) = when (kind) {
         RainWindow.Kind.RAIN -> "deszcz"
@@ -167,8 +237,22 @@ object PlTexts : Texts {
         RainWindow.Kind.THUNDER -> "grzmi"
     }
 
-    override fun rainShort(kind: RainWindow.Kind, ongoing: Boolean, soon: Boolean, start: Int, end: Int?): String {
-        val noun = rainNoun(kind)
+    override fun nounFor(kind: RainWindow.Kind, intensity: RainWindow.Intensity) = when (intensity) {
+        RainWindow.Intensity.DRIZZLE -> "mżawka"
+        RainWindow.Intensity.HEAVY -> "ulewa"
+        RainWindow.Intensity.RAIN -> rainNoun(kind)
+    }
+
+    override fun mm(mm: Double) = formatMm(mm, decimalComma = true)
+    override fun rainTotal(mm: Double) = "${mm(mm)} łącznie"
+    override fun rainAmount(mm: Double) = "opady ${mm(mm)}"
+    override fun uv(index: Int) = "UV $index"
+    override fun gusts(kmh: Int) = "porywy $kmh km/h"
+
+    override fun rainShort(
+        kind: RainWindow.Kind, ongoing: Boolean, soon: Boolean, start: Int, end: Int?, intensity: RainWindow.Intensity,
+    ): String {
+        val noun = nounFor(kind, intensity)
         return when {
             ongoing && end != null -> "${rainOngoing(kind)} do ~$end"
             ongoing -> "${rainOngoing(kind)} na dłużej"
@@ -179,8 +263,10 @@ object PlTexts : Texts {
         }
     }
 
-    override fun rainLong(kind: RainWindow.Kind, ongoing: Boolean, soon: Boolean, start: String, end: String?): String {
-        val noun = rainNoun(kind)
+    override fun rainLong(
+        kind: RainWindow.Kind, ongoing: Boolean, soon: Boolean, start: String, end: String?, intensity: RainWindow.Intensity,
+    ): String {
+        val noun = nounFor(kind, intensity)
         return when {
             ongoing && end != null -> "${rainOngoing(kind)}, przestanie ok. $end"
             ongoing -> "${rainOngoing(kind)} i nie zanosi się na koniec"
@@ -233,6 +319,30 @@ object PlTexts : Texts {
     override fun tomorrowSwing(delta: Int) =
         if (delta > 0) "jutro o $delta° cieplej" else "jutro o ${-delta}° chłodniej"
     override fun eveningTitle(city: String) = "$city · jutro"
+    override fun briefUv(index: Int) = "UV $index — krem z filtrem i okulary"
+    override fun briefGusts(kmh: Int) = "porywy do $kmh km/h"
+    override fun possibleRainMm(pop: Int, mm: Double) = "możliwe opady ($pop%), ok. ${mm(mm)}"
+
+    override fun severeTitle(kind: SevereWeather.Kind) = when (kind) {
+        SevereWeather.Kind.HAIL -> "Ostrzeżenie: burza z gradem"
+        SevereWeather.Kind.STORM -> "Ostrzeżenie: burza"
+        SevereWeather.Kind.WIND -> "Ostrzeżenie: silny wiatr"
+        SevereWeather.Kind.HEAT -> "Ostrzeżenie: upał"
+    }
+
+    override fun severeText(city: String, warning: SevereWeather.Warning): String {
+        val when_ = when {
+            warning.startsInHours <= 0 -> "teraz"
+            warning.startsInHours == 1 -> "za godzinę"
+            else -> "za ok. ${warning.startsInHours} godz."
+        }
+        return when (warning.kind) {
+            SevereWeather.Kind.HAIL -> "$city: burza z gradem $when_. Schowaj samochód i zostań w środku."
+            SevereWeather.Kind.STORM -> "$city: burza $when_. Zostań w środku, trzymaj się z dala od drzew i wody."
+            SevereWeather.Kind.WIND -> "$city: porywy do ${warning.peak} km/h $when_. Zabezpiecz luźne rzeczy, uważaj na gałęzie."
+            SevereWeather.Kind.HEAT -> "$city: do ${warning.peak}°C $when_. Pij dużo, unikaj słońca w południe."
+        }
+    }
 
     override fun highTemp(city: String, t: Int) = "$city: $t°C — upał. Pij wodę i szukaj cienia."
     override fun lowTemp(city: String, t: Int) = "$city: $t°C — zimno. Ubierz się cieplej."
@@ -240,6 +350,8 @@ object PlTexts : Texts {
         "$city: jutro $tomorrowMax° zamiast $todayMax° — wyraźnie ${if (warming) "cieplej" else "chłodniej"}."
     override fun aqiAlert(city: String, aqi: Int, label: String) =
         "$city: AQI $aqi ($label) — ogranicz wysiłek na zewnątrz."
+    override fun uvAlert(city: String, index: Int) = "$city: UV do $index — krem z filtrem, okulary, cień w południe."
+    override fun gustAlert(city: String, kmh: Int) = "$city: porywy do $kmh km/h — uważaj na zewnątrz."
 
     override val channelRain = "Deszcz" to "Deszcz lub burza tuż-tuż, a także kiedy przestanie"
     override val channelBrief = "Poranny brief" to "Jedno podsumowanie dnia rano"
@@ -247,6 +359,9 @@ object PlTexts : Texts {
     override val channelTempExtreme = "Upał i mróz" to "Przekroczone progi temperatury (gdy brief jest wyłączony)"
     override val channelTempSwing = "Skoki temperatury" to "Duża zmiana temperatury z dnia na dzień (gdy brief jest wyłączony)"
     override val channelAqi = "Jakość powietrza" to "Przekroczony próg AQI (gdy brief jest wyłączony)"
+    override val channelUv = "Promieniowanie UV" to "Wysoki indeks UV (gdy brief jest wyłączony)"
+    override val channelGust = "Porywy wiatru" to "Przekroczony próg porywów (gdy brief jest wyłączony)"
+    override val channelSevere = "Ostrzeżenia" to "Burza, grad, silny wiatr i upał — od razu, zawsze poważnie"
     override val testPrefix = "[test] "
     override val testNoRain = "w najbliższych godzinach nie pada — tak wyglądałoby ostrzeżenie"
 
@@ -270,6 +385,15 @@ object PlTexts : Texts {
         WidgetDensity.STANDARD -> "// tylko to, co dziś odbiega od normy"
         WidgetDensity.FULL -> "// wszystkie odczyty, zawsze"
     }
+
+    override val cfgPlacesHeader = "$ configure widget --places"
+    override fun cfgAddPlaceToggle(on: Boolean) = if (on) "[x] dodaj jako kolejne miejsce" else "[ ] dodaj jako kolejne miejsce"
+    override val cfgAddPlaceHint = "// dotknięcie nazwy miasta na widgecie przełącza miejsca"
+    override val cfgRemovePlace = "[ usuń ]"
+    override fun cfgPlaceLabel(name: String, live: Boolean, current: Boolean) =
+        (if (current) "> " else "  ") + (if (live) "◎ " else "") + name
+    override fun cfgPlaceAdded(name: String) = "// dodano $name"
+    override val cfgPlacesFull = "// lista pełna — zastąpiono bieżące miejsce"
 }
 
 object EnTexts : Texts {
@@ -297,9 +421,21 @@ object EnTexts : Texts {
     override fun wind(kmh: Int) = "wind $kmh km/h"
     override fun humid(pct: Int) = "humid $pct%"
     override fun dry(pct: Int) = "dry $pct%"
-    override fun fullMeta(feels: Int?, humidity: Int?, windKmh: Int?): String? =
-        listOfNotNull(feels?.let { "feels $it°" }, humidity?.let { "hum $it%" }, windKmh?.let { "wind ${it}km/h" })
-            .takeIf { it.isNotEmpty() }?.joinToString("  ·  ")
+    override fun fullMeta(
+        feels: Int?, humidity: Int?, windKmh: Int?, gustKmh: Int?, uv: Int?, rainMm: Double?,
+    ): String? {
+        val wind = when {
+            windKmh != null && gustKmh != null && gustKmh > windKmh -> "wind $windKmh/${gustKmh}km/h"
+            windKmh != null -> "wind ${windKmh}km/h"
+            gustKmh != null -> "gusts ${gustKmh}km/h"
+            else -> null
+        }
+        val parts = listOfNotNull(
+            feels?.let { "feels $it°" }, humidity?.let { "hum $it%" }, wind,
+            uv?.let { "UV $it" }, rainMm?.takeIf { it >= RainWindow.MIN_SHOWN_MM }?.let { rainAmount(it) },
+        )
+        return parts.takeIf { it.isNotEmpty() }?.joinToString(if (parts.size > 3) " · " else "  ·  ")
+    }
 
     override fun rainNoun(kind: RainWindow.Kind) = when (kind) {
         RainWindow.Kind.RAIN -> "rain"
@@ -313,8 +449,22 @@ object EnTexts : Texts {
         RainWindow.Kind.THUNDER -> "storming"
     }
 
-    override fun rainShort(kind: RainWindow.Kind, ongoing: Boolean, soon: Boolean, start: Int, end: Int?): String {
-        val noun = rainNoun(kind)
+    override fun nounFor(kind: RainWindow.Kind, intensity: RainWindow.Intensity) = when (intensity) {
+        RainWindow.Intensity.DRIZZLE -> "drizzle"
+        RainWindow.Intensity.HEAVY -> "downpour"
+        RainWindow.Intensity.RAIN -> rainNoun(kind)
+    }
+
+    override fun mm(mm: Double) = formatMm(mm, decimalComma = false)
+    override fun rainTotal(mm: Double) = "${mm(mm)} in total"
+    override fun rainAmount(mm: Double) = "rain ${mm(mm)}"
+    override fun uv(index: Int) = "UV $index"
+    override fun gusts(kmh: Int) = "gusts $kmh km/h"
+
+    override fun rainShort(
+        kind: RainWindow.Kind, ongoing: Boolean, soon: Boolean, start: Int, end: Int?, intensity: RainWindow.Intensity,
+    ): String {
+        val noun = nounFor(kind, intensity)
         return when {
             ongoing && end != null -> "${rainOngoing(kind)} until ~$end"
             ongoing -> "${rainOngoing(kind)} for a while"
@@ -325,8 +475,10 @@ object EnTexts : Texts {
         }
     }
 
-    override fun rainLong(kind: RainWindow.Kind, ongoing: Boolean, soon: Boolean, start: String, end: String?): String {
-        val noun = rainNoun(kind)
+    override fun rainLong(
+        kind: RainWindow.Kind, ongoing: Boolean, soon: Boolean, start: String, end: String?, intensity: RainWindow.Intensity,
+    ): String {
+        val noun = nounFor(kind, intensity)
         return when {
             ongoing && end != null -> "${rainOngoing(kind)}, easing off around $end"
             ongoing -> "${rainOngoing(kind)}, no end in sight"
@@ -379,6 +531,30 @@ object EnTexts : Texts {
     override fun tomorrowSwing(delta: Int) =
         if (delta > 0) "tomorrow $delta° warmer" else "tomorrow ${-delta}° colder"
     override fun eveningTitle(city: String) = "$city · tomorrow"
+    override fun briefUv(index: Int) = "UV $index — sunscreen and sunglasses"
+    override fun briefGusts(kmh: Int) = "gusts up to $kmh km/h"
+    override fun possibleRainMm(pop: Int, mm: Double) = "possible rain ($pop%), about ${mm(mm)}"
+
+    override fun severeTitle(kind: SevereWeather.Kind) = when (kind) {
+        SevereWeather.Kind.HAIL -> "Warning: thunderstorm with hail"
+        SevereWeather.Kind.STORM -> "Warning: thunderstorm"
+        SevereWeather.Kind.WIND -> "Warning: strong wind"
+        SevereWeather.Kind.HEAT -> "Warning: extreme heat"
+    }
+
+    override fun severeText(city: String, warning: SevereWeather.Warning): String {
+        val when_ = when {
+            warning.startsInHours <= 0 -> "now"
+            warning.startsInHours == 1 -> "within the hour"
+            else -> "in about ${warning.startsInHours} hours"
+        }
+        return when (warning.kind) {
+            SevereWeather.Kind.HAIL -> "$city: thunderstorm with hail $when_. Put the car under cover and stay inside."
+            SevereWeather.Kind.STORM -> "$city: thunderstorm $when_. Stay inside, keep away from trees and water."
+            SevereWeather.Kind.WIND -> "$city: gusts up to ${warning.peak} km/h $when_. Secure loose items, watch for branches."
+            SevereWeather.Kind.HEAT -> "$city: up to ${warning.peak}°C $when_. Drink plenty of water, avoid the midday sun."
+        }
+    }
 
     override fun highTemp(city: String, t: Int) = "$city: $t°C — heat. Drink water, find shade."
     override fun lowTemp(city: String, t: Int) = "$city: $t°C — cold. Dress warmly."
@@ -386,6 +562,8 @@ object EnTexts : Texts {
         "$city: $tomorrowMax° tomorrow instead of $todayMax° — noticeably ${if (warming) "warmer" else "colder"}."
     override fun aqiAlert(city: String, aqi: Int, label: String) =
         "$city: AQI $aqi ($label) — go easy outdoors."
+    override fun uvAlert(city: String, index: Int) = "$city: UV up to $index — sunscreen, sunglasses, shade at midday."
+    override fun gustAlert(city: String, kmh: Int) = "$city: gusts up to $kmh km/h — take care outdoors."
 
     override val channelRain = "Rain" to "Rain or a storm about to start, and when it's about to stop"
     override val channelBrief = "Morning brief" to "One summary of the day, in the morning"
@@ -393,6 +571,9 @@ object EnTexts : Texts {
     override val channelTempExtreme = "Heat and frost" to "Temperature thresholds crossed (when the brief is off)"
     override val channelTempSwing = "Temperature swings" to "Big day-to-day temperature change (when the brief is off)"
     override val channelAqi = "Air quality" to "AQI threshold crossed (when the brief is off)"
+    override val channelUv = "UV radiation" to "High UV index (when the brief is off)"
+    override val channelGust = "Wind gusts" to "Gust threshold crossed (when the brief is off)"
+    override val channelSevere = "Warnings" to "Storm, hail, strong wind and extreme heat — immediate, always serious"
     override val testPrefix = "[test] "
     override val testNoRain = "no rain in the next hours — this is what the heads-up looks like"
 
@@ -416,4 +597,13 @@ object EnTexts : Texts {
         WidgetDensity.STANDARD -> "// only what's out of the ordinary today"
         WidgetDensity.FULL -> "// every readout, always"
     }
+
+    override val cfgPlacesHeader = "$ configure widget --places"
+    override fun cfgAddPlaceToggle(on: Boolean) = if (on) "[x] add as another place" else "[ ] add as another place"
+    override val cfgAddPlaceHint = "// tapping the city name on the widget switches places"
+    override val cfgRemovePlace = "[ remove ]"
+    override fun cfgPlaceLabel(name: String, live: Boolean, current: Boolean) =
+        (if (current) "> " else "  ") + (if (live) "◎ " else "") + name
+    override fun cfgPlaceAdded(name: String) = "// added $name"
+    override val cfgPlacesFull = "// list is full — replaced the current place"
 }

@@ -29,6 +29,11 @@ object MorningBrief {
      * likely rain window — the same bar the widget uses for per-day rain. */
     const val POSSIBLE_RAIN_POP = WidgetContent.DAY_POP_MIN
 
+    /** A "possible rain" line only gets an amount when it's at least this much;
+     * "possible rain (40%), about 0.2 mm" is a number that talks you out of
+     * the jacket the percentage was meant to talk you into. */
+    const val MIN_POSSIBLE_RAIN_MM = 1.0
+
     data class Thresholds(
         val highEnabled: Boolean,
         val highThreshold: Double,
@@ -38,6 +43,10 @@ object MorningBrief {
         val swingThreshold: Double,
         val aqiEnabled: Boolean,
         val aqiThreshold: Double,
+        val uvEnabled: Boolean = false,
+        val uvThreshold: Double = 8.0,
+        val gustEnabled: Boolean = false,
+        val gustThreshold: Double = 60.0,
     )
 
     data class Brief(
@@ -82,11 +91,23 @@ object MorningBrief {
         val items = mutableListOf<String>()
         when {
             window != null -> items += RainWindow.long(window, texts)
-            today.precipitationProbabilityMax >= POSSIBLE_RAIN_POP ->
-                items += texts.possibleRain(today.precipitationProbabilityMax)
+            today.precipitationProbabilityMax >= POSSIBLE_RAIN_POP -> {
+                val mm = today.precipitationSumMm
+                items += if (!mm.isNaN() && mm >= MIN_POSSIBLE_RAIN_MM) {
+                    texts.possibleRainMm(today.precipitationProbabilityMax, mm)
+                } else {
+                    texts.possibleRain(today.precipitationProbabilityMax)
+                }
+            }
         }
         if (thresholds.highEnabled && today.tempMax >= thresholds.highThreshold) items += texts.hot(max)
         if (thresholds.lowEnabled && today.tempMin <= thresholds.lowThreshold) items += texts.cold(min)
+        if (thresholds.gustEnabled && !today.windGustMaxKmh.isNaN() && today.windGustMaxKmh >= thresholds.gustThreshold) {
+            items += texts.briefGusts(today.windGustMaxKmh.roundToInt())
+        }
+        if (thresholds.uvEnabled && !today.uvIndexMax.isNaN() && today.uvIndexMax >= thresholds.uvThreshold) {
+            items += texts.briefUv(today.uvIndexMax.roundToInt())
+        }
         if (thresholds.aqiEnabled && weather.usAqi >= 0 && weather.usAqi >= thresholds.aqiThreshold) {
             items += texts.air(weather.usAqi, aqiLabel(weather.usAqi))
         }
@@ -126,9 +147,19 @@ object EveningPreview {
         val min = tomorrow.tempMin.roundToInt()
         val window = RainWindow.forDay(weather.hourly, tomorrow.date)
         val weatherPart = when {
-            window != null -> "${texts.rainNoun(window.kind)} ${RainWindow.dayShort(window, texts)}"
-            tomorrow.precipitationProbabilityMax >= MorningBrief.POSSIBLE_RAIN_POP ->
-                "${texts.kindLabel(Wmo.wmoToKind(tomorrow.weatherCode))} · ${texts.possibleRain(tomorrow.precipitationProbabilityMax)}"
+            window != null -> {
+                val noun = texts.nounFor(window.kind, RainWindow.intensity(window.kind, window.peakMm))
+                "$noun ${RainWindow.dayShort(window, texts)}"
+            }
+            tomorrow.precipitationProbabilityMax >= MorningBrief.POSSIBLE_RAIN_POP -> {
+                val mm = tomorrow.precipitationSumMm
+                val possible = if (!mm.isNaN() && mm >= MorningBrief.MIN_POSSIBLE_RAIN_MM) {
+                    texts.possibleRainMm(tomorrow.precipitationProbabilityMax, mm)
+                } else {
+                    texts.possibleRain(tomorrow.precipitationProbabilityMax)
+                }
+                "${texts.kindLabel(Wmo.wmoToKind(tomorrow.weatherCode))} · $possible"
+            }
             else -> texts.kindLabel(Wmo.wmoToKind(tomorrow.weatherCode))
         }
         val line = "$max°/$min° · $weatherPart"

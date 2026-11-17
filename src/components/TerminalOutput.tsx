@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import type { WeatherResponse } from "@/lib/weather-api";
 import { wmoToKind } from "@/lib/wmo";
-import { useI18n } from "@/lib/i18n";
+import { formatMm, useI18n } from "@/lib/i18n";
+import { uvBand } from "@/lib/conditions";
 
 const ASCII: Record<string, string[]> = {
   sun: [
@@ -71,8 +72,19 @@ export function TerminalOutput({ data, joke }: { data: WeatherResponse; joke: st
   const kind = wmoToKind(data.current.weather_code);
   const art = ASCII[kind] ?? ASCII.cloud;
   const c = data.current;
-  const { t } = useI18n();
+  const { lang, t } = useI18n();
   const key = (label: string) => label.padEnd(11) + ":";
+
+  // Readings added after the first release; an older saved forecast lacks them
+  // and just prints fewer lines.
+  const gust = c.wind_gusts_10m;
+  const uvMax = data.daily.uv_index_max?.[0];
+  const precipToday = formatMm(data.daily.precipitation_sum?.[0], lang);
+  const extra: string[] = [
+    ...(gust != null ? [`${key(t.tGusts)} ${gust.toFixed(1)} km/h`] : []),
+    ...(uvMax != null ? [`${key(t.tUv)} ${Math.round(uvMax)} (${t.uvBands[uvBand(uvMax)]})`] : []),
+    ...(precipToday ? [`${key(t.tPrecip)} ${precipToday}`] : []),
+  ];
 
   const lines: string[] = [
     `user@homebrew-weather:~$ weather --details`,
@@ -81,6 +93,7 @@ export function TerminalOutput({ data, joke }: { data: WeatherResponse; joke: st
     ``,
     `${key(t.tFeels)} ${c.apparent_temperature.toFixed(1)}°C`,
     `${key(t.tWind)} ${c.wind_speed_10m.toFixed(1)} km/h`,
+    ...extra,
     `${key(t.tHumidity)} ${c.relative_humidity_2m}%`,
     `${key(t.tPressure)} ${Math.round(c.surface_pressure)} hPa`,
     `${key(t.tSunrise)} ${data.daily.sunrise[0].split("T")[1]?.slice(0, 5) ?? "--:--"}`,

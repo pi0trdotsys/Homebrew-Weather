@@ -918,3 +918,23 @@ Całość listy propozycji z 27.09. Po kolei, z tym, co nieoczywiste.
   180×90 oraz 170×170.
 - Przeglądarka: pierwsze uruchomienie, PL/EN, panel dnia, miasta i pasek deszczu, bez
   błędów w konsoli.
+
+## Ilość opadów, UV, porywy i miejsca (0.6.0-beta.12)
+
+Nowe odczyty podlegają tej samej zasadzie „pokaż wyjątki”, więc spokojny dzień wygląda
+jak dotąd:
+
+- **Ilość opadów.** Hero nazywa siłę deszczu po największej godzinowej wartości w oknie
+  (`RainWindow.intensity`: poniżej 0,5 mm/h „mżawka”, od 4 mm/h „ulewa”), a standardowa
+  linia meta dodaje „opady 11 mm” tylko wtedy, gdy do końca dnia ma spaść co najmniej
+  2 mm (`WidgetContent.RAIN_AMOUNT_NOTABLE_MM`). Powiadomienia zawsze niosą sumę z okna.
+  Prognoza zapisana przed pojawieniem się ilości czyta się jako zwykły deszcz.
+- **Porywy i UV.** Standard pokazuje je w linii meta od 60 km/h i UV 8
+  (`GUST_NOTABLE_KMH`, `UV_NOTABLE`); UV znika od wieczora. Linia ma najwyżej trzy
+  odczyty, od najważniejszego: ilość opadów, porywy, UV, odczuwalna, wiatr, wilgotność.
+  Tryb pełny wkłada porywy do odczytu wiatru („wiatr 42/71km/h”) i dodaje UV oraz ilość
+  opadów; przy pięciu odczytach zacieśnia separatory zamiast zmniejszać czcionkę.
+- **Miejsca.** Przy dwóch lub więcej miejscach nagłówek czyta „miasto · 2/3”, dotknięcie
+  nazwy przełącza (broadcast, nie aktywność), a małe „≡” obok otwiera ekran ustawień,
+  do którego pojedyncze miejsce wchodzi nadal przez samą nazwę. Przełączenie nigdy nie
+  wysyła powiadomień.

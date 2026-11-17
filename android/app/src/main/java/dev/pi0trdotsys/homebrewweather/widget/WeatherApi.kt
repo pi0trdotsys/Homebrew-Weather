@@ -1,5 +1,6 @@
 package dev.pi0trdotsys.homebrewweather.widget
 
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
@@ -27,6 +28,12 @@ object WeatherApi {
         val tempMax: Double,
         val tempMin: Double,
         val precipitationProbabilityMax: Int,
+        /** Whole-day precipitation in mm. NaN when unknown (caches from before it was kept). */
+        val precipitationSumMm: Double = Double.NaN,
+        /** The day's peak UV index. NaN when unknown. */
+        val uvIndexMax: Double = Double.NaN,
+        /** The day's strongest wind gust, km/h. NaN when unknown. */
+        val windGustMaxKmh: Double = Double.NaN,
     )
 
     /**
@@ -43,6 +50,10 @@ object WeatherApi {
         val temperature: Double = Double.NaN,
         /** Null for caches written before it was kept. */
         val isDay: Boolean? = null,
+        /** Precipitation in mm over this hour. NaN for caches written before it was kept. */
+        val precipitationMm: Double = Double.NaN,
+        /** Strongest gust this hour, km/h. NaN for caches written before it was kept. */
+        val windGustKmh: Double = Double.NaN,
     )
 
     data class WeatherData(
@@ -84,6 +95,8 @@ object WeatherApi {
         // against the real clock later (see [rebasedTo]). Null for caches
         // written before it was kept.
         val utcOffsetSeconds: Int? = null,
+        // Current gust, km/h — the gust counterpart of [windSpeedKmh]. NaN = unknown.
+        val windGustKmh: Double = Double.NaN,
     ) {
         /**
          * This forecast as it should read *now*, however long ago it was
@@ -117,6 +130,8 @@ object WeatherApi {
                 apparentTemperature = Double.NaN,
                 humidityPercent = -1,
                 windSpeedKmh = Double.NaN,
+                // Unlike wind speed, the hourly forecast does carry gusts.
+                windGustKmh = now.windGustKmh,
                 currentPrecipitationProbability = now.precipitationProbability,
                 maxNext6hPop = hourly.drop(idx).take(7).maxOfOrNull { it.precipitationProbability } ?: -1,
                 daily = daily.filter { it.date >= today },
@@ -190,9 +205,9 @@ object WeatherApi {
     fun fetchWeather(lat: Double, lon: Double): WeatherData {
         val url = "https://api.open-meteo.com/v1/forecast" +
             "?latitude=$lat&longitude=$lon" +
-            "&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,is_day,surface_pressure" +
-            "&hourly=temperature_2m,weather_code,precipitation_probability,is_day" +
-            "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset" +
+            "&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,wind_gusts_10m,is_day,surface_pressure" +
+            "&hourly=temperature_2m,weather_code,precipitation_probability,precipitation,wind_gusts_10m,is_day" +
+            "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,uv_index_max,wind_gusts_10m_max,sunrise,sunset" +
             "&timezone=auto&forecast_days=7"
         val json = httpGetJson(url)
 
@@ -205,6 +220,7 @@ object WeatherApi {
         val apparentTemp = current.optDouble("apparent_temperature", Double.NaN)
         val humidity = if (current.has("relative_humidity_2m")) current.optInt("relative_humidity_2m", -1) else -1
         val windSpeed = current.optDouble("wind_speed_10m", Double.NaN)
+        val windGust = current.optDouble("wind_gusts_10m", Double.NaN)
 
         // `hourly` was already requested in the URL above but never parsed —
         // this is where "current" (this exact hour's) rain probability comes
@@ -258,6 +274,8 @@ object WeatherApi {
         val hCodes = hourly?.optJSONArray("weather_code")
         val hTemps = hourly?.optJSONArray("temperature_2m")
         val hIsDay = hourly?.optJSONArray("is_day")
+        val hPrecip = hourly?.optJSONArray("precipitation")
+        val hGusts = hourly?.optJSONArray("wind_gusts_10m")
         val hourlyEntries = if (hTimes != null && hPops != null && currentIdx >= 0) {
             val end = minOf(hTimes.length(), currentIdx + HOURLY_HORIZON)
             (currentIdx until end).map { i ->
@@ -267,6 +285,8 @@ object WeatherApi {
                     weatherCode = hCodes?.optInt(i, 0) ?: 0,
                     temperature = hTemps?.optDouble(i, Double.NaN) ?: Double.NaN,
                     isDay = hIsDay?.let { if (it.isNull(i)) null else it.optInt(i, 1) == 1 },
+                    precipitationMm = hPrecip.optNaN(i),
+                    windGustKmh = hGusts.optNaN(i),
                 )
             }
         } else {
@@ -279,6 +299,9 @@ object WeatherApi {
         val maxes = daily.getJSONArray("temperature_2m_max")
         val mins = daily.getJSONArray("temperature_2m_min")
         val pops = daily.optJSONArray("precipitation_probability_max")
+        val dPrecip = daily.optJSONArray("precipitation_sum")
+        val dUv = daily.optJSONArray("uv_index_max")
+        val dGusts = daily.optJSONArray("wind_gusts_10m_max")
 
         val count = minOf(DAILY_DAYS, times.length())
         val entries = (0 until count).map { i ->
@@ -288,6 +311,9 @@ object WeatherApi {
                 tempMax = maxes.getDouble(i),
                 tempMin = mins.getDouble(i),
                 precipitationProbabilityMax = pops?.optInt(i, 0) ?: 0,
+                precipitationSumMm = dPrecip.optNaN(i),
+                uvIndexMax = dUv.optNaN(i),
+                windGustMaxKmh = dGusts.optNaN(i),
             )
         }
         return WeatherData(
@@ -302,8 +328,15 @@ object WeatherApi {
             daily = entries,
             hourly = hourlyEntries,
             utcOffsetSeconds = if (json.has("utc_offset_seconds")) json.optInt("utc_offset_seconds") else null,
+            windGustKmh = windGust,
         )
     }
+
+    /** `optDouble` that reads a missing array, an out-of-range index and a JSON
+     * null all as NaN ("unknown") — org.json would otherwise turn a null into 0.0,
+     * i.e. a reading of "no rain" / "no wind" that nobody measured. */
+    private fun JSONArray?.optNaN(i: Int): Double =
+        if (this == null || i !in 0 until length() || isNull(i)) Double.NaN else optDouble(i, Double.NaN)
 
     /**
      * Separate Open-Meteo Air Quality API call (different host, no key, same

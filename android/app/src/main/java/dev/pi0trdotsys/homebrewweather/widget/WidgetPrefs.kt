@@ -51,7 +51,16 @@ data class WidgetCity(val lat: Double, val lon: Double, val name: String, val is
 object WidgetPrefs {
     private const val PREFS_NAME = "widget_city_prefs"
     private fun cityKey(appWidgetId: Int) = "city_$appWidgetId"
-    private fun weatherCacheKey(appWidgetId: Int) = "weather_cache_$appWidgetId"
+    private fun placesKey(appWidgetId: Int) = "places_$appWidgetId"
+    private fun placeIndexKey(appWidgetId: Int) = "place_index_$appWidgetId"
+
+    // One cached forecast per *place*, not per widget: a widget that cycles
+    // between places must never fall back to another place's forecast when
+    // offline. The prefix (with its trailing underscore) is what removeCity
+    // sweeps, so widget 1's cleanup can't touch widget 10's entries.
+    private fun weatherCachePrefix(appWidgetId: Int) = "weather_cache_${appWidgetId}_"
+    private fun weatherCacheKey(appWidgetId: Int, city: WidgetCity) =
+        weatherCachePrefix(appWidgetId) + Places.cacheKey(city)
     private fun themeKey(appWidgetId: Int) = "theme_$appWidgetId"
     private fun transparencyKey(appWidgetId: Int) = "transparency_$appWidgetId"
     private fun densityKey(appWidgetId: Int) = "density_$appWidgetId"
@@ -64,21 +73,81 @@ object WidgetPrefs {
     const val DEFAULT_MIN_WIDTH_DP = 250
     const val DEFAULT_MIN_HEIGHT_DP = 165
 
-    fun getCity(context: Context, appWidgetId: Int): WidgetCity? {
+    /** The places this widget cycles through, and which one it shows. A widget
+     * from before places existed has only the single `city_` entry, which reads
+     * as a one-place list. */
+    fun getPlaceState(context: Context, appWidgetId: Int): Places.State {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        return WidgetCity.fromJson(prefs.getString(cityKey(appWidgetId), null))
+        val raw = prefs.getString(placesKey(appWidgetId), null)
+        if (raw != null) {
+            try {
+                val arr = org.json.JSONArray(raw)
+                val list = (0 until arr.length()).mapNotNull { WidgetCity.fromJson(arr.optString(it)) }
+                if (list.isNotEmpty()) {
+                    val idx = prefs.getInt(placeIndexKey(appWidgetId), 0).coerceIn(0, list.lastIndex)
+                    return Places.State(list, idx)
+                }
+            } catch (e: Exception) {
+                // fall through to the legacy single city
+            }
+        }
+        val legacy = WidgetCity.fromJson(prefs.getString(cityKey(appWidgetId), null))
+        return if (legacy != null) Places.State(listOf(legacy), 0) else Places.State.EMPTY
     }
 
-    fun setCity(context: Context, appWidgetId: Int, city: WidgetCity) {
+    fun setPlaceState(context: Context, appWidgetId: Int, state: Places.State) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit().putString(cityKey(appWidgetId), city.toJson()).apply()
+        val edit = prefs.edit()
+        if (state.list.isEmpty()) {
+            edit.remove(placesKey(appWidgetId)).remove(placeIndexKey(appWidgetId)).remove(cityKey(appWidgetId))
+        } else {
+            val arr = org.json.JSONArray()
+            state.list.forEach { arr.put(it.toJson()) }
+            edit.putString(placesKey(appWidgetId), arr.toString())
+                .putInt(placeIndexKey(appWidgetId), state.index)
+                // Kept in step so anything that still reads the single city sees the current one.
+                .putString(cityKey(appWidgetId), state.current?.toJson())
+        }
+        edit.apply()
+    }
+
+    /** The place this widget shows right now. */
+    fun getCity(context: Context, appWidgetId: Int): WidgetCity? =
+        getPlaceState(context, appWidgetId).current
+
+    /** Replaces the place being shown — "change city", and a live place
+     * keeping its coordinates and name current between refreshes. */
+    fun setCity(context: Context, appWidgetId: Int, city: WidgetCity) {
+        setPlaceState(context, appWidgetId, Places.replaceCurrent(getPlaceState(context, appWidgetId), city))
+    }
+
+    /** Adds [city] as another place and shows it. */
+    fun addPlace(context: Context, appWidgetId: Int, city: WidgetCity) {
+        setPlaceState(context, appWidgetId, Places.add(getPlaceState(context, appWidgetId), city))
+    }
+
+    fun removePlace(context: Context, appWidgetId: Int, position: Int) {
+        setPlaceState(context, appWidgetId, Places.remove(getPlaceState(context, appWidgetId), position))
+    }
+
+    /** Moves to the next place and returns it, or null with fewer than two. */
+    fun cyclePlace(context: Context, appWidgetId: Int): WidgetCity? {
+        val state = getPlaceState(context, appWidgetId)
+        if (!state.canCycle) return null
+        val next = Places.next(state)
+        setPlaceState(context, appWidgetId, next)
+        return next.current
     }
 
     fun removeCity(context: Context, appWidgetId: Int) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit()
-            .remove(cityKey(appWidgetId))
-            .remove(weatherCacheKey(appWidgetId))
+        val prefix = weatherCachePrefix(appWidgetId)
+        val edit = prefs.edit()
+        prefs.all.keys.filter { it.startsWith(prefix) }.forEach { edit.remove(it) }
+        edit.remove(cityKey(appWidgetId))
+            .remove(placesKey(appWidgetId))
+            .remove(placeIndexKey(appWidgetId))
+            .remove("weather_cache_$appWidgetId")
             .remove(themeKey(appWidgetId))
             .remove(transparencyKey(appWidgetId))
             .remove(densityKey(appWidgetId))
@@ -154,9 +223,14 @@ object WidgetPrefs {
     }
 
     /** Last-known-good weather, used as an offline fallback when a refresh fails. */
-    fun getCachedWeather(context: Context, appWidgetId: Int): WeatherApi.WeatherData? {
+    fun getCachedWeather(
+        context: Context,
+        appWidgetId: Int,
+        place: WidgetCity? = getCity(context, appWidgetId),
+    ): WeatherApi.WeatherData? {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val raw = prefs.getString(weatherCacheKey(appWidgetId), null) ?: return null
+        val city = place ?: return null
+        val raw = prefs.getString(weatherCacheKey(appWidgetId, city), null) ?: return null
         return try {
             val o = JSONObject(raw)
             val dailyArr = o.getJSONArray("daily")
@@ -168,6 +242,9 @@ object WidgetPrefs {
                     tempMax = d.getDouble("tempMax"),
                     tempMin = d.getDouble("tempMin"),
                     precipitationProbabilityMax = d.getInt("pop"),
+                    precipitationSumMm = d.optDouble("mm", Double.NaN),
+                    uvIndexMax = d.optDouble("uv", Double.NaN),
+                    windGustMaxKmh = d.optDouble("gust", Double.NaN),
                 )
             }
             WeatherApi.WeatherData(
@@ -197,17 +274,28 @@ object WidgetPrefs {
                             weatherCode = h.optInt("c", 0),
                             temperature = h.optDouble("T", Double.NaN),
                             isDay = if (h.has("d")) h.optInt("d") == 1 else null,
+                            precipitationMm = h.optDouble("m", Double.NaN),
+                            windGustKmh = h.optDouble("g", Double.NaN),
                         )
                     }
                 } ?: emptyList(),
                 utcOffsetSeconds = if (o.has("utcOffset")) o.optInt("utcOffset") else null,
+                windGustKmh = o.optDouble("windGust", Double.NaN),
             )
         } catch (e: Exception) {
             null
         }
     }
 
-    fun setCachedWeather(context: Context, appWidgetId: Int, weather: WeatherApi.WeatherData) {
+    /** [place] is the place [weather] was fetched for — passed explicitly by a
+     * render, because the widget may have moved to another place while the
+     * fetch was in flight, and its forecast must not land under that one. */
+    fun setCachedWeather(
+        context: Context,
+        appWidgetId: Int,
+        weather: WeatherApi.WeatherData,
+        place: WidgetCity? = getCity(context, appWidgetId),
+    ) {
         val dailyArr = org.json.JSONArray()
         weather.daily.forEach { entry ->
             dailyArr.put(JSONObject().apply {
@@ -216,6 +304,9 @@ object WidgetPrefs {
                 put("tempMax", entry.tempMax)
                 put("tempMin", entry.tempMin)
                 put("pop", entry.precipitationProbabilityMax)
+                if (!entry.precipitationSumMm.isNaN()) put("mm", entry.precipitationSumMm)
+                if (!entry.uvIndexMax.isNaN()) put("uv", entry.uvIndexMax)
+                if (!entry.windGustMaxKmh.isNaN()) put("gust", entry.windGustMaxKmh)
             })
         }
         val o = JSONObject().apply {
@@ -228,6 +319,7 @@ object WidgetPrefs {
             if (!weather.apparentTemperature.isNaN()) put("apparentTemp", weather.apparentTemperature)
             if (weather.humidityPercent >= 0) put("humidity", weather.humidityPercent)
             if (!weather.windSpeedKmh.isNaN()) put("windSpeed", weather.windSpeedKmh)
+            if (!weather.windGustKmh.isNaN()) put("windGust", weather.windGustKmh)
             if (weather.currentPrecipitationProbability >= 0) put("currentPop", weather.currentPrecipitationProbability)
             if (weather.maxNext6hPop >= 0) put("next6hPop", weather.maxNext6hPop)
             if (weather.usAqi >= 0) put("aqi", weather.usAqi)
@@ -243,12 +335,15 @@ object WidgetPrefs {
                         put("c", h.weatherCode)
                         if (!h.temperature.isNaN()) put("T", h.temperature)
                         h.isDay?.let { put("d", if (it) 1 else 0) }
+                        if (!h.precipitationMm.isNaN()) put("m", h.precipitationMm)
+                        if (!h.windGustKmh.isNaN()) put("g", h.windGustKmh)
                     })
                 }
             })
         }
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        prefs.edit().putString(weatherCacheKey(appWidgetId), o.toString()).apply()
+        val city = place ?: return
+        prefs.edit().putString(weatherCacheKey(appWidgetId, city), o.toString()).apply()
     }
 }
 
@@ -277,6 +372,11 @@ object CapacitorStorage {
     private const val NOTIF_SWING_THRESHOLD_KEY = "settings:notif-swing-threshold"
     private const val NOTIF_AQI_ENABLED_KEY = "settings:notif-aqi-enabled"
     private const val NOTIF_AQI_THRESHOLD_KEY = "settings:notif-aqi-threshold"
+    private const val NOTIF_UV_ENABLED_KEY = "settings:notif-uv-enabled"
+    private const val NOTIF_UV_THRESHOLD_KEY = "settings:notif-uv-threshold"
+    private const val NOTIF_GUST_ENABLED_KEY = "settings:notif-gust-enabled"
+    private const val NOTIF_GUST_THRESHOLD_KEY = "settings:notif-gust-threshold"
+    private const val NOTIF_SEVERE_ENABLED_KEY = "settings:notif-severe-enabled"
     private const val BRIEF_ENABLED_KEY = "settings:brief-enabled"
     private const val BRIEF_HOUR_KEY = "settings:brief-hour"
     private const val TONE_KEY = "settings:tone"
@@ -320,6 +420,18 @@ object CapacitorStorage {
     fun swingThreshold(context: Context): Double = getDouble(context, NOTIF_SWING_THRESHOLD_KEY, 8.0)
     fun aqiEnabled(context: Context): Boolean = getBool(context, NOTIF_AQI_ENABLED_KEY, true)
     fun aqiThreshold(context: Context): Double = getDouble(context, NOTIF_AQI_THRESHOLD_KEY, 100.0)
+
+    /** UV index the day's peak has to reach to be mentioned; "very high" starts at 8. */
+    fun uvEnabled(context: Context): Boolean = getBool(context, NOTIF_UV_ENABLED_KEY, true)
+    fun uvThreshold(context: Context): Double = getDouble(context, NOTIF_UV_THRESHOLD_KEY, 8.0)
+
+    /** Wind gust (km/h) the day's strongest gust has to reach to be mentioned. */
+    fun gustEnabled(context: Context): Boolean = getBool(context, NOTIF_GUST_ENABLED_KEY, true)
+    fun gustThreshold(context: Context): Double = getDouble(context, NOTIF_GUST_THRESHOLD_KEY, 60.0)
+
+    /** Immediate storm / hail / violent-wind / extreme-heat warnings (see
+     * [SevereWeather]). On by default: they're the one alert that is about safety. */
+    fun severeEnabled(context: Context): Boolean = getBool(context, NOTIF_SEVERE_ENABLED_KEY, true)
 
     /** One morning summary instead of separate threshold alerts (see
      * MorningBrief). On by default — that is the point of the feature. */

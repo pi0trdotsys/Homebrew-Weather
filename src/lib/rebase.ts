@@ -26,6 +26,7 @@ export function rebaseWeather(data: WeatherResponse, nowMs: number): WeatherResp
   const today = nowLocal.slice(0, 10);
   const keep = data.daily.time.map((d) => d >= today);
   const slice = <T>(arr: T[]) => arr.filter((_, i) => keep[i]);
+  const sliceOpt = <T>(arr: T[] | undefined) => (arr ? slice(arr) : undefined);
   const temp = data.hourly.temperature_2m[idx];
 
   return {
@@ -37,6 +38,7 @@ export function rebaseWeather(data: WeatherResponse, nowMs: number): WeatherResp
       apparent_temperature: temp,
       weather_code: data.hourly.weather_code[idx],
       is_day: data.hourly.is_day?.[idx] ?? data.current.is_day,
+      wind_gusts_10m: data.hourly.wind_gusts_10m?.[idx] ?? data.current.wind_gusts_10m,
     },
     daily: {
       time: slice(data.daily.time),
@@ -46,6 +48,9 @@ export function rebaseWeather(data: WeatherResponse, nowMs: number): WeatherResp
       precipitation_probability_max: slice(data.daily.precipitation_probability_max),
       sunrise: slice(data.daily.sunrise),
       sunset: slice(data.daily.sunset),
+      precipitation_sum: sliceOpt(data.daily.precipitation_sum),
+      uv_index_max: sliceOpt(data.daily.uv_index_max),
+      wind_gusts_10m_max: sliceOpt(data.daily.wind_gusts_10m_max),
     },
   };
 }

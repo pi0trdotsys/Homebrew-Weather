@@ -30,6 +30,53 @@
             android:textSize="18sp"
             android:textStyle="bold" />
 
+        <!-- Places: only for a widget that already has a city. With several, the
+             city name on the widget switches between them; this is where they are
+             added (the toggle) and removed. -->
+        <LinearLayout
+            android:id="@+id/places_section"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/places_header"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="monospace"
+                android:textColor="#4a6a4a"
+                android:textSize="13sp" />
+
+            <LinearLayout
+                android:id="@+id/places_container"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:orientation="vertical" />
+
+            <TextView
+                android:id="@+id/add_place_toggle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:background="#0a0f0a"
+                android:fontFamily="monospace"
+                android:padding="12dp"
+                android:textColor="#33ff66"
+                android:textSize="13sp" />
+
+            <TextView
+                android:id="@+id/add_place_hint"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:fontFamily="monospace"
+                android:textColor="#4a6a4a"
+                android:textSize="12sp" />
+        </LinearLayout>
+
         <TextView
             android:id="@+id/suggestion_btn"
             android:layout_width="match_parent"

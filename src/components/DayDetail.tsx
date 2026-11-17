@@ -7,7 +7,8 @@ import {
   findDayRainWindow,
   findTodayRainWindow,
 } from "@/lib/rain-window";
-import { useI18n } from "@/lib/i18n";
+import { formatMm, useI18n } from "@/lib/i18n";
+import { GUST_NOTABLE, UV_NOTABLE, uvBand } from "@/lib/conditions";
 import { HourlyStrip } from "./HourlyStrip";
 import { RAIN_COLOR } from "./DailyForecast";
 
@@ -50,11 +51,19 @@ export function DayDetail({
   const todayRain = isToday ? findTodayRainWindow(data) : null;
   const dayRain = isToday ? null : findDayRainWindow(data, date);
   const rainText = todayRain
-    ? describeRainWindow(todayRain, t)
+    ? describeRainWindow(todayRain, t, lang)
     : dayRain
       ? describeDayRainWindow(dayRain, t)
       : null;
   const rainKind = todayRain?.kind ?? dayRain?.kind;
+
+  // The day's totals and extremes; absent from forecasts saved before they were
+  // fetched, in which case there is simply nothing to show.
+  const mmText = formatMm(data.daily.precipitation_sum?.[i], lang);
+  const uvRaw = data.daily.uv_index_max?.[i];
+  const uv = uvRaw != null && Number.isFinite(uvRaw) ? Math.round(uvRaw) : null;
+  const gustRaw = data.daily.wind_gusts_10m_max?.[i];
+  const gust = gustRaw != null && Number.isFinite(gustRaw) ? Math.round(gustRaw) : null;
 
   return (
     <div ref={ref} className="terminal-box scroll-mt-4 p-4">
@@ -90,6 +99,31 @@ export function DayDetail({
           {rainText ?? t.noRainThatDay}
         </span>
       </div>
+      {(mmText || uv != null || gust != null) && (
+        <div className="mb-3 flex flex-wrap gap-x-4 gap-y-1 text-xs">
+          {mmText && <span className="text-[color:var(--cyan)]">{mmText}</span>}
+          {uv != null && (
+            <span
+              className={
+                uv >= UV_NOTABLE ? "text-[color:var(--amber)]" : "text-[color:var(--phosphor-dim)]"
+              }
+            >
+              {t.uvNotable(uv, t.uvBands[uvBand(uv)])}
+            </span>
+          )}
+          {gust != null && (
+            <span
+              className={
+                gust >= GUST_NOTABLE
+                  ? "text-[color:var(--amber)]"
+                  : "text-[color:var(--phosphor-dim)]"
+              }
+            >
+              {t.dayGusts(gust)}
+            </span>
+          )}
+        </div>
+      )}
       <HourlyStrip data={data} date={date} />
     </div>
   );

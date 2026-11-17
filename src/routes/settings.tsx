@@ -36,6 +36,9 @@ const NOTIFYING: Array<keyof NotificationSettings> = [
   "lowEnabled",
   "swingEnabled",
   "aqiEnabled",
+  "uvEnabled",
+  "gustEnabled",
+  "severeEnabled",
 ];
 
 export const Route = createFileRoute("/settings")({
@@ -87,12 +90,16 @@ function ThresholdInput({
   onChange,
   suffix = "°C",
   disabled,
+  min,
+  max,
 }: {
   label: string;
   value: number;
   onChange: (v: number) => void;
   suffix?: string;
   disabled?: boolean;
+  min?: number;
+  max?: number;
 }) {
   return (
     <label className="flex items-center justify-between gap-3 border border-[color:var(--phosphor-dim)]/40 px-3 py-2 text-sm">
@@ -101,8 +108,16 @@ function ThresholdInput({
         <input
           type="number"
           value={value}
+          min={min}
+          max={max}
           disabled={disabled}
           onChange={(e) => onChange(Number(e.target.value))}
+          // Typing "45" passes through "4"; only a finished entry is held to the range.
+          onBlur={() => {
+            if (min == null || max == null) return;
+            const v = Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : min;
+            if (v !== value) onChange(v);
+          }}
           className="w-16 bg-transparent text-right outline-none disabled:opacity-40"
         />
         <span className="text-[color:var(--phosphor-dim)]">{suffix}</span>
@@ -357,6 +372,45 @@ function Settings() {
               onChange={(v) => patch({ aqiThreshold: v })}
               suffix="AQI"
             />
+            <Toggle
+              label={t.uvToggle}
+              checked={notif.uvEnabled}
+              onChange={(v) => patch({ uvEnabled: v })}
+            />
+            <ThresholdInput
+              label={t.uvThreshold}
+              value={notif.uvThreshold}
+              disabled={!notif.uvEnabled}
+              onChange={(v) => patch({ uvThreshold: v })}
+              suffix="UV"
+              min={3}
+              max={11}
+            />
+            <Toggle
+              label={t.gustToggle}
+              checked={notif.gustEnabled}
+              onChange={(v) => patch({ gustEnabled: v })}
+            />
+            <ThresholdInput
+              label={t.gustThreshold}
+              value={notif.gustThreshold}
+              disabled={!notif.gustEnabled}
+              onChange={(v) => patch({ gustThreshold: v })}
+              suffix="km/h"
+              min={30}
+              max={120}
+            />
+            <p className="px-1 text-[10px] uppercase tracking-widest text-[color:var(--phosphor-dim)]">
+              {t.uvGustNote}
+            </p>
+            <Toggle
+              label={t.severeToggle}
+              checked={notif.severeEnabled}
+              onChange={(v) => patch({ severeEnabled: v })}
+            />
+            <p className="px-1 text-[10px] uppercase tracking-widest text-[color:var(--phosphor-dim)]">
+              {t.severeSettingsNote}
+            </p>
             <button
               type="button"
               onClick={() => void sendTest()}

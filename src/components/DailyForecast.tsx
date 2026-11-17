@@ -2,13 +2,14 @@ import type { WeatherResponse } from "@/lib/weather-api";
 import { wmoToKind, wmoLabelIn } from "@/lib/wmo";
 import {
   EVENING_HOUR,
+  DAY_LIST_MIN_MM,
   currentHour,
   describeDayRainWindow,
   findDayRainWindow,
   findTodayRainWindow,
   remainingTodayPop,
 } from "@/lib/rain-window";
-import { useI18n } from "@/lib/i18n";
+import { formatMm, useI18n } from "@/lib/i18n";
 import { PixelIcon } from "./PixelIcon";
 
 /** Colour of a day's rain window — a storm stands out from rain, like on the widget. */
@@ -56,7 +57,14 @@ export function DailyForecast({
           const min = Math.round(data.daily.temperature_2m_min[i]);
           const dailyPop = data.daily.precipitation_probability_max[i] ?? 0;
           const pop = today ? (remainingTodayPop(data) ?? dailyPop) : dailyPop;
+          // The day's amount only once it's worth reading (>= 1 mm); drizzle
+          // days keep the plain percentage.
+          const sum = data.daily.precipitation_sum?.[i];
+          const mmText = sum != null && sum >= DAY_LIST_MIN_MM ? formatMm(sum, lang) : "";
           const rain = today ? null : findDayRainWindow(data, iso);
+          // A day with a rain window already says it's likely; the percentage
+          // would only squeeze the window text. Show the amount alone there.
+          const showPop = !rain && !(today && heroHasRain);
           const label = today ? t.today : i === 1 ? t.tomorrow : t.dow[d.getDay()];
           const focused = focusDay === iso;
           return (
@@ -83,7 +91,8 @@ export function DailyForecast({
                 </span>
               )}
               <span className="text-xs text-[color:var(--cyan)]">
-                {today && heroHasRain ? "" : `${pop}%`}
+                {showPop ? `${pop}%` : ""}
+                {mmText && `${showPop ? " " : ""}${mmText}`}
               </span>
               <span className="font-mono tabular-nums">
                 <span className="text-[color:var(--amber)]">{max}°</span>

@@ -48,6 +48,13 @@ class WidgetConfigureActivity : Activity() {
     private lateinit var densityButtons: Map<WidgetDensity, TextView>
     private lateinit var densityHint: TextView
 
+    private lateinit var placesSection: View
+    private lateinit var placesContainer: LinearLayout
+    private lateinit var addPlaceToggle: TextView
+
+    /** Whether the next city picked is added as another place rather than replacing the current one. */
+    private var addAsPlace = false
+
     private var locationListener: LocationListener? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -79,7 +86,71 @@ class WidgetConfigureActivity : Activity() {
 
         showLastAppCitySuggestion()
         maybeRequestNotificationPermission()
+        setupPlaces()
         setupPersonalization()
+    }
+
+    /**
+     * The places section: the widget's list (tap one to show it, remove with its
+     * button) and the "add as another place" toggle that decides what picking a
+     * city below does. Default is the old behaviour — replace — so changing a
+     * widget's city doesn't quietly grow a list nobody asked for.
+     */
+    private fun setupPlaces() {
+        placesSection = findViewById(R.id.places_section)
+        placesContainer = findViewById(R.id.places_container)
+        addPlaceToggle = findViewById(R.id.add_place_toggle)
+        findViewById<TextView>(R.id.places_header).text = texts.cfgPlacesHeader
+        findViewById<TextView>(R.id.add_place_hint).text = texts.cfgAddPlaceHint
+        addPlaceToggle.setOnClickListener {
+            addAsPlace = !addAsPlace
+            addPlaceToggle.text = texts.cfgAddPlaceToggle(addAsPlace)
+        }
+        refreshPlaces()
+    }
+
+    private fun refreshPlaces() {
+        val state = WidgetPrefs.getPlaceState(this, appWidgetId)
+        // A widget with no city yet has nothing to add to or choose between.
+        placesSection.visibility = if (state.size >= 1) View.VISIBLE else View.GONE
+        addPlaceToggle.text = texts.cfgAddPlaceToggle(addAsPlace)
+        placesContainer.removeAllViews()
+        if (!state.canCycle) return
+        state.list.forEachIndexed { position, place ->
+            val row = LinearLayout(this).apply {
+                orientation = LinearLayout.HORIZONTAL
+                setPadding(0, 6, 0, 6)
+            }
+            row.addView(
+                TextView(this).apply {
+                    text = texts.cfgPlaceLabel(place.name, place.isLive, position == state.index)
+                    setTextColor(if (position == state.index) 0xFF33FF66.toInt() else 0xFF4A6A4A.toInt())
+                    textSize = 14f
+                    typeface = android.graphics.Typeface.MONOSPACE
+                    setOnClickListener {
+                        WidgetPrefs.setPlaceState(this@WidgetConfigureActivity, appWidgetId, Places.State(state.list, position))
+                        pushWidgetUpdate()
+                        refreshPlaces()
+                    }
+                },
+                LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
+            )
+            row.addView(
+                TextView(this).apply {
+                    text = texts.cfgRemovePlace
+                    setTextColor(0xFFFF5555.toInt())
+                    textSize = 12f
+                    typeface = android.graphics.Typeface.MONOSPACE
+                    setPadding(16, 0, 0, 0)
+                    setOnClickListener {
+                        WidgetPrefs.removePlace(this@WidgetConfigureActivity, appWidgetId, position)
+                        pushWidgetUpdate()
+                        refreshPlaces()
+                    }
+                },
+            )
+            placesContainer.addView(row)
+        }
     }
 
     /**
@@ -267,7 +338,14 @@ class WidgetConfigureActivity : Activity() {
 
     private fun selectCity(city: WidgetCity) {
         statusText.text = texts.cfgSaving(city.name)
-        WidgetPrefs.setCity(this, appWidgetId, city)
+        val before = WidgetPrefs.getPlaceState(this, appWidgetId)
+        if (addAsPlace && before.size >= 1) {
+            val full = before.size >= Places.MAX && before.list.none { Places.same(it, city) }
+            WidgetPrefs.addPlace(this, appWidgetId, city)
+            statusText.text = if (full) texts.cfgPlacesFull else texts.cfgPlaceAdded(city.name)
+        } else {
+            WidgetPrefs.setCity(this, appWidgetId, city)
+        }
 
         bgExecutor.execute {
             try {

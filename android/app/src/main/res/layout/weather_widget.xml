@@ -70,6 +70,21 @@
                     android:textSize="11sp" />
             </FrameLayout>
 
+            <!-- Shown only when the widget has more than one place: then the city
+                 name switches places, and this opens the setup screen instead. -->
+            <TextView
+                android:id="@+id/widget_cfg_btn"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="monospace"
+                android:includeFontPadding="false"
+                android:paddingStart="4dp"
+                android:paddingEnd="4dp"
+                android:text="≡"
+                android:textColor="@color/widget_green_dim"
+                android:textSize="11sp"
+                android:visibility="gone" />
+
             <TextView
                 android:id="@+id/widget_cursor"
                 android:layout_width="wrap_content"

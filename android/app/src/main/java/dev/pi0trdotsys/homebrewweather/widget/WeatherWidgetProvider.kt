@@ -53,6 +53,15 @@ class WeatherWidgetProvider : AppWidgetProvider() {
                     refreshWidget(context, AppWidgetManager.getInstance(context), id)
                 }
             }
+            ACTION_NEXT_PLACE -> {
+                val id = intent.getIntExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, AppWidgetManager.INVALID_APPWIDGET_ID)
+                if (id != AppWidgetManager.INVALID_APPWIDGET_ID) {
+                    // Switching places is the user looking at a place, not the
+                    // forecast changing: render it, but don't fire alerts for it.
+                    WidgetPrefs.cyclePlace(context, id)
+                    refreshWidget(context, AppWidgetManager.getInstance(context), id, announce = false)
+                }
+            }
             ACTION_BLINK_TICK -> handleBlinkTick(context)
         }
     }
@@ -98,6 +107,7 @@ class WeatherWidgetProvider : AppWidgetProvider() {
     companion object {
         const val ACTION_REFRESH = "dev.pi0trdotsys.homebrewweather.ACTION_REFRESH"
         const val ACTION_BLINK_TICK = "dev.pi0trdotsys.homebrewweather.ACTION_BLINK_TICK"
+        const val ACTION_NEXT_PLACE = "dev.pi0trdotsys.homebrewweather.ACTION_NEXT_PLACE"
 
         /**
          * Debug-only seam: when true, [buildRemoteViews] skips the live network
@@ -126,7 +136,12 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             AppWidgetManager.getInstance(context).getAppWidgetIds(componentName(context))
 
         /** Kicks off a background fetch + RemoteViews push for a single widget instance. */
-        fun refreshWidget(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int) {
+        fun refreshWidget(
+            context: Context,
+            appWidgetManager: AppWidgetManager,
+            appWidgetId: Int,
+            announce: Boolean = true,
+        ) {
             // Quick "refreshing…" feedback (cheap partial update, no network) before
             // the background fetch completes — matches the web mockup's refreshing state.
             try {
@@ -142,7 +157,7 @@ class WeatherWidgetProvider : AppWidgetProvider() {
 
             bgExecutor.execute {
                 try {
-                    val rv = buildRemoteViews(context, appWidgetId)
+                    val rv = buildRemoteViews(context, appWidgetId, announce)
                     appWidgetManager.updateAppWidget(appWidgetId, rv)
                 } catch (e: Exception) {
                     // Best-effort widget; swallow so a single bad refresh never crashes the host process.
@@ -518,6 +533,7 @@ class WeatherWidgetProvider : AppWidgetProvider() {
 
             sp(rv, R.id.widget_header_label, m.headerSp)
             sp(rv, R.id.widget_cursor, m.headerSp)
+            sp(rv, R.id.widget_cfg_btn, m.headerSp)
             sizeDp(rv, R.id.widget_online_dot, m.dotDp.toFloat())
             sizeDp(rv, R.id.widget_refresh_box, m.refreshDp.toFloat())
 
@@ -551,8 +567,11 @@ class WeatherWidgetProvider : AppWidgetProvider() {
         }
 
         /** Builds the full RemoteViews for one widget instance. Performs a blocking network
-         * call — must be invoked off the main thread (see [refreshWidget] / WeatherWorker). */
-        fun buildRemoteViews(context: Context, appWidgetId: Int): RemoteViews {
+         * call — must be invoked off the main thread (see [refreshWidget] / WeatherWorker).
+         *
+         * [announce] false renders without sending notifications — used when the user has just
+         * switched the widget to another place (see ACTION_NEXT_PLACE). */
+        fun buildRemoteViews(context: Context, appWidgetId: Int, announce: Boolean = true): RemoteViews {
             // One layout for every size. What changes per instance is the size
             // ladder applied to it (WidgetMetrics) and which rows that ladder's
             // tier keeps — see applyMetrics(). The footprint it's derived from
@@ -590,6 +609,10 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             }
             val configurePending = PendingIntent.getActivity(context, appWidgetId * 10 + 1, configureIntent, pendingFlags)
             rv.setOnClickPendingIntent(R.id.widget_city_btn, configurePending)
+            // Only shown once the widget has several places (see below), when the
+            // city name switches places and this is the way into the setup screen.
+            rv.setViewVisibility(R.id.widget_cfg_btn, View.GONE)
+            rv.setOnClickPendingIntent(R.id.widget_cfg_btn, configurePending)
 
             // refresh button -> broadcast back to this provider
             val refreshIntent = Intent(context, WeatherWidgetProvider::class.java).apply {
@@ -612,6 +635,7 @@ class WeatherWidgetProvider : AppWidgetProvider() {
 
             fun applyThemeColors(primaryColorRes: Int, dimColorRes: Int) {
                 rv.setTextColor(R.id.widget_header_label, context.getColor(dimColorRes))
+                rv.setTextColor(R.id.widget_cfg_btn, context.getColor(dimColorRes))
                 rv.setTextColor(R.id.widget_cursor, context.getColor(primaryColorRes))
                 rv.setTextColor(R.id.widget_now_line, context.getColor(primaryColorRes))
                 DAY_LABEL_IDS.forEach { rv.setTextColor(it, context.getColor(primaryColorRes)) }
@@ -656,7 +680,27 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             val city = resolveEffectiveCity(context, appWidgetId, storedCity)
 
             val liveMarker = if (city.isLive) "◎ " else ""
-            rv.setTextViewText(R.id.widget_header_label, "┌─ $liveMarker${city.name} ─┐")
+            // With several places the name is the "next place" button, and the
+            // header says which of how many this is. A single place keeps its
+            // old behaviour: the name opens the setup screen.
+            val placeState = WidgetPrefs.getPlaceState(context, appWidgetId)
+            val badge = Places.badge(placeState)
+            rv.setTextViewText(
+                R.id.widget_header_label,
+                "┌─ $liveMarker${city.name}${badge?.let { " · $it" }.orEmpty()} ─┐",
+            )
+            if (placeState.canCycle) {
+                val nextIntent = Intent(context, WeatherWidgetProvider::class.java).apply {
+                    action = ACTION_NEXT_PLACE
+                    putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
+                    data = Uri.parse("nextplace://widget/$appWidgetId")
+                }
+                rv.setOnClickPendingIntent(
+                    R.id.widget_city_btn,
+                    PendingIntent.getBroadcast(context, appWidgetId * 10 + 7, nextIntent, pendingFlags),
+                )
+                rv.setViewVisibility(R.id.widget_cfg_btn, View.VISIBLE)
+            }
 
             // Tapping the widget opens the app *on this widget's city*. It used to
             // open the app on whatever location the app had saved for itself —
@@ -676,14 +720,14 @@ class WeatherWidgetProvider : AppWidgetProvider() {
 
             var isFresh = false
             var weather = if (debugForceOfflineCache) {
-                WidgetPrefs.getCachedWeather(context, appWidgetId)
+                WidgetPrefs.getCachedWeather(context, appWidgetId, city)
             } else {
                 try {
                     val fresh = WeatherApi.fetchWeather(city.lat, city.lon)
                     isFresh = true
                     fresh
                 } catch (e: Exception) {
-                    WidgetPrefs.getCachedWeather(context, appWidgetId)
+                    WidgetPrefs.getCachedWeather(context, appWidgetId, city)
                 }
             }
 
@@ -719,7 +763,11 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             // failure must never break the widget's own render.
             if (isFresh) {
                 try {
-                    WeatherNotifier.evaluate(context, appWidgetId, city, weather)
+                    if (announce) {
+                        WeatherNotifier.evaluate(context, appWidgetId, city, weather)
+                    } else {
+                        WeatherNotifier.primeState(context, appWidgetId, weather)
+                    }
                 } catch (e: Exception) {
                     // best-effort, never break the widget refresh
                 }
@@ -736,11 +784,11 @@ class WeatherWidgetProvider : AppWidgetProvider() {
                 weather = if (aqi != null) {
                     weather.copy(usAqi = aqi)
                 } else {
-                    val cachedAqi = WidgetPrefs.getCachedWeather(context, appWidgetId)?.usAqi ?: -1
+                    val cachedAqi = WidgetPrefs.getCachedWeather(context, appWidgetId, city)?.usAqi ?: -1
                     if (cachedAqi >= 0) weather.copy(usAqi = cachedAqi) else weather
                 }
 
-                WidgetPrefs.setCachedWeather(context, appWidgetId, weather)
+                WidgetPrefs.setCachedWeather(context, appWidgetId, weather, city)
             }
 
             // Everything below reads "now" and "today" off the forecast, so a

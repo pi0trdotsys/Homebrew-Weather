@@ -1,7 +1,7 @@
 import type { WeatherResponse } from "@/lib/weather-api";
 import { wmoToKind } from "@/lib/wmo";
-import { rainRuns } from "@/lib/rain-window";
-import { useI18n } from "@/lib/i18n";
+import { rainNounFor, rainRuns } from "@/lib/rain-window";
+import { formatMm, useI18n } from "@/lib/i18n";
 import { PixelIcon } from "./PixelIcon";
 
 const BAND_BG = {
@@ -26,7 +26,7 @@ const clock = (iso: string) => iso.split("T")[1]?.slice(0, 5) ?? iso;
  * With [date], shows that day's hours instead (the day panel, DayDetail).
  */
 export function HourlyStrip({ data, date }: { data: WeatherResponse; date?: string }) {
-  const { t } = useI18n();
+  const { lang, t } = useI18n();
   const { time } = data.hourly;
 
   let idx: number[];
@@ -38,6 +38,10 @@ export function HourlyStrip({ data, date }: { data: WeatherResponse; date?: stri
     idx = Array.from({ length: 24 }, (_, i) => now + i).filter((i) => i < time.length);
   }
   const runs = rainRuns(data, idx);
+  // A line of millimetres under the temperatures, only if any hour in view has
+  // some — and then on every card, so the cards stay the same height.
+  const mm = (i: number) => formatMm(data.hourly.precipitation?.[i], lang);
+  const anyMm = idx.some((i) => mm(i) !== "");
   const runAt = (pos: number) => runs.find((r) => pos >= r.from && pos < r.to);
 
   return (
@@ -69,11 +73,11 @@ export function HourlyStrip({ data, date }: { data: WeatherResponse; date?: stri
                     ▽{" "}
                     {endLabel
                       ? t.rainRange(
-                          t.rainNoun[run.kind],
+                          rainNounFor(run.kind, run.peakMm, t),
                           clock(time[i]),
                           endLabel === "00:00" ? "24:00" : endLabel,
                         )
-                      : t.rainFrom(t.rainNoun[run.kind], clock(time[i]))}{" "}
+                      : t.rainFrom(rainNounFor(run.kind, run.peakMm, t), clock(time[i]))}{" "}
                     · {t.bandMax(run.maxPop)}
                   </span>
                 )}
@@ -87,6 +91,11 @@ export function HourlyStrip({ data, date }: { data: WeatherResponse; date?: stri
                 <div className="text-sm font-display leading-none">
                   {Math.round(data.hourly.temperature_2m[i])}°
                 </div>
+                {anyMm && (
+                  <div className="h-3 whitespace-nowrap text-[10px] leading-3 text-[color:var(--cyan)]">
+                    {mm(i)}
+                  </div>
+                )}
               </div>
             </div>
           );

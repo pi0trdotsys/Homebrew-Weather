@@ -72,6 +72,8 @@ export type WeatherResponse = {
     wind_speed_10m: number;
     is_day: number;
     surface_pressure: number;
+    /** Optional: forecasts cached before gusts were fetched don't have it. */
+    wind_gusts_10m?: number;
   };
   hourly: {
     time: string[];
@@ -79,6 +81,9 @@ export type WeatherResponse = {
     weather_code: number[];
     precipitation_probability: number[];
     is_day?: number[];
+    /** mm in that hour. Optional like the rest of the later additions. */
+    precipitation?: number[];
+    wind_gusts_10m?: number[];
   };
   daily: {
     time: string[];
@@ -88,6 +93,10 @@ export type WeatherResponse = {
     precipitation_probability_max: number[];
     sunrise: string[];
     sunset: string[];
+    /** mm over the day. */
+    precipitation_sum?: number[];
+    uv_index_max?: number[];
+    wind_gusts_10m_max?: number[];
   };
   timezone: string;
   /** The location's offset from UTC; used to read a cached forecast against the real clock. */
@@ -99,10 +108,11 @@ export async function fetchWeather(lat: number, lon: number): Promise<WeatherRes
     latitude: String(lat),
     longitude: String(lon),
     current:
-      "temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,is_day,surface_pressure",
-    hourly: "temperature_2m,weather_code,precipitation_probability,is_day",
+      "temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,wind_gusts_10m,is_day,surface_pressure",
+    hourly:
+      "temperature_2m,weather_code,precipitation_probability,precipitation,wind_gusts_10m,is_day",
     daily:
-      "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset",
+      "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,uv_index_max,wind_gusts_10m_max,sunrise,sunset",
     timezone: "auto",
     forecast_days: "7",
   });

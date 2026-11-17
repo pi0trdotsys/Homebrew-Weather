@@ -30,6 +30,9 @@
 05  ─  rain heads-up, both ends     before it starts, and before a long spell stops
 06  ─  fits whatever you give it    any size; a calmer day gets bigger type, not gaps
 07  ─  your language, your tone     polski · english  ·  clean · sigma · rude
+08  ─  how much, not just whether   "downpour 15–19" or "drizzle", with the millimetres
+09  ─  warnings are not jokes       storm, hail, gale, extreme heat: plain and immediate
+10  ─  one widget, several places   tap the city name to switch: home, work, anywhere
 ```
 
 <br/>
@@ -45,6 +48,9 @@
 3. Pick a city and a density (*minimal*, *standard* or *full*). That's it. It refreshes on its own.
 
 Tap the widget to open the full forecast for that city, or tap a day to see its hours.
+To keep more than one place on a widget, open its setup, switch on *add as another place*
+and pick another city; from then on tapping the city name switches between them (the
+**≡** next to it opens the setup).
 Language, brief and evening times, alert thresholds and tone are under **./settings**,
 along with a button that sends one of each notification so you can see them right away.
 

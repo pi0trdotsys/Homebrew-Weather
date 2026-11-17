@@ -34,6 +34,21 @@ export async function saveLang(lang: Lang): Promise<void> {
 }
 
 type RainKind = "rain" | "snow" | "thunder";
+type UvBand = import("./conditions").UvBand;
+type SevereKind = import("./severe-weather").SevereKind;
+
+/**
+ * A precipitation amount: below 10 mm one decimal ("0,2 mm" in Polish, "0.2 mm"
+ * in English), from 10 mm a whole number ("12 mm"). Returns "" below 0.1 mm
+ * (and for missing/NaN) — an amount that small isn't worth showing, so callers
+ * can simply skip a falsy result. The native side formats the same way.
+ */
+export function formatMm(mm: number | undefined | null, lang: Lang): string {
+  if (mm == null || !Number.isFinite(mm) || mm < 0.1) return "";
+  const tenth = Math.round(mm * 10) / 10;
+  const n = tenth < 10 ? tenth.toFixed(1) : String(Math.round(mm));
+  return `${lang === "pl" ? n.replace(".", ",") : n} mm`;
+}
 
 const EN = {
   // dashboard
@@ -65,6 +80,11 @@ const EN = {
     RainKind,
     string
   >,
+  rainIntensity: { drizzle: "drizzle", heavy: "downpour" } as Record<"drizzle" | "heavy", string>,
+  rainOngoingIntensity: { drizzle: "drizzling", heavy: "pouring" } as Record<
+    "drizzle" | "heavy",
+    string
+  >,
   rainEasing: (verb: string, end: string) => `${verb}, easing off around ${end}`,
   rainNoEnd: (verb: string) => `${verb}, no end in sight`,
   rainWithinHourUntil: (noun: string, end: string) => `${noun} within the hour, until about ${end}`,
@@ -89,6 +109,32 @@ const EN = {
   tPressure: "pressure",
   tSunrise: "sunrise",
   tSunset: "sunset",
+  tUv: "uv index",
+  tGusts: "gusts",
+  tPrecip: "precip",
+  // UV, gusts, severe weather
+  uvBands: {
+    low: "low",
+    moderate: "moderate",
+    high: "high",
+    veryHigh: "very high",
+    extreme: "extreme",
+  } as Record<UvBand, string>,
+  uvNotable: (uv: number, band: string) => `UV ${uv} · ${band}`,
+  gustsNotable: (kmh: number) => `gusts up to ${kmh} km/h`,
+  dayUv: (uv: number) => `UV ${uv}`,
+  dayGusts: (kmh: number) => `gusts ${kmh} km/h`,
+  severeTitle: {
+    hail: "Hail",
+    storm: "Thunderstorm",
+    wind: "Strong wind",
+    heat: "Extreme heat",
+  } as Record<SevereKind, string>,
+  severeWind: (peak: number) => `gusts up to ${peak} km/h`,
+  severeHeat: (peak: number) => `up to ${peak}°C`,
+  severeNow: "now",
+  severeIn: (h: number) => `in about ${h} h`,
+  severeNote: "// derived from the forecast — not an official warning",
   // settings
   refresh: "REFRESH",
   refreshLabel: "auto-refresh interval (app + home-screen widget)",
@@ -103,6 +149,14 @@ const EN = {
   low: "low temperature",
   swing: "big day-to-day swing",
   air: "air quality",
+  uvToggle: "UV index — strong sun",
+  uvThreshold: "↳ UV threshold",
+  gustToggle: "wind gusts — strong wind",
+  gustThreshold: "↳ gusts from",
+  severeToggle: "severe weather — storm, hail, gale, heat",
+  uvGustNote:
+    "// UV and gusts go into the morning brief; with the brief off, each is its own alert",
+  severeSettingsNote: "// severe warnings are always sent immediately, brief or not",
   threshold: "↳ threshold",
   minDelta: "↳ min. delta",
   aqiThreshold: "↳ AQI threshold",
@@ -159,6 +213,8 @@ const PL: Strings = {
   every: (min) => `co ${min} min`,
   rainNoun: { rain: "deszcz", snow: "śnieg", thunder: "burza" },
   rainOngoing: { rain: "pada", snow: "sypie", thunder: "grzmi" },
+  rainIntensity: { drizzle: "mżawka", heavy: "ulewa" },
+  rainOngoingIntensity: { drizzle: "mży", heavy: "leje" },
   rainEasing: (verb, end) => `${verb}, przestanie ok. ${end}`,
   rainNoEnd: (verb) => `${verb} i nie zanosi się na koniec`,
   rainWithinHourUntil: (noun, end) => `${noun} w ciągu godziny, do ok. ${end}`,
@@ -180,6 +236,31 @@ const PL: Strings = {
   tPressure: "ciśnienie",
   tSunrise: "wschód",
   tSunset: "zachód",
+  tUv: "indeks uv",
+  tGusts: "porywy",
+  tPrecip: "opady",
+  uvBands: {
+    low: "niski",
+    moderate: "umiarkowany",
+    high: "wysoki",
+    veryHigh: "bardzo wysoki",
+    extreme: "ekstremalny",
+  },
+  uvNotable: (uv, band) => `UV ${uv} · ${band}`,
+  gustsNotable: (kmh) => `porywy do ${kmh} km/h`,
+  dayUv: (uv) => `UV ${uv}`,
+  dayGusts: (kmh) => `porywy ${kmh} km/h`,
+  severeTitle: {
+    hail: "Grad",
+    storm: "Burza",
+    wind: "Silny wiatr",
+    heat: "Upał",
+  },
+  severeWind: (peak) => `porywy do ${peak} km/h`,
+  severeHeat: (peak) => `do ${peak}°C`,
+  severeNow: "teraz",
+  severeIn: (h) => `za ok. ${h} godz.`,
+  severeNote: "// wyliczone z prognozy — to nie jest oficjalne ostrzeżenie",
   refresh: "ODŚWIEŻANIE",
   refreshLabel: "co ile odświeżać (aplikacja + widget)",
   notifications: "POWIADOMIENIA",
@@ -193,6 +274,15 @@ const PL: Strings = {
   low: "niska temperatura",
   swing: "duży skok z dnia na dzień",
   air: "jakość powietrza",
+  uvToggle: "indeks UV — mocne słońce",
+  uvThreshold: "↳ próg UV",
+  gustToggle: "porywy wiatru — silny wiatr",
+  gustThreshold: "↳ porywy od",
+  severeToggle: "groźna pogoda — burza, grad, wichura, upał",
+  uvGustNote:
+    "// UV i porywy trafiają do porannego briefu; przy wyłączonym briefie każde to osobny alert",
+  severeSettingsNote:
+    "// ostrzeżenia o groźnej pogodzie zawsze przychodzą od razu, z briefem czy bez",
   threshold: "↳ próg",
   minDelta: "↳ min. różnica",
   aqiThreshold: "↳ próg AQI",
