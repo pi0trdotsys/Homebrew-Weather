@@ -354,7 +354,7 @@ function Index() {
           {view && (
             <>
               <SevereBanner data={view} />
-              <HeroPanel data={view} />
+              <HeroPanel data={view} nowMs={nowTick} />
               <StatusLine
                 online={online}
                 fromCache={fromCache}

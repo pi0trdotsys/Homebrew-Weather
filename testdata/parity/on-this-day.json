@@ -1,0 +1,733 @@
+{
+  "rule": "on-this-day",
+  "note": "fn: clean (cleanWikitext), parsePolish (parsePolishWikitext / parsePolishEvents), parseEnglish (parseEnglishFeed / parseEnglishEvents), pick (pick / pickOnThisDay: expect the picked event's year, null for none; dayOfYear is 1-based), line (Event.line / eventLine), fit (Kotlin only: the widget cuts its one-line footer, the dashboard shows the whole line).",
+  "cases": [
+    {
+      "name": "plain wikilink",
+      "fn": "clean",
+      "input": {"text": "[[Ludwik Węgierski]] został królem Polski."},
+      "expect": {"text": "Ludwik Węgierski został królem Polski."}
+    },
+    {
+      "name": "piped wikilink shows its label",
+      "fn": "clean",
+      "input": {"text": "Założono [[Polska Partia Socjalistyczna|Polską Partię Socjalistyczną]]."},
+      "expect": {"text": "Założono Polską Partię Socjalistyczną."}
+    },
+    {
+      "name": "a link with a section anchor",
+      "fn": "clean",
+      "input": {"text": "wiele w [[Warszawa#Historia|historii]] miasta"},
+      "expect": {"text": "wiele w historii miasta"}
+    },
+    {
+      "name": "two links side by side",
+      "fn": "clean",
+      "input": {"text": "[[a|b]] [[c]]"},
+      "expect": {"text": "b c"}
+    },
+    {
+      "name": "a pipe inside a link keeps the rest of the label",
+      "fn": "clean",
+      "input": {"text": "[[a|b|c]]"},
+      "expect": {"text": "b|c"}
+    },
+    {
+      "name": "link-interwiki keeps the name (real case)",
+      "fn": "clean",
+      "input": {
+        "text": "{{link-interwiki |Sándor Wekerle |Q=Q340174}} został [[Premierzy Węgier|premierem Królestwa Węgier]]."
+      },
+      "expect": {"text": "Sándor Wekerle został premierem Królestwa Węgier."}
+    },
+    {
+      "name": "link-interwiki without spaces and in any case",
+      "fn": "clean",
+      "input": {"text": "{{Link-Interwiki|Jan Kowalski|x}} przemawiał"},
+      "expect": {"text": "Jan Kowalski przemawiał"}
+    },
+    {
+      "name": "link-interwiki with only a name",
+      "fn": "clean",
+      "input": {"text": "{{link-interwiki|Jan}} przemawiał"},
+      "expect": {"text": "Jan przemawiał"}
+    },
+    {
+      "name": "link-interwiki with a nested template in its arguments is dropped whole (known limit)",
+      "fn": "clean",
+      "input": {"text": "x {{link-interwiki|Jan Kowalski|lang=de|x={{foo}}}} y"},
+      "expect": {"text": "x y"}
+    },
+    {
+      "name": "the C template is a temperature",
+      "fn": "clean",
+      "input": {"text": "rekord: {{C|19}}"},
+      "expect": {"text": "rekord: 19°C"}
+    },
+    {
+      "name": "the C template with a negative number and spaces",
+      "fn": "clean",
+      "input": {"text": "rekord: {{C | -5 }}"},
+      "expect": {"text": "rekord: -5°C"}
+    },
+    {
+      "name": "the C template followed by a reference with a template inside",
+      "fn": "clean",
+      "input": {"text": "rekord: {{C|19}}<ref>{{cytuj|x=y}}</ref>"},
+      "expect": {"text": "rekord: 19°C"}
+    },
+    {
+      "name": "an ordinary template is dropped",
+      "fn": "clean",
+      "input": {"text": "a {{cytuj stronę|x}} b"},
+      "expect": {"text": "a b"}
+    },
+    {
+      "name": "nested templates are peeled from the inside",
+      "fn": "clean",
+      "input": {"text": "x {{a|{{b|c}}|d}} y"},
+      "expect": {"text": "x y"}
+    },
+    {
+      "name": "three levels of templates",
+      "fn": "clean",
+      "input": {"text": "x {{a|{{b|{{c}}}}}} y"},
+      "expect": {"text": "x y"}
+    },
+    {
+      "name": "an unclosed template is left alone",
+      "fn": "clean",
+      "input": {"text": "{{broken text"},
+      "expect": {"text": "{{broken text"}
+    },
+    {
+      "name": "an html comment, even over lines",
+      "fn": "clean",
+      "input": {"text": "a <!-- hidden\nmultiline --> b"},
+      "expect": {"text": "a b"}
+    },
+    {
+      "name": "a reference with a body",
+      "fn": "clean",
+      "input": {"text": "a<ref name=\"x\">tekst</ref> b"},
+      "expect": {"text": "a b"}
+    },
+    {
+      "name": "a self-closing reference",
+      "fn": "clean",
+      "input": {"text": "a<ref name=\"x\" /> b"},
+      "expect": {"text": "a b"}
+    },
+    {
+      "name": "references in capitals",
+      "fn": "clean",
+      "input": {"text": "a<REF>tekst</REF> b"},
+      "expect": {"text": "a b"}
+    },
+    {
+      "name": "a reference with a template inside",
+      "fn": "clean",
+      "input": {"text": "zdarzenie.<ref name=\"w\">{{cytuj|url=http://x.pl|tytuł=T}}</ref> Dalej"},
+      "expect": {"text": "zdarzenie. Dalej"}
+    },
+    {
+      "name": "a file link is not text",
+      "fn": "clean",
+      "input": {"text": "zdjęcie [[Plik:X.jpg|thumb|opis]] tekst"},
+      "expect": {"text": "zdjęcie tekst"}
+    },
+    {
+      "name": "an english file link",
+      "fn": "clean",
+      "input": {"text": "a [[File:X.jpg|thumb|caption]] b"},
+      "expect": {"text": "a b"}
+    },
+    {
+      "name": "a category link",
+      "fn": "clean",
+      "input": {"text": "a [[Kategoria:Coś]] b"},
+      "expect": {"text": "a b"}
+    },
+    {
+      "name": "a file link with a link in its caption leaves the tail behind (known limit)",
+      "fn": "clean",
+      "input": {"text": "x [[File:A.jpg|thumb|see [[B]]]] y"},
+      "expect": {"text": "x ]] y"}
+    },
+    {
+      "name": "an external link with a label",
+      "fn": "clean",
+      "input": {"text": "zobacz [http://x.pl strona] dalej"},
+      "expect": {"text": "zobacz strona dalej"}
+    },
+    {
+      "name": "an external link without a label is dropped",
+      "fn": "clean",
+      "input": {"text": "zobacz [https://y.pl] dalej"},
+      "expect": {"text": "zobacz dalej"}
+    },
+    {
+      "name": "a protocol-relative external link",
+      "fn": "clean",
+      "input": {"text": "zobacz [//y.pl etykieta] dalej"},
+      "expect": {"text": "zobacz etykieta dalej"}
+    },
+    {
+      "name": "bold and italic",
+      "fn": "clean",
+      "input": {"text": "'''Ala''' ma ''kota''"},
+      "expect": {"text": "Ala ma kota"}
+    },
+    {"name": "html tags are dropped", "fn": "clean", "input": {"text": "a<br />b"}, "expect": {"text": "ab"}},
+    {
+      "name": "a break with a space after it",
+      "fn": "clean",
+      "input": {"text": "a<br/> b"},
+      "expect": {"text": "a b"}
+    },
+    {
+      "name": "entities are decoded after the tags are dropped",
+      "fn": "clean",
+      "input": {"text": "x &amp; y &nbsp; z &ndash; w &mdash; q &quot;r&quot; &lt;s&gt;"},
+      "expect": {"text": "x & y z – w — q \"r\" <s>"}
+    },
+    {
+      "name": "a double-escaped entity is decoded only once",
+      "fn": "clean",
+      "input": {"text": "&amp;nbsp;"},
+      "expect": {"text": "&nbsp;"}
+    },
+    {
+      "name": "non-breaking spaces collapse",
+      "fn": "clean",
+      "input": {"text": "a  b "},
+      "expect": {"text": "a b"}
+    },
+    {
+      "name": "runs of whitespace and newlines collapse",
+      "fn": "clean",
+      "input": {"text": "a \t\n  b"},
+      "expect": {"text": "a b"}
+    },
+    {
+      "name": "nothing but markup is empty",
+      "fn": "clean",
+      "input": {"text": "{{cytuj|x}}<ref>y</ref>"},
+      "expect": {"text": ""}
+    },
+    {
+      "name": "only a file is empty",
+      "fn": "clean",
+      "input": {"text": "[[Plik:X.jpg]]"},
+      "expect": {"text": ""}
+    },
+    {"name": "empty input", "fn": "clean", "input": {"text": ""}, "expect": {"text": ""}},
+    {
+      "name": "polish letters survive",
+      "fn": "clean",
+      "input": {"text": "Zażółć [[gęślą|gęślą]] jaźń"},
+      "expect": {"text": "Zażółć gęślą jaźń"}
+    },
+    {
+      "name": "only the two events sections are read, births and deaths are left out",
+      "fn": "parsePolish",
+      "input": {
+        "wikitext": "== Święta ==\n* Międzynarodowy Dzień Studenta\n== Wydarzenia w Polsce ==\n* [[1370]] – [[Ludwik Węgierski]] został królem Polski.\n* [[1892]] – Założono [[Polska Partia Socjalistyczna|Polską Partię Socjalistyczną]].\n* 1923 – Rozpoczęła działalność ''Transatlantycka Centrala''.<ref>Przypis</ref>\n== Wydarzenia na świecie ==\n=== XVI wiek ===\n* [[1558]] – [[Elżbieta I Tudor]] została królową Anglii.\n* [[1789]] – Wydarzenie z {{Cytuj|x=y}} szablonem.\n== Urodzili się ==\n* [[1790]] – [[August Möbius]], niemiecki matematyk\n== Zmarli ==\n* [[1998]] – ktoś, kto zmarł\n"
+      },
+      "expect": {
+        "events": [
+          {"year": "1370", "text": "Ludwik Węgierski został królem Polski."},
+          {"year": "1892", "text": "Założono Polską Partię Socjalistyczną."},
+          {"year": "1923", "text": "Rozpoczęła działalność Transatlantycka Centrala."},
+          {"year": "1558", "text": "Elżbieta I Tudor została królową Anglii."},
+          {"year": "1789", "text": "Wydarzenie z szablonem."}
+        ]
+      }
+    },
+    {
+      "name": "headings without spaces, link-interwiki and a trailing template (real wikitext)",
+      "fn": "parsePolish",
+      "input": {
+        "wikitext": "==Wydarzenia na świecie==\n* [[1917]] – {{link-interwiki |Sándor Wekerle |Q=Q340174}} został [[Premierzy Węgier|premierem Królestwa Węgier]].\n* [[1989]] – W Pradze rozpoczęła się [[aksamitna rewolucja]].{{r|Kowalski}}\n"
+      },
+      "expect": {
+        "events": [
+          {"year": "1917", "text": "Sándor Wekerle został premierem Królestwa Węgier."},
+          {"year": "1989", "text": "W Pradze rozpoczęła się aksamitna rewolucja."}
+        ]
+      }
+    },
+    {
+      "name": "a temperature record with a reference holding a template",
+      "fn": "parsePolish",
+      "input": {
+        "wikitext": "== Wydarzenia na świecie ==\n* [[1983]] – Na stacji Wostok zanotowano rekord: {{C|-89}}.<ref name=\"w\">{{cytuj|url=http://x}}</ref>\n"
+      },
+      "expect": {
+        "events": [{"year": "1983", "text": "Na stacji Wostok zanotowano rekord: -89°C."}]
+      }
+    },
+    {
+      "name": "a year heading with ** sub-bullets is not an event",
+      "fn": "parsePolish",
+      "input": {
+        "wikitext": "== Wydarzenia na świecie ==\n* [[1950]]:\n** [[Wojna]] – coś\n** inne\n* [[1951]] – prawdziwe wydarzenie.\n"
+      },
+      "expect": {"events": [{"year": "1951", "text": "prawdziwe wydarzenie."}]}
+    },
+    {
+      "name": "dash variants, unlinked years, 3-4 digit years only",
+      "fn": "parsePolish",
+      "input": {
+        "wikitext": "== Wydarzenia w Polsce ==\n* 800 – trzycyfrowy\n* [[1000]]— em dash\n* 1100 - hyphen\n* [[1200]]– brak spacji\n* 12345 – pięć cyfr\n* [[1300|1300]] – z pipe\n* 99 – dwie cyfry\n* [[1400]] – \n* [[1500]] – {{cytuj|x}}\n"
+      },
+      "expect": {
+        "events": [
+          {"year": "800", "text": "trzycyfrowy"},
+          {"year": "1000", "text": "em dash"},
+          {"year": "1100", "text": "hyphen"},
+          {"year": "1200", "text": "brak spacji"}
+        ]
+      }
+    },
+    {
+      "name": "a level-3 heading does not open a section, a level-2 one closes it",
+      "fn": "parsePolish",
+      "input": {
+        "wikitext": "== Narodziny ==\n=== Wydarzenia w Polsce ===\n* [[1900]] – nie jest wydarzeniem\n== Wydarzenia w Polsce ==\n=== XX wiek ===\n* [[1901]] – jest wydarzeniem\n== Zmarli ==\n* [[1902]] – nie\n"
+      },
+      "expect": {"events": [{"year": "1901", "text": "jest wydarzeniem"}]}
+    },
+    {
+      "name": "windows line endings",
+      "fn": "parsePolish",
+      "input": {
+        "wikitext": "== Wydarzenia w Polsce ==\r\n* [[1901]] – pierwsze\r\n* [[1902]] – drugie\r\n== Zmarli ==\r\n* [[1903]] – nie\r\n"
+      },
+      "expect": {
+        "events": [{"year": "1901", "text": "pierwsze"}, {"year": "1902", "text": "drugie"}]
+      }
+    },
+    {
+      "name": "a linked heading and trailing spaces",
+      "fn": "parsePolish",
+      "input": {"wikitext": "== [[Wydarzenia w Polsce]] ==  \n* [[1901]] – tekst z końcówką   \n"},
+      "expect": {"events": [{"year": "1901", "text": "tekst z końcówką"}]}
+    },
+    {
+      "name": "the events sections in either order, text between them ignored",
+      "fn": "parsePolish",
+      "input": {
+        "wikitext": "== Wydarzenia na świecie ==\n* [[1801]] – świat\n== Święta ==\n* [[1802]] – święto\n== Wydarzenia w Polsce ==\n* [[1803]] – Polska\n"
+      },
+      "expect": {
+        "events": [{"year": "1801", "text": "świat"}, {"year": "1803", "text": "Polska"}]
+      }
+    },
+    {"name": "empty page", "fn": "parsePolish", "input": {"wikitext": ""}, "expect": {"events": []}},
+    {
+      "name": "a page with no events sections",
+      "fn": "parsePolish",
+      "input": {"wikitext": "== Święta ==\n* [[1901]] – x\n== Urodzili się ==\n* [[1902]] – y\n"},
+      "expect": {"events": []}
+    },
+    {
+      "name": "a heading that merely contains the name is not the section",
+      "fn": "parsePolish",
+      "input": {"wikitext": "== Wydarzenia w Polsce i okolicach ==\n* [[1901]] – x\n"},
+      "expect": {"events": []}
+    },
+    {
+      "name": "a bullet before any heading is ignored",
+      "fn": "parsePolish",
+      "input": {"wikitext": "* [[1901]] – x\n== Wydarzenia w Polsce ==\n* [[1902]] – y\n"},
+      "expect": {"events": [{"year": "1902", "text": "y"}]}
+    },
+    {
+      "name": "a bullet with a space-less hyphen and extra space after the star",
+      "fn": "parsePolish",
+      "input": {"wikitext": "== Wydarzenia w Polsce ==\n*   [[1901]]-tekst\n"},
+      "expect": {"events": [{"year": "1901", "text": "tekst"}]}
+    },
+    {
+      "name": "an event whose text starts with a lowercase link",
+      "fn": "parsePolish",
+      "input": {"wikitext": "== Wydarzenia w Polsce ==\n* [[1901]] – [[Sejm]] uchwalił [[ustawa|ustawę]].\n"},
+      "expect": {"events": [{"year": "1901", "text": "Sejm uchwalił ustawę."}]}
+    },
+    {
+      "name": "a typical feed",
+      "fn": "parseEnglish",
+      "input": {
+        "json": {
+          "selected": [{"text": "Apollo 11 landed on the Moon.", "year": 1969}, {"text": "", "year": 1}]
+        }
+      },
+      "expect": {
+        "events": [{"year": "1969", "text": "Apollo 11 landed on the Moon."}]
+      }
+    },
+    {
+      "name": "a year given as a string",
+      "fn": "parseEnglish",
+      "input": {
+        "json": {"selected": [{"text": "Something happened.", "year": "1969"}]}
+      },
+      "expect": {"events": [{"year": "1969", "text": "Something happened."}]}
+    },
+    {
+      "name": "text is trimmed",
+      "fn": "parseEnglish",
+      "input": {"json": {"selected": [{"text": "  padded text \n", "year": 1900}]}},
+      "expect": {"events": [{"year": "1900", "text": "padded text"}]}
+    },
+    {
+      "name": "feed order is kept",
+      "fn": "parseEnglish",
+      "input": {
+        "json": {
+          "selected": [{"text": "b", "year": 2000}, {"text": "a", "year": 1000}]
+        }
+      },
+      "expect": {
+        "events": [{"year": "2000", "text": "b"}, {"year": "1000", "text": "a"}]
+      }
+    },
+    {
+      "name": "an entry with no year is skipped",
+      "fn": "parseEnglish",
+      "input": {"json": {"selected": [{"text": "no year"}]}},
+      "expect": {"events": []}
+    },
+    {
+      "name": "an entry with no text is skipped",
+      "fn": "parseEnglish",
+      "input": {"json": {"selected": [{"year": 1969}]}},
+      "expect": {"events": []}
+    },
+    {
+      "name": "an entry with blank text is skipped",
+      "fn": "parseEnglish",
+      "input": {"json": {"selected": [{"text": "   ", "year": 1969}]}},
+      "expect": {"events": []}
+    },
+    {
+      "name": "an entry with an empty year is skipped",
+      "fn": "parseEnglish",
+      "input": {"json": {"selected": [{"text": "x", "year": ""}]}},
+      "expect": {"events": []}
+    },
+    {
+      "name": "an entry with a blank year is skipped",
+      "fn": "parseEnglish",
+      "input": {"json": {"selected": [{"text": "x", "year": "  "}]}},
+      "expect": {"events": []}
+    },
+    {
+      "name": "a negative year",
+      "fn": "parseEnglish",
+      "input": {
+        "json": {"selected": [{"text": "Caesar was assassinated.", "year": -44}]}
+      },
+      "expect": {"events": [{"year": "-44", "text": "Caesar was assassinated."}]}
+    },
+    {
+      "name": "year zero and a three-digit year",
+      "fn": "parseEnglish",
+      "input": {
+        "json": {"selected": [{"text": "a", "year": 0}, {"text": "b", "year": 800}]}
+      },
+      "expect": {"events": [{"year": "0", "text": "a"}, {"year": "800", "text": "b"}]}
+    },
+    {
+      "name": "no selected list",
+      "fn": "parseEnglish",
+      "input": {"json": {"births": []}},
+      "expect": {"events": []}
+    },
+    {
+      "name": "selected is not a list",
+      "fn": "parseEnglish",
+      "input": {"json": {"selected": {"text": "x", "year": 1}}},
+      "expect": {"events": []}
+    },
+    {
+      "name": "an empty list",
+      "fn": "parseEnglish",
+      "input": {"json": {"selected": []}},
+      "expect": {"events": []}
+    },
+    {
+      "name": "entries that are not objects are skipped",
+      "fn": "parseEnglish",
+      "input": {"json": {"selected": ["x", null, 5, {"text": "ok", "year": 1999}]}},
+      "expect": {"events": [{"year": "1999", "text": "ok"}]}
+    },
+    {
+      "name": "a valid entry among broken ones",
+      "fn": "parseEnglish",
+      "input": {
+        "json": {
+          "selected": [{"text": "x"}, {"text": "ok", "year": 2001}, {"year": 2}]
+        }
+      },
+      "expect": {"events": [{"year": "2001", "text": "ok"}]}
+    },
+    {
+      "name": "an empty list picks nothing",
+      "fn": "pick",
+      "input": {"events": [], "dayOfYear": 100},
+      "expect": {"year": null}
+    },
+    {
+      "name": "short events are preferred: day 1",
+      "fn": "pick",
+      "input": {
+        "events": [
+          {"year": "1735", "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+          {"year": "1892", "text": "Założono PPS."},
+          {"year": "1736", "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+          {"year": "1920", "text": "Weszła w życie konstytucja."}
+        ],
+        "dayOfYear": 1
+      },
+      "expect": {"year": "1920"}
+    },
+    {
+      "name": "short events are preferred: day 2",
+      "fn": "pick",
+      "input": {
+        "events": [
+          {"year": "1735", "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+          {"year": "1892", "text": "Założono PPS."},
+          {"year": "1736", "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+          {"year": "1920", "text": "Weszła w życie konstytucja."}
+        ],
+        "dayOfYear": 2
+      },
+      "expect": {"year": "1892"}
+    },
+    {
+      "name": "short events are preferred: day 3",
+      "fn": "pick",
+      "input": {
+        "events": [
+          {"year": "1735", "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+          {"year": "1892", "text": "Założono PPS."},
+          {"year": "1736", "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+          {"year": "1920", "text": "Weszła w życie konstytucja."}
+        ],
+        "dayOfYear": 3
+      },
+      "expect": {"year": "1920"}
+    },
+    {
+      "name": "wraps around the short pool",
+      "fn": "pick",
+      "input": {
+        "events": [
+          {"year": "1735", "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+          {"year": "1892", "text": "Założono PPS."},
+          {"year": "1736", "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+          {"year": "1920", "text": "Weszła w życie konstytucja."}
+        ],
+        "dayOfYear": 4
+      },
+      "expect": {"year": "1892"}
+    },
+    {
+      "name": "day 0 is the first of the pool",
+      "fn": "pick",
+      "input": {
+        "events": [
+          {"year": "1735", "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+          {"year": "1892", "text": "Założono PPS."},
+          {"year": "1736", "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+          {"year": "1920", "text": "Weszła w życie konstytucja."}
+        ],
+        "dayOfYear": 0
+      },
+      "expect": {"year": "1892"}
+    },
+    {
+      "name": "the last day of a leap year",
+      "fn": "pick",
+      "input": {
+        "events": [
+          {"year": "1735", "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+          {"year": "1892", "text": "Założono PPS."},
+          {"year": "1736", "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+          {"year": "1920", "text": "Weszła w życie konstytucja."}
+        ],
+        "dayOfYear": 366
+      },
+      "expect": {"year": "1892"}
+    },
+    {
+      "name": "with nothing short the whole list is used: day 1",
+      "fn": "pick",
+      "input": {
+        "events": [
+          {"year": "1735", "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+          {"year": "1736", "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+        ],
+        "dayOfYear": 1
+      },
+      "expect": {"year": "1736"}
+    },
+    {
+      "name": "with nothing short the whole list is used: day 2",
+      "fn": "pick",
+      "input": {
+        "events": [
+          {"year": "1735", "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+          {"year": "1736", "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+        ],
+        "dayOfYear": 2
+      },
+      "expect": {"year": "1735"}
+    },
+    {
+      "name": "a line of exactly 50 characters is short",
+      "fn": "pick",
+      "input": {
+        "events": [
+          {"year": "2000", "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+          {"year": "1000", "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+        ],
+        "dayOfYear": 7
+      },
+      "expect": {"year": "1000"}
+    },
+    {
+      "name": "a line of 51 characters is not short",
+      "fn": "pick",
+      "input": {
+        "events": [
+          {"year": "2000", "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+          {"year": "1000", "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+        ],
+        "dayOfYear": 1
+      },
+      "expect": {"year": "1000"}
+    },
+    {
+      "name": "a lone event is always picked",
+      "fn": "pick",
+      "input": {"events": [{"year": "1999", "text": "aaaaaaaaaa"}], "dayOfYear": 123},
+      "expect": {"year": "1999"}
+    },
+    {
+      "name": "a lone long event is picked too",
+      "fn": "pick",
+      "input": {
+        "events": [
+          {
+            "year": "1999",
+            "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+          }
+        ],
+        "dayOfYear": 5
+      },
+      "expect": {"year": "1999"}
+    },
+    {
+      "name": "length counts UTF-16 units: 22 emoji make a 51-unit line, which is not short",
+      "fn": "pick",
+      "input": {
+        "events": [{"year": "1111", "text": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"}, {"year": "2222", "text": "aaaaaaaaaa"}],
+        "dayOfYear": 3
+      },
+      "expect": {"year": "2222"}
+    },
+    {
+      "name": "length counts UTF-16 units: 21 emoji make a 49-unit line, which is short",
+      "fn": "pick",
+      "input": {
+        "events": [
+          {"year": "1111", "text": "😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀"},
+          {"year": "2222", "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+        ],
+        "dayOfYear": 3
+      },
+      "expect": {"year": "1111"}
+    },
+    {
+      "name": "polish letters count once each",
+      "fn": "pick",
+      "input": {
+        "events": [
+          {"year": "1111", "text": "ąąąąąąąąąąąąąąąąąąąąąąąąąąąąąąąąąąąąąąąąąąą"},
+          {"year": "2222", "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+        ],
+        "dayOfYear": 9
+      },
+      "expect": {"year": "1111"}
+    },
+    {
+      "name": "the footer line is year, middle dot, text",
+      "fn": "line",
+      "input": {"year": "1969", "text": "Apollo 11 landed on the Moon."},
+      "expect": {"line": "1969 · Apollo 11 landed on the Moon."}
+    },
+    {
+      "name": "a three-digit year",
+      "fn": "line",
+      "input": {"year": "800", "text": "Karol Wielki został cesarzem."},
+      "expect": {"line": "800 · Karol Wielki został cesarzem."}
+    },
+    {
+      "name": "a line that fits is left alone",
+      "fn": "fit",
+      "only": "kotlin",
+      "input": {"year": "1892", "text": "Założono PPS."},
+      "expect": {"line": "1892 · Założono PPS."}
+    },
+    {
+      "name": "a line of exactly 50 is left alone",
+      "fn": "fit",
+      "only": "kotlin",
+      "input": {"year": "1892", "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+      "expect": {"line": "1892 · aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+    },
+    {
+      "name": "a line of 51 is cut",
+      "fn": "fit",
+      "only": "kotlin",
+      "input": {"year": "1892", "text": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+      "expect": {"line": "1892 · aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa…"}
+    },
+    {
+      "name": "a long line is cut at a word with an ellipsis",
+      "fn": "fit",
+      "only": "kotlin",
+      "input": {"year": "1969", "text": "Astronauci Apollo 11 wylądowali na Księżycu po raz pierwszy w historii"},
+      "expect": {"line": "1969 · Astronauci Apollo 11 wylądowali na…"}
+    },
+    {
+      "name": "a cut that would leave only the year is made mid-word instead",
+      "fn": "fit",
+      "only": "kotlin",
+      "input": {"year": "1969", "text": "Superkalifragilistycznieekspialidocyjnieeeeeeeeeeeeeeeeeeeeeeee"},
+      "expect": {"line": "1969 · Superkalifragilistycznieekspialidocyjnieee…"}
+    },
+    {
+      "name": "punctuation before the cut is trimmed",
+      "fn": "fit",
+      "only": "kotlin",
+      "input": {"year": "1969", "text": "aaaaaaaaaa, bbbbbbbbbb, cccccccccc, dddddddddd, eeeeeeeeee"},
+      "expect": {"line": "1969 · aaaaaaaaaa, bbbbbbbbbb, cccccccccc…"}
+    },
+    {
+      "name": "a trailing dash before the cut is trimmed",
+      "fn": "fit",
+      "only": "kotlin",
+      "input": {"year": "1969", "text": "aaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbb ccccccc - dddddddddddd"},
+      "expect": {"line": "1969 · aaaaaaaaaaaaaaaa bbbbbbbbbbbbbbbb ccccccc…"}
+    },
+    {"name": "a feed event whose year is null is no event", "fn": "parseEnglish", "input": {"json": {"selected": [{"text": "x", "year": null}]}}, "expect": {"events": []}},
+    {"name": "a feed event whose text is not a string is no event", "fn": "parseEnglish", "input": {"json": {"selected": [{"text": 5, "year": 1999}]}}, "expect": {"events": []}},
+    {"name": "a non-breaking space in English text becomes a plain space", "fn": "parseEnglish", "input": {"json": {"selected": [{"text": "Apollo\u00a011 landed", "year": 1969}]}}, "expect": {"events": [{"year": "1969", "text": "Apollo 11 landed"}]}},
+    {"name": "a non-breaking space after the bullet star is still a bullet", "fn": "parsePolish", "input": {"wikitext": "== Wydarzenia w Polsce ==\n*\u00a0[[1901]] \u2013 tekst"}, "expect": {"events": [{"year": "1901", "text": "tekst"}]}}
+  ]
+}

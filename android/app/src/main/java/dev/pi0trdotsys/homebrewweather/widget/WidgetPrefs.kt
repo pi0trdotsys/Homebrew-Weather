@@ -297,6 +297,28 @@ object WidgetPrefs {
                 } ?: emptyList(),
                 utcOffsetSeconds = if (o.has("utcOffset")) o.optInt("utcOffset") else null,
                 windGustKmh = o.optDouble("windGust", Double.NaN),
+                nowcast = o.optJSONArray("nowcast")?.let { arr ->
+                    (0 until arr.length()).mapNotNull { i ->
+                        val pair = arr.optJSONArray(i) ?: return@mapNotNull null
+                        RainNowcast.Step(pair.optString(0), pair.optDouble(1, Double.NaN)).takeIf { !it.mm.isNaN() }
+                    }
+                } ?: emptyList(),
+                pollen = o.optJSONObject("pollen")?.let { p ->
+                    WeatherApi.PollenReading(
+                        alder = p.optDouble("a", Double.NaN), birch = p.optDouble("b", Double.NaN),
+                        grass = p.optDouble("g", Double.NaN), mugwort = p.optDouble("m", Double.NaN),
+                        olive = p.optDouble("o", Double.NaN), ragweed = p.optDouble("r", Double.NaN),
+                    )
+                },
+                official = o.optJSONArray("official")?.let { arr ->
+                    (0 until arr.length()).mapNotNull { i ->
+                        val w = arr.optJSONObject(i) ?: return@mapNotNull null
+                        WeatherApi.OfficialWarning(
+                            id = w.optString("i"), event = w.optString("e"), degree = w.optInt("d", 1),
+                            from = w.optString("f"), to = w.optString("t"), text = w.optString("x"),
+                        )
+                    }
+                } ?: emptyList(),
             )
         } catch (e: Exception) {
             null
@@ -338,6 +360,26 @@ object WidgetPrefs {
             if (weather.humidityPercent >= 0) put("humidity", weather.humidityPercent)
             if (!weather.windSpeedKmh.isNaN()) put("windSpeed", weather.windSpeedKmh)
             if (!weather.windGustKmh.isNaN()) put("windGust", weather.windGustKmh)
+            if (weather.nowcast.isNotEmpty()) {
+                put("nowcast", org.json.JSONArray().apply {
+                    weather.nowcast.forEach { put(org.json.JSONArray().put(it.time).put(it.mm)) }
+                })
+            }
+            weather.pollen?.let { r ->
+                put("pollen", JSONObject().apply {
+                    fun put(key: String, v: Double) { if (!v.isNaN()) this.put(key, v) }
+                    put("a", r.alder); put("b", r.birch); put("g", r.grass)
+                    put("m", r.mugwort); put("o", r.olive); put("r", r.ragweed)
+                })
+            }
+            if (weather.official.isNotEmpty()) {
+                put("official", org.json.JSONArray().apply {
+                    weather.official.forEach { w ->
+                        put(JSONObject().put("i", w.id).put("e", w.event).put("d", w.degree)
+                            .put("f", w.from).put("t", w.to).put("x", w.text))
+                    }
+                })
+            }
             if (weather.currentPrecipitationProbability >= 0) put("currentPop", weather.currentPrecipitationProbability)
             if (weather.maxNext6hPop >= 0) put("next6hPop", weather.maxNext6hPop)
             if (weather.usAqi >= 0) put("aqi", weather.usAqi)
@@ -395,6 +437,7 @@ object CapacitorStorage {
     private const val NOTIF_GUST_ENABLED_KEY = "settings:notif-gust-enabled"
     private const val NOTIF_GUST_THRESHOLD_KEY = "settings:notif-gust-threshold"
     private const val NOTIF_SEVERE_ENABLED_KEY = "settings:notif-severe-enabled"
+    private const val NOTIF_POLLEN_ENABLED_KEY = "settings:notif-pollen-enabled"
     private const val FOOTER_SOURCE_KEY = "settings:footer-source"
     private const val HIGH_CONTRAST_KEY = "settings:high-contrast"
     private const val CITIES_KEY = "brew-wx:cities"
@@ -457,6 +500,9 @@ object CapacitorStorage {
     /** Wind gust (km/h) the day's strongest gust has to reach to be mentioned. */
     fun gustEnabled(context: Context): Boolean = getBool(context, NOTIF_GUST_ENABLED_KEY, true)
     fun gustThreshold(context: Context): Double = getDouble(context, NOTIF_GUST_THRESHOLD_KEY, 60.0)
+
+    /** Pollen high enough to mention in the brief and on the widget (see [Pollen]). */
+    fun pollenEnabled(context: Context): Boolean = getBool(context, NOTIF_POLLEN_ENABLED_KEY, true)
 
     /** Immediate storm / hail / violent-wind / extreme-heat warnings (see
      * [SevereWeather]). On by default: they're the one alert that is about safety. */

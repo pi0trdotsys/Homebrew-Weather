@@ -1,0 +1,340 @@
+{
+  "rule": "saved-cities",
+  "note": "A city is {name, lat, lon, live?}. Same place: both live, or both fixed and within 0.01 degrees in latitude and longitude. The list holds 8; drops from the end, never the entry just added. Kotlin: AppCities.with; web: withCity.",
+  "cases": [
+    {
+      "name": "a new city goes to the front",
+      "input": {
+        "list": [{"name": "City 1", "lat": 41.0, "lon": 11.0}, {"name": "City 2", "lat": 42.0, "lon": 12.0}],
+        "city": {"name": "City 3", "lat": 43.0, "lon": 13.0}
+      },
+      "expect": {
+        "list": [
+          {"name": "City 3", "lat": 43.0, "lon": 13.0},
+          {"name": "City 1", "lat": 41.0, "lon": 11.0},
+          {"name": "City 2", "lat": 42.0, "lon": 12.0}
+        ]
+      }
+    },
+    {
+      "name": "the first city goes into an empty list",
+      "input": {"list": [], "city": {"name": "City 1", "lat": 41.0, "lon": 11.0}},
+      "expect": {"list": [{"name": "City 1", "lat": 41.0, "lon": 11.0}]}
+    },
+    {
+      "name": "a city already saved keeps its place and refreshes its name",
+      "input": {
+        "list": [
+          {"name": "City 1", "lat": 41.0, "lon": 11.0},
+          {"name": "City 2", "lat": 42.0, "lon": 12.0},
+          {"name": "City 3", "lat": 43.0, "lon": 13.0}
+        ],
+        "city": {"name": "Renamed", "lat": 42.0, "lon": 12.0}
+      },
+      "expect": {
+        "list": [
+          {"name": "City 1", "lat": 41.0, "lon": 11.0},
+          {"name": "Renamed", "lat": 42.0, "lon": 12.0},
+          {"name": "City 3", "lat": 43.0, "lon": 13.0}
+        ]
+      }
+    },
+    {
+      "name": "a saved city also takes the new coordinates",
+      "input": {
+        "list": [{"name": "City 1", "lat": 41.0, "lon": 11.0}, {"name": "City 2", "lat": 42.0, "lon": 12.0}],
+        "city": {"name": "City 2 moved", "lat": 42.005, "lon": 12.004}
+      },
+      "expect": {
+        "list": [{"name": "City 1", "lat": 41.0, "lon": 11.0}, {"name": "City 2 moved", "lat": 42.005, "lon": 12.004}]
+      }
+    },
+    {
+      "name": "0.009 degrees away is the same place",
+      "input": {
+        "list": [{"name": "A", "lat": 50.0, "lon": 20.0}],
+        "city": {"name": "B", "lat": 50.009, "lon": 20.009}
+      },
+      "expect": {"list": [{"name": "B", "lat": 50.009, "lon": 20.009}]}
+    },
+    {
+      "name": "0.011 degrees away in latitude is another place",
+      "input": {
+        "list": [{"name": "A", "lat": 50.0, "lon": 20.0}],
+        "city": {"name": "B", "lat": 50.011, "lon": 20.0}
+      },
+      "expect": {
+        "list": [{"name": "B", "lat": 50.011, "lon": 20.0}, {"name": "A", "lat": 50.0, "lon": 20.0}]
+      }
+    },
+    {
+      "name": "close in latitude but 0.02 apart in longitude is another place",
+      "input": {
+        "list": [{"name": "A", "lat": 50.0, "lon": 20.0}],
+        "city": {"name": "B", "lat": 50.0, "lon": 20.02}
+      },
+      "expect": {
+        "list": [{"name": "B", "lat": 50.0, "lon": 20.02}, {"name": "A", "lat": 50.0, "lon": 20.0}]
+      }
+    },
+    {
+      "name": "a stored duplicate of the same place goes",
+      "input": {
+        "list": [
+          {"name": "A", "lat": 50.0, "lon": 20.0},
+          {"name": "City 2", "lat": 42.0, "lon": 12.0},
+          {"name": "A again", "lat": 50.001, "lon": 20.001}
+        ],
+        "city": {"name": "A new", "lat": 50.002, "lon": 20.002}
+      },
+      "expect": {
+        "list": [{"name": "A new", "lat": 50.002, "lon": 20.002}, {"name": "City 2", "lat": 42.0, "lon": 12.0}]
+      }
+    },
+    {
+      "name": "the live entry takes one slot and moves in place",
+      "input": {
+        "list": [
+          {"name": "City 1", "lat": 41.0, "lon": 11.0},
+          {"name": "Piekoszów", "lat": 51.0, "lon": 17.0, "live": true},
+          {"name": "City 2", "lat": 42.0, "lon": 12.0}
+        ],
+        "city": {"name": "Kielce", "lat": 50.0, "lon": 16.0, "live": true}
+      },
+      "expect": {
+        "list": [
+          {"name": "City 1", "lat": 41.0, "lon": 11.0},
+          {"name": "Kielce", "lat": 50.0, "lon": 16.0, "live": true},
+          {"name": "City 2", "lat": 42.0, "lon": 12.0}
+        ]
+      }
+    },
+    {
+      "name": "a first live entry goes to the front",
+      "input": {
+        "list": [{"name": "City 1", "lat": 41.0, "lon": 11.0}],
+        "city": {"name": "Piekoszów", "lat": 51.0, "lon": 17.0, "live": true}
+      },
+      "expect": {
+        "list": [
+          {"name": "Piekoszów", "lat": 51.0, "lon": 17.0, "live": true},
+          {"name": "City 1", "lat": 41.0, "lon": 11.0}
+        ]
+      }
+    },
+    {
+      "name": "a stored second live entry goes",
+      "input": {
+        "list": [
+          {"name": "Piekoszów", "lat": 51.0, "lon": 17.0, "live": true},
+          {"name": "City 2", "lat": 42.0, "lon": 12.0},
+          {"name": "Old live", "lat": 49.0, "lon": 15.0, "live": true}
+        ],
+        "city": {"name": "Kielce", "lat": 50.0, "lon": 16.0, "live": true}
+      },
+      "expect": {
+        "list": [
+          {"name": "Kielce", "lat": 50.0, "lon": 16.0, "live": true},
+          {"name": "City 2", "lat": 42.0, "lon": 12.0}
+        ]
+      }
+    },
+    {
+      "name": "a live entry is not the same as a fixed city at the same spot",
+      "input": {
+        "list": [{"name": "Home", "lat": 51.0, "lon": 17.0}],
+        "city": {"name": "Piekoszów", "lat": 51.0, "lon": 17.0, "live": true}
+      },
+      "expect": {
+        "list": [
+          {"name": "Piekoszów", "lat": 51.0, "lon": 17.0, "live": true},
+          {"name": "Home", "lat": 51.0, "lon": 17.0}
+        ]
+      }
+    },
+    {
+      "name": "a fixed city at the live entry's spot is a separate entry",
+      "input": {
+        "list": [{"name": "Piekoszów", "lat": 51.0, "lon": 17.0, "live": true}],
+        "city": {"name": "Home", "lat": 51.0, "lon": 17.0}
+      },
+      "expect": {
+        "list": [
+          {"name": "Home", "lat": 51.0, "lon": 17.0},
+          {"name": "Piekoszów", "lat": 51.0, "lon": 17.0, "live": true}
+        ]
+      }
+    },
+    {
+      "name": "a full list drops its last entry for a new city",
+      "input": {
+        "list": [
+          {"name": "City 1", "lat": 41.0, "lon": 11.0},
+          {"name": "City 2", "lat": 42.0, "lon": 12.0},
+          {"name": "City 3", "lat": 43.0, "lon": 13.0},
+          {"name": "City 4", "lat": 44.0, "lon": 14.0},
+          {"name": "City 5", "lat": 45.0, "lon": 15.0},
+          {"name": "City 6", "lat": 46.0, "lon": 16.0},
+          {"name": "City 7", "lat": 47.0, "lon": 17.0},
+          {"name": "City 8", "lat": 48.0, "lon": 18.0}
+        ],
+        "city": {"name": "City 9", "lat": 49.0, "lon": 19.0}
+      },
+      "expect": {
+        "list": [
+          {"name": "City 9", "lat": 49.0, "lon": 19.0},
+          {"name": "City 1", "lat": 41.0, "lon": 11.0},
+          {"name": "City 2", "lat": 42.0, "lon": 12.0},
+          {"name": "City 3", "lat": 43.0, "lon": 13.0},
+          {"name": "City 4", "lat": 44.0, "lon": 14.0},
+          {"name": "City 5", "lat": 45.0, "lon": 15.0},
+          {"name": "City 6", "lat": 46.0, "lon": 16.0},
+          {"name": "City 7", "lat": 47.0, "lon": 17.0}
+        ]
+      }
+    },
+    {
+      "name": "a full list refreshing a saved city does not drop anything",
+      "input": {
+        "list": [
+          {"name": "City 1", "lat": 41.0, "lon": 11.0},
+          {"name": "City 2", "lat": 42.0, "lon": 12.0},
+          {"name": "City 3", "lat": 43.0, "lon": 13.0},
+          {"name": "City 4", "lat": 44.0, "lon": 14.0},
+          {"name": "City 5", "lat": 45.0, "lon": 15.0},
+          {"name": "City 6", "lat": 46.0, "lon": 16.0},
+          {"name": "City 7", "lat": 47.0, "lon": 17.0},
+          {"name": "City 8", "lat": 48.0, "lon": 18.0}
+        ],
+        "city": {"name": "Renamed", "lat": 45.0, "lon": 15.0}
+      },
+      "expect": {
+        "list": [
+          {"name": "City 1", "lat": 41.0, "lon": 11.0},
+          {"name": "City 2", "lat": 42.0, "lon": 12.0},
+          {"name": "City 3", "lat": 43.0, "lon": 13.0},
+          {"name": "City 4", "lat": 44.0, "lon": 14.0},
+          {"name": "Renamed", "lat": 45.0, "lon": 15.0},
+          {"name": "City 6", "lat": 46.0, "lon": 16.0},
+          {"name": "City 7", "lat": 47.0, "lon": 17.0},
+          {"name": "City 8", "lat": 48.0, "lon": 18.0}
+        ]
+      }
+    },
+    {
+      "name": "a full list with a live entry moves it in place",
+      "input": {
+        "list": [
+          {"name": "City 1", "lat": 41.0, "lon": 11.0},
+          {"name": "City 2", "lat": 42.0, "lon": 12.0},
+          {"name": "City 3", "lat": 43.0, "lon": 13.0},
+          {"name": "Piekoszów", "lat": 51.0, "lon": 17.0, "live": true},
+          {"name": "City 4", "lat": 44.0, "lon": 14.0},
+          {"name": "City 5", "lat": 45.0, "lon": 15.0},
+          {"name": "City 6", "lat": 46.0, "lon": 16.0},
+          {"name": "City 7", "lat": 47.0, "lon": 17.0}
+        ],
+        "city": {"name": "Kielce", "lat": 50.0, "lon": 16.0, "live": true}
+      },
+      "expect": {
+        "list": [
+          {"name": "City 1", "lat": 41.0, "lon": 11.0},
+          {"name": "City 2", "lat": 42.0, "lon": 12.0},
+          {"name": "City 3", "lat": 43.0, "lon": 13.0},
+          {"name": "Kielce", "lat": 50.0, "lon": 16.0, "live": true},
+          {"name": "City 4", "lat": 44.0, "lon": 14.0},
+          {"name": "City 5", "lat": 45.0, "lon": 15.0},
+          {"name": "City 6", "lat": 46.0, "lon": 16.0},
+          {"name": "City 7", "lat": 47.0, "lon": 17.0}
+        ]
+      }
+    },
+    {
+      "name": "a full list gets a new live entry at the front and drops the last",
+      "input": {
+        "list": [
+          {"name": "City 1", "lat": 41.0, "lon": 11.0},
+          {"name": "City 2", "lat": 42.0, "lon": 12.0},
+          {"name": "City 3", "lat": 43.0, "lon": 13.0},
+          {"name": "City 4", "lat": 44.0, "lon": 14.0},
+          {"name": "City 5", "lat": 45.0, "lon": 15.0},
+          {"name": "City 6", "lat": 46.0, "lon": 16.0},
+          {"name": "City 7", "lat": 47.0, "lon": 17.0},
+          {"name": "City 8", "lat": 48.0, "lon": 18.0}
+        ],
+        "city": {"name": "Piekoszów", "lat": 51.0, "lon": 17.0, "live": true}
+      },
+      "expect": {
+        "list": [
+          {"name": "Piekoszów", "lat": 51.0, "lon": 17.0, "live": true},
+          {"name": "City 1", "lat": 41.0, "lon": 11.0},
+          {"name": "City 2", "lat": 42.0, "lon": 12.0},
+          {"name": "City 3", "lat": 43.0, "lon": 13.0},
+          {"name": "City 4", "lat": 44.0, "lon": 14.0},
+          {"name": "City 5", "lat": 45.0, "lon": 15.0},
+          {"name": "City 6", "lat": 46.0, "lon": 16.0},
+          {"name": "City 7", "lat": 47.0, "lon": 17.0}
+        ]
+      }
+    },
+    {
+      "name": "the entry just added is never the one dropped (refreshed entry sits past the cap)",
+      "input": {
+        "list": [
+          {"name": "City 1", "lat": 41.0, "lon": 11.0},
+          {"name": "City 2", "lat": 42.0, "lon": 12.0},
+          {"name": "City 3", "lat": 43.0, "lon": 13.0},
+          {"name": "City 4", "lat": 44.0, "lon": 14.0},
+          {"name": "City 5", "lat": 45.0, "lon": 15.0},
+          {"name": "City 6", "lat": 46.0, "lon": 16.0},
+          {"name": "City 7", "lat": 47.0, "lon": 17.0},
+          {"name": "City 8", "lat": 48.0, "lon": 18.0},
+          {"name": "City 9", "lat": 49.0, "lon": 19.0}
+        ],
+        "city": {"name": "Renamed", "lat": 49.0, "lon": 19.0}
+      },
+      "expect": {
+        "list": [
+          {"name": "City 1", "lat": 41.0, "lon": 11.0},
+          {"name": "City 2", "lat": 42.0, "lon": 12.0},
+          {"name": "City 3", "lat": 43.0, "lon": 13.0},
+          {"name": "City 4", "lat": 44.0, "lon": 14.0},
+          {"name": "City 5", "lat": 45.0, "lon": 15.0},
+          {"name": "City 6", "lat": 46.0, "lon": 16.0},
+          {"name": "City 7", "lat": 47.0, "lon": 17.0},
+          {"name": "Renamed", "lat": 49.0, "lon": 19.0}
+        ]
+      }
+    },
+    {
+      "name": "a list one over the cap loses its last entry when a saved one in the middle is refreshed",
+      "input": {
+        "list": [
+          {"name": "City 1", "lat": 41.0, "lon": 11.0},
+          {"name": "City 2", "lat": 42.0, "lon": 12.0},
+          {"name": "City 3", "lat": 43.0, "lon": 13.0},
+          {"name": "City 4", "lat": 44.0, "lon": 14.0},
+          {"name": "City 5", "lat": 45.0, "lon": 15.0},
+          {"name": "City 6", "lat": 46.0, "lon": 16.0},
+          {"name": "City 7", "lat": 47.0, "lon": 17.0},
+          {"name": "City 8", "lat": 48.0, "lon": 18.0},
+          {"name": "City 9", "lat": 49.0, "lon": 19.0}
+        ],
+        "city": {"name": "Renamed", "lat": 43.0, "lon": 13.0}
+      },
+      "expect": {
+        "list": [
+          {"name": "City 1", "lat": 41.0, "lon": 11.0},
+          {"name": "City 2", "lat": 42.0, "lon": 12.0},
+          {"name": "Renamed", "lat": 43.0, "lon": 13.0},
+          {"name": "City 4", "lat": 44.0, "lon": 14.0},
+          {"name": "City 5", "lat": 45.0, "lon": 15.0},
+          {"name": "City 6", "lat": 46.0, "lon": 16.0},
+          {"name": "City 7", "lat": 47.0, "lon": 17.0},
+          {"name": "City 8", "lat": 48.0, "lon": 18.0}
+        ]
+      }
+    },
+    {"name": "an oversized saved list is cut from the end to the cap, keeping a refreshed entry", "input": {"list": [{"name": "City 1", "lat": 41.0, "lon": 11.0}, {"name": "City 2", "lat": 42.0, "lon": 12.0}, {"name": "City 3", "lat": 43.0, "lon": 13.0}, {"name": "City 4", "lat": 44.0, "lon": 14.0}, {"name": "City 5", "lat": 45.0, "lon": 15.0}, {"name": "City 6", "lat": 46.0, "lon": 16.0}, {"name": "City 7", "lat": 47.0, "lon": 17.0}, {"name": "City 8", "lat": 48.0, "lon": 18.0}, {"name": "City 9", "lat": 49.0, "lon": 19.0}, {"name": "City 10", "lat": 50.0, "lon": 20.0}], "city": {"name": "Renamed", "lat": 45.0, "lon": 15.0}}, "expect": {"list": [{"name": "City 1", "lat": 41.0, "lon": 11.0}, {"name": "City 2", "lat": 42.0, "lon": 12.0}, {"name": "City 3", "lat": 43.0, "lon": 13.0}, {"name": "City 4", "lat": 44.0, "lon": 14.0}, {"name": "Renamed", "lat": 45.0, "lon": 15.0}, {"name": "City 6", "lat": 46.0, "lon": 16.0}, {"name": "City 7", "lat": 47.0, "lon": 17.0}, {"name": "City 8", "lat": 48.0, "lon": 18.0}]}}
+  ]
+}

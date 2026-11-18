@@ -120,13 +120,17 @@ data class WidgetContent(
             offline: Boolean,
             texts: Texts = PlTexts,
             nowMillis: Long = System.currentTimeMillis(),
+            pollen: Boolean = true,
         ): WidgetContent {
             val nowKind = Wmo.wmoToKind(weather.currentWeatherCode).let {
                 if (!weather.isDay && (it == "sun" || it == "partly")) "moon" else it
             }
             // Today's rain only; any other day's goes under its own column.
             val window = RainWindow.today(weather.hourly, weather.currentWeatherCode)
-            val base = window?.let { RainWindow.short(it, texts) } ?: texts.kindLabel(nowKind)
+            // Rain by the minute beats the hourly window when it has something to say.
+            val base = nowcastLine(weather, window?.kind ?: RainWindow.Kind.RAIN, texts, nowMillis)
+                ?: window?.let { RainWindow.short(it, texts) }
+                ?: texts.kindLabel(nowKind)
 
             val dayOffset = dayOffset(weather)
             val days = weather.daily.drop(dayOffset).take(4)
@@ -200,8 +204,8 @@ data class WidgetContent(
                 // all four came out the same bar). Only when there are enough hours.
                 showCurve = full && weather.hourly.count { !it.temperature.isNaN() } >= WidgetGraphics.CURVE_MIN_POINTS,
                 metaLine = when (density) {
-                    WidgetDensity.FULL -> fullMeta(weather, texts, nowMillis)
-                    WidgetDensity.STANDARD -> notableMeta(weather, texts, nowMillis)
+                    WidgetDensity.FULL -> fullMeta(weather, texts, nowMillis, pollen)
+                    WidgetDensity.STANDARD -> notableMeta(weather, texts, nowMillis, pollen)
                     WidgetDensity.MINIMAL -> null
                 },
                 showFooter = !minimal,
@@ -233,9 +237,12 @@ data class WidgetContent(
             weather: WeatherApi.WeatherData,
             texts: Texts = PlTexts,
             nowMillis: Long = System.currentTimeMillis(),
+            pollen: Boolean = true,
         ): String? {
             val parts = mutableListOf<String>()
+            officialText(weather, texts)?.let { parts += it }
             sunEventText(weather, texts, nowMillis)?.let { parts += it }
+            if (pollen) pollenText(weather, texts)?.let { parts += it }
             remainingTodayMm(weather)?.takeIf { it >= RAIN_AMOUNT_NOTABLE_MM }?.let { parts += texts.rainAmount(it) }
             val gust = weather.windGustKmh
             if (!gust.isNaN() && gust >= GUST_NOTABLE_KMH) parts += texts.gusts(gust.roundToInt())
@@ -254,6 +261,38 @@ data class WidgetContent(
             }
             return parts.take(3).takeIf { it.isNotEmpty() }?.joinToString(" · ")
         }
+
+        /** Rain starts within this many minutes: say it by the minute in the hero. */
+        const val NOWCAST_START_WITHIN_MIN = 60
+
+        /** Rain that is falling and stops within this many minutes: say when. */
+        const val NOWCAST_END_WITHIN_MIN = 90
+
+        /**
+         * "deszcz za ok. 10 min" / "pada, koniec za ok. 20 min" from the 15-minute
+         * forecast, or null when it has nothing worth the hero line: no 15-minute
+         * data, no rain near, or a few drops.
+         */
+        fun nowcastLine(weather: WeatherApi.WeatherData, kind: RainWindow.Kind, texts: Texts, nowMillis: Long): String? {
+            val r = RainNowcast.forWeather(weather, nowMillis) ?: return null
+            if (r.totalMm < RainNowcast.NOTIFY_MIN_MM) return null
+            val starts = r.startsInMinutes
+            val ends = r.endsInMinutes
+            return when {
+                starts != null && starts <= NOWCAST_START_WITHIN_MIN ->
+                    texts.nowcastStart(kind, RainNowcast.roundForSpeech(starts))
+                r.ongoing && ends != null && ends <= NOWCAST_END_WITHIN_MIN ->
+                    texts.nowcastOngoing(kind, RainNowcast.roundForSpeech(ends))
+                else -> null
+            }
+        }
+
+        /** The most severe official warning, as the meta line says it, or null. */
+        private fun officialText(weather: WeatherApi.WeatherData, texts: Texts): String? =
+            weather.official.firstOrNull()?.let { texts.officialShort(it.event, it.degree) }
+
+        private fun pollenText(weather: WeatherApi.WeatherData, texts: Texts): String? =
+            Pollen.top(weather.pollen)?.let { texts.pollenShort(it.species, it.veryHigh) }
 
         /** "zachód za 40 min" when the sun is about to set or rise, else null. */
         private fun sunEventText(weather: WeatherApi.WeatherData, texts: Texts, nowMillis: Long): String? {
@@ -288,7 +327,13 @@ data class WidgetContent(
             weather: WeatherApi.WeatherData,
             texts: Texts = PlTexts,
             nowMillis: Long = System.currentTimeMillis(),
-        ): String? = listOfNotNull(sunEventText(weather, texts, nowMillis), fullReadouts(weather, texts))
+            pollen: Boolean = true,
+        ): String? = listOfNotNull(
+            officialText(weather, texts),
+            sunEventText(weather, texts, nowMillis),
+            pollenText(weather, texts).takeIf { pollen },
+            fullReadouts(weather, texts),
+        )
             .takeIf { it.isNotEmpty() }?.joinToString("  ·  ")
 
         private fun fullReadouts(weather: WeatherApi.WeatherData, texts: Texts): String? = texts.fullMeta(

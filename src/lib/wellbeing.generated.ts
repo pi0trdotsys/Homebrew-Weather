@@ -14,6 +14,14 @@ export const WELLBEING_PL: Pools = {
     "woda i nawilżone powietrze pomagają gardłu",
     "w tłoku maska dziś ma sens"
   ],
+  "pollen": [
+    "pylenie wysokie: po powrocie umyj twarz i włosy",
+    "okna zamknij w południe, przewietrz wieczorem",
+    "okulary chronią oczy przed pyłkiem",
+    "ubranie z dworu zostaw przed sypialnią",
+    "pranie dziś lepiej suszyć pod dachem",
+    "po spacerze umyj twarz i zmień koszulkę"
+  ],
   "sun": [
     "krem z filtrem na twarz i szyję",
     "okulary z filtrem UV chronią oczy",
@@ -84,6 +92,14 @@ export const WELLBEING_EN: Pools = {
     "scratchy throat? skip the walk",
     "water and humid air are kind to the throat",
     "in a crowd, a mask makes sense today"
+  ],
+  "pollen": [
+    "pollen is high: wash face and hair at home",
+    "keep windows shut at noon, air out at night",
+    "sunglasses keep pollen out of your eyes",
+    "leave outdoor clothes outside the bedroom",
+    "dry the laundry indoors today",
+    "after a walk, wash your face and change shirt"
   ],
   "sun": [
     "sunscreen on your face and neck",

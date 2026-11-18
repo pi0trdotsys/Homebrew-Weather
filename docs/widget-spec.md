@@ -982,3 +982,15 @@ rozmiaru widgetu (`centerCrop`), więc RemoteViews przenosi mało pamięci.
 - Siatka jest pobierana raz na komórkę 0,1° w tle (`Terrain.request`), a po jej zapisaniu
   widget odświeża się sam.
 
+## Deszcz co do minut, pyłki, ostrzeżenia IMGW (0.6.0-beta.15)
+
+- **Hero:** gdy deszcz zacznie się w ciągu godziny (i spadnie co najmniej 0,3 mm), linia pod
+  temperaturą mówi „deszcz za ok. 10 min”; gdy pada i koniec jest w zasięgu 90 minut, „pada,
+  koniec za ok. 20 min”. Przy każdym tyknięciu `BlinkAlarm` ten tekst jest przeliczany z
+  zegara (sam tekst, bez przeliczania wierszy), więc odliczanie się porusza między odświeżeniami.
+  Bez danych 15-minutowych zostaje okno godzinowe.
+- **Linia meta** (najwyżej trzy odczyty, w tej kolejności): ostrzeżenie IMGW („IMGW: silny wiatr
+  1°”), słońce, pyłki („pylenie: brzoza”), ilość opadów, porywy, UV, odczuwalna, wiatr, wilgotność.
+- Pyłki pokazują się tylko gdy któryś rodzaj przekracza własną granicę (`Pollen.Species`),
+  a „silne” od trzykrotności; w Europie, bo gdzie indziej model ich nie ma.
+

@@ -28,6 +28,7 @@ object WellbeingTips {
     /** What the tip is about, most pressing first (see [situation]). */
     enum class Situation(val key: String) {
         AIR("air"),
+        POLLEN("pollen"),
         SUN("sun"),
         HOT("hot"),
         COLD("cold"),
@@ -49,8 +50,8 @@ object WellbeingTips {
 
     /**
      * The situation the tip should speak to, first match wins:
-     * bad air, strong sun (daytime only), heat, frost, rain or a storm falling
-     * now, strong gusts, night, otherwise calm.
+     * bad air, high pollen, strong sun (daytime only), heat, frost, rain or a storm
+     * falling now, strong gusts, night, otherwise calm.
      *
      * Every reading may be unknown (NaN / -1, a cache from before it was kept),
      * and an unknown never triggers a situation.
@@ -65,6 +66,7 @@ object WellbeingTips {
 
         return when {
             weather.usAqi >= AIR_FROM_AQI -> Situation.AIR
+            Pollen.top(weather.pollen) != null -> Situation.POLLEN
             daytime && !uv.isNaN() && uv >= SUN_FROM_UV -> Situation.SUN
             !temp.isNaN() && temp >= HOT_FROM_C -> Situation.HOT
             !temp.isNaN() && temp <= COLD_UP_TO_C -> Situation.COLD
@@ -96,6 +98,14 @@ object WellbeingTips {
             "jeśli drapie w gardle, odpuść spacer",
             "woda i nawilżone powietrze pomagają gardłu",
             "w tłoku maska dziś ma sens",
+        ),
+        "pollen" to listOf(
+            "pylenie wysokie: po powrocie umyj twarz i włosy",
+            "okna zamknij w południe, przewietrz wieczorem",
+            "okulary chronią oczy przed pyłkiem",
+            "ubranie z dworu zostaw przed sypialnią",
+            "pranie dziś lepiej suszyć pod dachem",
+            "po spacerze umyj twarz i zmień koszulkę",
         ),
         "sun" to listOf(
             "krem z filtrem na twarz i szyję",
@@ -167,6 +177,14 @@ object WellbeingTips {
             "scratchy throat? skip the walk",
             "water and humid air are kind to the throat",
             "in a crowd, a mask makes sense today",
+        ),
+        "pollen" to listOf(
+            "pollen is high: wash face and hair at home",
+            "keep windows shut at noon, air out at night",
+            "sunglasses keep pollen out of your eyes",
+            "leave outdoor clothes outside the bedroom",
+            "dry the laundry indoors today",
+            "after a walk, wash your face and change shirt",
         ),
         "sun" to listOf(
             "sunscreen on your face and neck",

@@ -59,6 +59,33 @@ object WeatherApi {
         val windGustKmh: Double = Double.NaN,
     )
 
+    /**
+     * Pollen counts (grains/m³) from the air-quality API, which has them for
+     * Europe only — elsewhere every field is NaN, and NaN means "unknown", never
+     * "none". See [Pollen] for what counts as a lot.
+     */
+    data class PollenReading(
+        val alder: Double = Double.NaN,
+        val birch: Double = Double.NaN,
+        val grass: Double = Double.NaN,
+        val mugwort: Double = Double.NaN,
+        val olive: Double = Double.NaN,
+        val ragweed: Double = Double.NaN,
+    )
+
+    /**
+     * An official IMGW weather warning for the county the place is in. [from] and
+     * [to] are the warning's own local times, "2026-11-18T19:00"; [degree] is 1-3.
+     */
+    data class OfficialWarning(
+        val id: String,
+        val event: String,
+        val degree: Int,
+        val from: String,
+        val to: String,
+        val text: String,
+    )
+
     data class WeatherData(
         val isDay: Boolean,
         val currentWeatherCode: Int,
@@ -100,6 +127,13 @@ object WeatherApi {
         val utcOffsetSeconds: Int? = null,
         // Current gust, km/h — the gust counterpart of [windSpeedKmh]. NaN = unknown.
         val windGustKmh: Double = Double.NaN,
+        // The next hours in 15-minute steps (see [RainNowcast]). Empty for caches
+        // written before it was kept, and when the request didn't carry it.
+        val nowcast: List<RainNowcast.Step> = emptyList(),
+        // Best-effort, from the air-quality call; null when unknown (see [fetchAirQuality]).
+        val pollen: PollenReading? = null,
+        // Active or imminent official warnings for the place's county, best-effort (see [ImgwWarnings]).
+        val official: List<OfficialWarning> = emptyList(),
     ) {
         /**
          * This forecast as it should read *now*, however long ago it was
@@ -213,6 +247,7 @@ object WeatherApi {
             "&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m,wind_gusts_10m,is_day,surface_pressure" +
             "&hourly=temperature_2m,weather_code,precipitation_probability,precipitation,wind_gusts_10m,is_day" +
             "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,uv_index_max,wind_gusts_10m_max,sunrise,sunset" +
+            "&minutely_15=precipitation&forecast_minutely_15=${RainNowcast.STEPS_REQUESTED}" +
             "&timezone=auto&forecast_days=7"
         val json = httpGetJson(url)
 
@@ -325,8 +360,21 @@ object WeatherApi {
                 sunset = dSunset.optClock(i),
             )
         }
+        val minutely = json.optJSONObject("minutely_15")
+        val mTimes = minutely?.optJSONArray("time")
+        val mPrecip = minutely?.optJSONArray("precipitation")
+        val nowcast = if (mTimes != null && mPrecip != null) {
+            (0 until minOf(mTimes.length(), mPrecip.length())).mapNotNull { i ->
+                val mm = mPrecip.optNaN(i)
+                if (mm.isNaN()) null else RainNowcast.Step(mTimes.optString(i), mm)
+            }
+        } else {
+            emptyList()
+        }
+
         return WeatherData(
             isDay = isDay,
+            nowcast = nowcast,
             currentWeatherCode = currentCode,
             currentTemperature = currentTemp,
             apparentTemperature = apparentTemp,
@@ -358,23 +406,33 @@ object WeatherApi {
     private fun JSONArray?.optNaN(i: Int): Double =
         if (this == null || i !in 0 until length() || isNull(i)) Double.NaN else optDouble(i, Double.NaN)
 
+    /** What the air-quality call returns: the US AQI and, in Europe, pollen counts. */
+    data class AirQuality(val aqi: Int?, val pollen: PollenReading?)
+
     /**
      * Separate Open-Meteo Air Quality API call (different host, no key, same
      * no-backend philosophy as the rest of this file). Fully best-effort by
      * design: returns null on any failure (network hiccup, AQ API briefly
      * down, unexpected shape) rather than throwing, so a caller can simply
      * omit the AQI line for a refresh instead of risking the main weather
-     * fetch/render.
+     * fetch/render. Pollen rides in the same request, and is null outside Europe,
+     * where the model has no pollen.
      */
-    fun fetchAirQuality(lat: Double, lon: Double): Int? {
+    fun fetchAirQuality(lat: Double, lon: Double): AirQuality? {
         return try {
             val url = "https://air-quality-api.open-meteo.com/v1/air-quality" +
-                "?latitude=$lat&longitude=$lon&current=us_aqi&timezone=auto"
+                "?latitude=$lat&longitude=$lon" +
+                "&current=us_aqi,alder_pollen,birch_pollen,grass_pollen,mugwort_pollen,olive_pollen,ragweed_pollen" +
+                "&timezone=auto"
             val json = httpGetJson(url)
             val current = json.optJSONObject("current") ?: return null
-            if (!current.has("us_aqi")) return null
-            val aqi = current.optInt("us_aqi", -1)
-            if (aqi >= 0) aqi else null
+            val aqi = if (current.has("us_aqi") && !current.isNull("us_aqi")) current.optInt("us_aqi", -1).takeIf { it >= 0 } else null
+            fun grains(key: String) = if (current.has(key) && !current.isNull(key)) current.optDouble(key, Double.NaN) else Double.NaN
+            val pollen = PollenReading(
+                alder = grains("alder_pollen"), birch = grains("birch_pollen"), grass = grains("grass_pollen"),
+                mugwort = grains("mugwort_pollen"), olive = grains("olive_pollen"), ragweed = grains("ragweed_pollen"),
+            ).takeIf { listOf(it.alder, it.birch, it.grass, it.mugwort, it.olive, it.ragweed).any { v -> !v.isNaN() } }
+            if (aqi == null && pollen == null) null else AirQuality(aqi, pollen)
         } catch (e: Exception) {
             null
         }

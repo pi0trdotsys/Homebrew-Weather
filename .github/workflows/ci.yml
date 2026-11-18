@@ -22,6 +22,8 @@ jobs:
       - run: bun install
       - name: Typecheck
         run: bun x tsc --noEmit -p .
+      - name: Unit tests (incl. the Kotlin/TypeScript parity cases)
+        run: bun test
       - name: Joke pools are in sync with the Kotlin source
         run: |
           bun scripts/gen-jokes.ts

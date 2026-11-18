@@ -1,0 +1,1440 @@
+{
+  "rule": "rain-window",
+  "note": "Hourly rows are [local time, precipitation probability %, WMO code, mm in the hour or null]. The list starts at the current hour (as the native forecast does); `now` is the real current minute and only the web reads it. fn: today (RainWindow.today / findTodayRainWindow), find (RainWindow.find, Kotlin only: the notification's horizon rule), forDay (RainWindow.forDay / findDayRainWindow), intensity. A null totalMm/peakMm is NaN on the Kotlin side and no data on the web side. Optional `only` limits a case to \"kotlin\" or \"ts\".",
+  "cases": [
+    {
+      "name": "dry forecast has no window",
+      "fn": "today",
+      "input": {
+        "now": "2026-09-24T11:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T11:00", 0, 0, null],
+          ["2026-09-24T12:00", 10, 0, null],
+          ["2026-09-24T13:00", 20, 0, null],
+          ["2026-09-24T14:00", 30, 0, null],
+          ["2026-09-24T15:00", 40, 0, null],
+          ["2026-09-24T16:00", 10, 0, null]
+        ]
+      },
+      "expect": null
+    },
+    {
+      "name": "49% for hours on end is not rain",
+      "fn": "today",
+      "input": {
+        "now": "2026-09-24T11:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T11:00", 49, 0, null],
+          ["2026-09-24T12:00", 49, 0, null],
+          ["2026-09-24T13:00", 49, 0, null],
+          ["2026-09-24T14:00", 49, 0, null]
+        ]
+      },
+      "expect": null
+    },
+    {
+      "name": "exactly 50% is wet, 49% right after is dry",
+      "fn": "today",
+      "input": {
+        "now": "2026-09-24T11:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T11:00", 0, 0, null],
+          ["2026-09-24T12:00", 0, 0, null],
+          ["2026-09-24T13:00", 50, 61, null],
+          ["2026-09-24T14:00", 49, 0, null],
+          ["2026-09-24T15:00", 0, 0, null]
+        ]
+      },
+      "expect": {
+        "kind": "rain",
+        "startsInHours": 2,
+        "start": "13:00",
+        "end": "14:00",
+        "ongoing": false,
+        "totalMm": null,
+        "peakMm": null,
+        "intensity": "rain"
+      }
+    },
+    {
+      "name": "future window with an end, amounts and peak",
+      "fn": "today",
+      "input": {
+        "now": "2026-09-24T11:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T11:00", 0, 0, 0],
+          ["2026-09-24T12:00", 0, 0, 0],
+          ["2026-09-24T13:00", 0, 0, 0],
+          ["2026-09-24T14:00", 0, 0, 0],
+          ["2026-09-24T15:00", 70, 61, 0.4],
+          ["2026-09-24T16:00", 80, 61, 1.2],
+          ["2026-09-24T17:00", 90, 61, 3.0],
+          ["2026-09-24T18:00", 60, 61, 0.5],
+          ["2026-09-24T19:00", 20, 0, 0.1],
+          ["2026-09-24T20:00", 0, 0, 0]
+        ]
+      },
+      "expect": {
+        "kind": "rain",
+        "startsInHours": 4,
+        "start": "15:00",
+        "end": "19:00",
+        "ongoing": false,
+        "totalMm": 5.1,
+        "peakMm": 3.0,
+        "intensity": "rain"
+      }
+    },
+    {
+      "name": "window running past the data is open-ended",
+      "fn": "today",
+      "input": {
+        "now": "2026-09-24T11:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T11:00", 0, 0, null],
+          ["2026-09-24T12:00", 0, 0, null],
+          ["2026-09-24T13:00", 80, 61, null],
+          ["2026-09-24T14:00", 80, 61, null],
+          ["2026-09-24T15:00", 80, 61, null]
+        ]
+      },
+      "expect": {
+        "kind": "rain",
+        "startsInHours": 2,
+        "start": "13:00",
+        "end": null,
+        "ongoing": false,
+        "totalMm": null,
+        "peakMm": null,
+        "intensity": "rain"
+      }
+    },
+    {
+      "name": "raining now counts even when the hourly probability is low",
+      "fn": "today",
+      "input": {
+        "now": "2026-09-24T11:00",
+        "currentCode": 61,
+        "hourly": [
+          ["2026-09-24T11:00", 20, 0, 0.2],
+          ["2026-09-24T12:00", 60, 61, 0.6],
+          ["2026-09-24T13:00", 10, 0, 0],
+          ["2026-09-24T14:00", 0, 0, 0]
+        ]
+      },
+      "expect": {
+        "kind": "rain",
+        "startsInHours": 0,
+        "start": "11:00",
+        "end": "13:00",
+        "ongoing": true,
+        "totalMm": 0.8,
+        "peakMm": 0.6,
+        "intensity": "rain"
+      }
+    },
+    {
+      "name": "likely this hour but not observed yet is soon, not ongoing",
+      "fn": "today",
+      "input": {
+        "now": "2026-09-24T11:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T11:00", 80, 61, null],
+          ["2026-09-24T12:00", 80, 61, null],
+          ["2026-09-24T13:00", 0, 0, null]
+        ]
+      },
+      "expect": {
+        "kind": "rain",
+        "startsInHours": 0,
+        "start": "11:00",
+        "end": "13:00",
+        "ongoing": false,
+        "totalMm": null,
+        "peakMm": null,
+        "intensity": "rain"
+      }
+    },
+    {
+      "name": "snow falling now with a dry hourly slot is ongoing snow",
+      "fn": "today",
+      "input": {
+        "now": "2026-09-24T11:00",
+        "currentCode": 71,
+        "hourly": [["2026-09-24T11:00", 0, 0, 0.3], ["2026-09-24T12:00", 0, 0, 0], ["2026-09-24T13:00", 0, 0, 0]]
+      },
+      "expect": {
+        "kind": "snow",
+        "startsInHours": 0,
+        "start": "11:00",
+        "end": "12:00",
+        "ongoing": true,
+        "totalMm": 0.3,
+        "peakMm": 0.3,
+        "intensity": "rain"
+      }
+    },
+    {
+      "name": "showers (code 80) falling now are rain",
+      "fn": "today",
+      "input": {
+        "now": "2026-09-24T11:00",
+        "currentCode": 80,
+        "hourly": [["2026-09-24T11:00", 0, 0, null], ["2026-09-24T12:00", 0, 0, null]]
+      },
+      "expect": {
+        "kind": "rain",
+        "startsInHours": 0,
+        "start": "11:00",
+        "end": "12:00",
+        "ongoing": true,
+        "totalMm": null,
+        "peakMm": null,
+        "intensity": "rain"
+      }
+    },
+    {
+      "name": "thunder falling now is ongoing thunder",
+      "fn": "today",
+      "input": {
+        "now": "2026-09-24T11:00",
+        "currentCode": 95,
+        "hourly": [["2026-09-24T11:00", 0, 0, null], ["2026-09-24T12:00", 0, 0, null]]
+      },
+      "expect": {
+        "kind": "thunder",
+        "startsInHours": 0,
+        "start": "11:00",
+        "end": "12:00",
+        "ongoing": true,
+        "totalMm": null,
+        "peakMm": null,
+        "intensity": "rain"
+      }
+    },
+    {
+      "name": "fog now is not precipitation",
+      "fn": "today",
+      "input": {
+        "now": "2026-09-24T11:00",
+        "currentCode": 45,
+        "hourly": [["2026-09-24T11:00", 0, 0, null], ["2026-09-24T12:00", 0, 0, null], ["2026-09-24T13:00", 0, 0, null]]
+      },
+      "expect": null
+    },
+    {
+      "name": "thunder anywhere in the window wins and keeps the plain noun",
+      "fn": "today",
+      "input": {
+        "now": "2026-09-24T14:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T14:00", 0, 0, 0],
+          ["2026-09-24T15:00", 70, 61, 1],
+          ["2026-09-24T16:00", 90, 95, 5],
+          ["2026-09-24T17:00", 60, 61, 2],
+          ["2026-09-24T18:00", 0, 0, 0]
+        ]
+      },
+      "expect": {
+        "kind": "thunder",
+        "startsInHours": 1,
+        "start": "15:00",
+        "end": "18:00",
+        "ongoing": false,
+        "totalMm": 8.0,
+        "peakMm": 5.0,
+        "intensity": "rain"
+      }
+    },
+    {
+      "name": "snow beats rain",
+      "fn": "today",
+      "input": {
+        "now": "2026-09-24T06:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T06:00", 0, 0, null],
+          ["2026-09-24T07:00", 70, 61, null],
+          ["2026-09-24T08:00", 70, 71, null],
+          ["2026-09-24T09:00", 70, 61, null],
+          ["2026-09-24T10:00", 0, 0, null]
+        ]
+      },
+      "expect": {
+        "kind": "snow",
+        "startsInHours": 1,
+        "start": "07:00",
+        "end": "10:00",
+        "ongoing": false,
+        "totalMm": null,
+        "peakMm": null,
+        "intensity": "rain"
+      }
+    },
+    {
+      "name": "thunder beats snow",
+      "fn": "today",
+      "input": {
+        "now": "2026-09-24T06:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T06:00", 0, 0, null],
+          ["2026-09-24T07:00", 70, 71, null],
+          ["2026-09-24T08:00", 70, 95, null],
+          ["2026-09-24T09:00", 70, 71, null],
+          ["2026-09-24T10:00", 0, 0, null]
+        ]
+      },
+      "expect": {
+        "kind": "thunder",
+        "startsInHours": 1,
+        "start": "07:00",
+        "end": "10:00",
+        "ongoing": false,
+        "totalMm": null,
+        "peakMm": null,
+        "intensity": "rain"
+      }
+    },
+    {
+      "name": "only the first of two windows is reported",
+      "fn": "today",
+      "input": {
+        "now": "2026-09-24T11:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T11:00", 0, 0, null],
+          ["2026-09-24T12:00", 70, 61, null],
+          ["2026-09-24T13:00", 0, 0, null],
+          ["2026-09-24T14:00", 80, 61, null],
+          ["2026-09-24T15:00", 0, 0, null]
+        ]
+      },
+      "expect": {
+        "kind": "rain",
+        "startsInHours": 1,
+        "start": "12:00",
+        "end": "13:00",
+        "ongoing": false,
+        "totalMm": null,
+        "peakMm": null,
+        "intensity": "rain"
+      }
+    },
+    {
+      "name": "window crossing midnight keeps wall-clock times",
+      "fn": "today",
+      "input": {
+        "now": "2026-09-24T22:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T22:00", 0, 0, null],
+          ["2026-09-24T23:00", 80, 61, null],
+          ["2026-09-25T00:00", 80, 61, null],
+          ["2026-09-25T01:00", 80, 61, null],
+          ["2026-09-25T02:00", 0, 0, null]
+        ]
+      },
+      "expect": {
+        "kind": "rain",
+        "startsInHours": 1,
+        "start": "23:00",
+        "end": "02:00",
+        "ongoing": false,
+        "totalMm": null,
+        "peakMm": null,
+        "intensity": "rain"
+      }
+    },
+    {
+      "name": "23:30, raining, rain carries on past midnight (the current hour is 23:00)",
+      "fn": "today",
+      "input": {
+        "now": "2026-09-24T23:30",
+        "currentCode": 61,
+        "hourly": [
+          ["2026-09-24T23:00", 20, 0, null],
+          ["2026-09-25T00:00", 60, 61, null],
+          ["2026-09-25T01:00", 60, 61, null],
+          ["2026-09-25T02:00", 0, 0, null]
+        ]
+      },
+      "expect": {
+        "kind": "rain",
+        "startsInHours": 0,
+        "start": "23:00",
+        "end": "02:00",
+        "ongoing": true,
+        "totalMm": null,
+        "peakMm": null,
+        "intensity": "rain"
+      }
+    },
+    {
+      "name": "23:30, dry, tomorrow's rain after midnight is not today's",
+      "fn": "today",
+      "input": {
+        "now": "2026-09-24T23:30",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T23:00", 0, 0, null],
+          ["2026-09-25T00:00", 0, 0, null],
+          ["2026-09-25T01:00", 70, 61, null],
+          ["2026-09-25T02:00", 70, 61, null],
+          ["2026-09-25T03:00", 0, 0, null]
+        ]
+      },
+      "expect": null
+    },
+    {
+      "name": "evening: tomorrow morning's rain is not today's hero sentence",
+      "fn": "today",
+      "input": {
+        "now": "2026-09-24T23:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T23:00", 0, 0, null],
+          ["2026-09-25T00:00", 0, 0, null],
+          ["2026-09-25T01:00", 0, 0, null],
+          ["2026-09-25T02:00", 0, 0, null],
+          ["2026-09-25T03:00", 0, 0, null],
+          ["2026-09-25T04:00", 0, 0, null],
+          ["2026-09-25T05:00", 0, 0, null],
+          ["2026-09-25T06:00", 20, 0, null],
+          ["2026-09-25T07:00", 30, 0, null],
+          ["2026-09-25T08:00", 58, 61, null],
+          ["2026-09-25T09:00", 55, 61, null],
+          ["2026-09-25T10:00", 50, 61, null],
+          ["2026-09-25T11:00", 58, 61, null],
+          ["2026-09-25T12:00", 78, 61, null],
+          ["2026-09-25T13:00", 90, 61, null],
+          ["2026-09-25T14:00", 90, 61, null],
+          ["2026-09-25T15:00", 88, 61, null],
+          ["2026-09-25T16:00", 83, 61, null],
+          ["2026-09-25T17:00", 78, 61, null],
+          ["2026-09-25T18:00", 70, 61, null],
+          ["2026-09-25T19:00", 40, 0, null],
+          ["2026-09-25T20:00", 20, 0, null]
+        ]
+      },
+      "expect": null
+    },
+    {
+      "name": "rain later tonight is still today",
+      "fn": "today",
+      "input": {
+        "now": "2026-09-24T07:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T07:00", 0, 0, null],
+          ["2026-09-24T08:00", 0, 0, null],
+          ["2026-09-24T09:00", 0, 0, null],
+          ["2026-09-24T10:00", 0, 0, null],
+          ["2026-09-24T11:00", 0, 0, null],
+          ["2026-09-24T12:00", 0, 0, null],
+          ["2026-09-24T13:00", 0, 0, null],
+          ["2026-09-24T14:00", 0, 0, null],
+          ["2026-09-24T15:00", 0, 0, null],
+          ["2026-09-24T16:00", 0, 0, null],
+          ["2026-09-24T17:00", 0, 0, null],
+          ["2026-09-24T18:00", 0, 0, null],
+          ["2026-09-24T19:00", 0, 0, null],
+          ["2026-09-24T20:00", 0, 0, null],
+          ["2026-09-24T21:00", 80, 61, null],
+          ["2026-09-24T22:00", 80, 61, null],
+          ["2026-09-24T23:00", 0, 0, null]
+        ]
+      },
+      "expect": {
+        "kind": "rain",
+        "startsInHours": 14,
+        "start": "21:00",
+        "end": "23:00",
+        "ongoing": false,
+        "totalMm": null,
+        "peakMm": null,
+        "intensity": "rain"
+      }
+    },
+    {
+      "name": "a window starting at the last hour of the day is today's",
+      "fn": "today",
+      "input": {
+        "now": "2026-09-24T20:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T20:00", 0, 0, null],
+          ["2026-09-24T21:00", 0, 0, null],
+          ["2026-09-24T22:00", 0, 0, null],
+          ["2026-09-24T23:00", 90, 61, null],
+          ["2026-09-25T00:00", 0, 0, null]
+        ]
+      },
+      "expect": {
+        "kind": "rain",
+        "startsInHours": 3,
+        "start": "23:00",
+        "end": "00:00",
+        "ongoing": false,
+        "totalMm": null,
+        "peakMm": null,
+        "intensity": "rain"
+      }
+    },
+    {
+      "name": "empty hourly data yields nothing rather than guessing",
+      "fn": "today",
+      "input": {"now": "2026-09-24T11:00", "currentCode": 61, "hourly": []},
+      "expect": null
+    },
+    {
+      "name": "a single wet hour at the end of the data is open-ended",
+      "fn": "today",
+      "input": {"now": "2026-09-24T11:00", "currentCode": 0, "hourly": [["2026-09-24T11:00", 80, 61, null]]},
+      "expect": {
+        "kind": "rain",
+        "startsInHours": 0,
+        "start": "11:00",
+        "end": null,
+        "ongoing": false,
+        "totalMm": null,
+        "peakMm": null,
+        "intensity": "rain"
+      }
+    },
+    {
+      "name": "raining now with no forecast beyond the current hour",
+      "fn": "today",
+      "input": {"now": "2026-09-24T11:00", "currentCode": 61, "hourly": [["2026-09-24T11:00", 0, 0, null]]},
+      "expect": {
+        "kind": "rain",
+        "startsInHours": 0,
+        "start": "11:00",
+        "end": null,
+        "ongoing": true,
+        "totalMm": null,
+        "peakMm": null,
+        "intensity": "rain"
+      }
+    },
+    {
+      "name": "a missing probability reads as dry",
+      "fn": "today",
+      "input": {
+        "now": "2026-09-24T11:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T11:00", null, 0, null],
+          ["2026-09-24T12:00", 70, 61, null],
+          ["2026-09-24T13:00", 70, 61, null]
+        ]
+      },
+      "expect": {
+        "kind": "rain",
+        "startsInHours": 1,
+        "start": "12:00",
+        "end": null,
+        "ongoing": false,
+        "totalMm": null,
+        "peakMm": null,
+        "intensity": "rain"
+      }
+    },
+    {
+      "name": "amounts unknown for only some hours: the known ones count",
+      "fn": "today",
+      "input": {
+        "now": "2026-09-24T11:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T11:00", 60, 61, null],
+          ["2026-09-24T12:00", 60, 61, 0.4],
+          ["2026-09-24T13:00", 60, 61, null],
+          ["2026-09-24T14:00", 60, 61, 1.0],
+          ["2026-09-24T15:00", 0, 0, 0.0]
+        ]
+      },
+      "expect": {
+        "kind": "rain",
+        "startsInHours": 0,
+        "start": "11:00",
+        "end": "15:00",
+        "ongoing": false,
+        "totalMm": 1.4,
+        "peakMm": 1.0,
+        "intensity": "rain"
+      }
+    },
+    {
+      "name": "a drizzle window (peak 0.3 mm/h)",
+      "fn": "today",
+      "input": {
+        "now": "2026-09-24T11:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T11:00", 0, 0, 0],
+          ["2026-09-24T12:00", 70, 61, 0.1],
+          ["2026-09-24T13:00", 70, 61, 0.3],
+          ["2026-09-24T14:00", 0, 0, 0]
+        ]
+      },
+      "expect": {
+        "kind": "rain",
+        "startsInHours": 1,
+        "start": "12:00",
+        "end": "14:00",
+        "ongoing": false,
+        "totalMm": 0.4,
+        "peakMm": 0.3,
+        "intensity": "drizzle"
+      }
+    },
+    {
+      "name": "a downpour window (peak exactly 4 mm/h)",
+      "fn": "today",
+      "input": {
+        "now": "2026-09-24T11:00",
+        "currentCode": 0,
+        "hourly": [["2026-09-24T11:00", 70, 61, 1.5], ["2026-09-24T12:00", 70, 61, 4.0], ["2026-09-24T13:00", 0, 0, 0]]
+      },
+      "expect": {
+        "kind": "rain",
+        "startsInHours": 0,
+        "start": "11:00",
+        "end": "13:00",
+        "ongoing": false,
+        "totalMm": 5.5,
+        "peakMm": 4.0,
+        "intensity": "heavy"
+      }
+    },
+    {
+      "name": "peak just under 4 mm/h is plain rain",
+      "fn": "today",
+      "input": {
+        "now": "2026-09-24T11:00",
+        "currentCode": 0,
+        "hourly": [["2026-09-24T11:00", 70, 61, 1.0], ["2026-09-24T12:00", 70, 61, 3.9], ["2026-09-24T13:00", 0, 0, 0]]
+      },
+      "expect": {
+        "kind": "rain",
+        "startsInHours": 0,
+        "start": "11:00",
+        "end": "13:00",
+        "ongoing": false,
+        "totalMm": 4.9,
+        "peakMm": 3.9,
+        "intensity": "rain"
+      }
+    },
+    {
+      "name": "peak exactly 0.5 mm/h is plain rain, not drizzle",
+      "fn": "today",
+      "input": {
+        "now": "2026-09-24T11:00",
+        "currentCode": 0,
+        "hourly": [["2026-09-24T11:00", 70, 61, 0.5], ["2026-09-24T12:00", 70, 61, 0.25], ["2026-09-24T13:00", 0, 0, 0]]
+      },
+      "expect": {
+        "kind": "rain",
+        "startsInHours": 0,
+        "start": "11:00",
+        "end": "13:00",
+        "ongoing": false,
+        "totalMm": 0.75,
+        "peakMm": 0.5,
+        "intensity": "rain"
+      }
+    },
+    {
+      "name": "a wet window that carries 0.0 mm is a drizzle by peak",
+      "fn": "today",
+      "input": {
+        "now": "2026-09-24T11:00",
+        "currentCode": 0,
+        "hourly": [["2026-09-24T11:00", 60, 61, 0], ["2026-09-24T12:00", 60, 61, 0], ["2026-09-24T13:00", 0, 0, 0]]
+      },
+      "expect": {
+        "kind": "rain",
+        "startsInHours": 0,
+        "start": "11:00",
+        "end": "13:00",
+        "ongoing": false,
+        "totalMm": 0.0,
+        "peakMm": 0.0,
+        "intensity": "drizzle"
+      }
+    },
+    {
+      "name": "amounts outside the window do not count",
+      "fn": "today",
+      "input": {
+        "now": "2026-09-24T11:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T11:00", 0, 0, 9],
+          ["2026-09-24T12:00", 70, 61, 0.2],
+          ["2026-09-24T13:00", 0, 0, 9],
+          ["2026-09-24T14:00", 0, 0, 9]
+        ]
+      },
+      "expect": {
+        "kind": "rain",
+        "startsInHours": 1,
+        "start": "12:00",
+        "end": "13:00",
+        "ongoing": false,
+        "totalMm": 0.2,
+        "peakMm": 0.2,
+        "intensity": "drizzle"
+      }
+    },
+    {
+      "name": "a start beyond the 12 h horizon is ignored",
+      "fn": "find",
+      "only": "kotlin",
+      "input": {
+        "now": "2026-09-24T08:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T08:00", 0, 0, null],
+          ["2026-09-24T09:00", 0, 0, null],
+          ["2026-09-24T10:00", 0, 0, null],
+          ["2026-09-24T11:00", 0, 0, null],
+          ["2026-09-24T12:00", 0, 0, null],
+          ["2026-09-24T13:00", 0, 0, null],
+          ["2026-09-24T14:00", 0, 0, null],
+          ["2026-09-24T15:00", 0, 0, null],
+          ["2026-09-24T16:00", 0, 0, null],
+          ["2026-09-24T17:00", 0, 0, null],
+          ["2026-09-24T18:00", 0, 0, null],
+          ["2026-09-24T19:00", 0, 0, null],
+          ["2026-09-24T20:00", 0, 0, null],
+          ["2026-09-24T21:00", 90, 61, null],
+          ["2026-09-24T22:00", 90, 61, null]
+        ]
+      },
+      "expect": null
+    },
+    {
+      "name": "a start exactly at the horizon edge is found",
+      "fn": "find",
+      "only": "kotlin",
+      "input": {
+        "now": "2026-09-24T08:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T08:00", 0, 0, null],
+          ["2026-09-24T09:00", 0, 0, null],
+          ["2026-09-24T10:00", 0, 0, null],
+          ["2026-09-24T11:00", 0, 0, null],
+          ["2026-09-24T12:00", 0, 0, null],
+          ["2026-09-24T13:00", 0, 0, null],
+          ["2026-09-24T14:00", 0, 0, null],
+          ["2026-09-24T15:00", 0, 0, null],
+          ["2026-09-24T16:00", 0, 0, null],
+          ["2026-09-24T17:00", 0, 0, null],
+          ["2026-09-24T18:00", 0, 0, null],
+          ["2026-09-24T19:00", 0, 0, null],
+          ["2026-09-24T20:00", 90, 61, null],
+          ["2026-09-24T21:00", 90, 61, null]
+        ]
+      },
+      "expect": {
+        "kind": "rain",
+        "startsInHours": 12,
+        "start": "20:00",
+        "end": null,
+        "ongoing": false,
+        "totalMm": null,
+        "peakMm": null,
+        "intensity": "rain"
+      }
+    },
+    {
+      "name": "tomorrow's rain is still found within the horizon (rain-soon heads-up)",
+      "fn": "find",
+      "only": "kotlin",
+      "input": {
+        "now": "2026-09-24T23:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T23:00", 0, 0, null],
+          ["2026-09-25T00:00", 0, 0, null],
+          ["2026-09-25T01:00", 0, 0, null],
+          ["2026-09-25T02:00", 0, 0, null],
+          ["2026-09-25T03:00", 0, 0, null],
+          ["2026-09-25T04:00", 0, 0, null],
+          ["2026-09-25T05:00", 0, 0, null],
+          ["2026-09-25T06:00", 20, 0, null],
+          ["2026-09-25T07:00", 30, 0, null],
+          ["2026-09-25T08:00", 58, 61, null],
+          ["2026-09-25T09:00", 55, 61, null],
+          ["2026-09-25T10:00", 50, 61, null],
+          ["2026-09-25T11:00", 58, 61, null],
+          ["2026-09-25T12:00", 78, 61, null],
+          ["2026-09-25T13:00", 90, 61, null],
+          ["2026-09-25T14:00", 90, 61, null],
+          ["2026-09-25T15:00", 88, 61, null],
+          ["2026-09-25T16:00", 83, 61, null],
+          ["2026-09-25T17:00", 78, 61, null],
+          ["2026-09-25T18:00", 70, 61, null],
+          ["2026-09-25T19:00", 40, 0, null],
+          ["2026-09-25T20:00", 20, 0, null]
+        ]
+      },
+      "expect": {
+        "kind": "rain",
+        "startsInHours": 9,
+        "start": "08:00",
+        "end": "19:00",
+        "ongoing": false,
+        "totalMm": null,
+        "peakMm": null,
+        "intensity": "rain"
+      }
+    },
+    {
+      "name": "raining now is found like today's",
+      "fn": "find",
+      "only": "kotlin",
+      "input": {
+        "now": "2026-09-24T11:00",
+        "currentCode": 61,
+        "hourly": [
+          ["2026-09-24T11:00", 20, 0, null],
+          ["2026-09-24T12:00", 60, 61, null],
+          ["2026-09-24T13:00", 10, 0, null],
+          ["2026-09-24T14:00", 0, 0, null]
+        ]
+      },
+      "expect": {
+        "kind": "rain",
+        "startsInHours": 0,
+        "start": "11:00",
+        "end": "13:00",
+        "ongoing": true,
+        "totalMm": null,
+        "peakMm": null,
+        "intensity": "rain"
+      }
+    },
+    {
+      "name": "empty hourly data yields nothing",
+      "fn": "find",
+      "only": "kotlin",
+      "input": {"now": "2026-09-24T11:00", "currentCode": 61, "hourly": []},
+      "expect": null
+    },
+    {
+      "name": "tomorrow's rain lands on tomorrow's day",
+      "fn": "forDay",
+      "input": {
+        "now": "2026-09-24T23:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T23:00", 0, 0, null],
+          ["2026-09-25T00:00", 0, 0, null],
+          ["2026-09-25T01:00", 0, 0, null],
+          ["2026-09-25T02:00", 0, 0, null],
+          ["2026-09-25T03:00", 0, 0, null],
+          ["2026-09-25T04:00", 0, 0, null],
+          ["2026-09-25T05:00", 0, 0, null],
+          ["2026-09-25T06:00", 20, 0, null],
+          ["2026-09-25T07:00", 30, 0, null],
+          ["2026-09-25T08:00", 58, 61, null],
+          ["2026-09-25T09:00", 55, 61, null],
+          ["2026-09-25T10:00", 50, 61, null],
+          ["2026-09-25T11:00", 58, 61, null],
+          ["2026-09-25T12:00", 78, 61, null],
+          ["2026-09-25T13:00", 90, 61, null],
+          ["2026-09-25T14:00", 90, 61, null],
+          ["2026-09-25T15:00", 88, 61, null],
+          ["2026-09-25T16:00", 83, 61, null],
+          ["2026-09-25T17:00", 78, 61, null],
+          ["2026-09-25T18:00", 70, 61, null],
+          ["2026-09-25T19:00", 40, 0, null],
+          ["2026-09-25T20:00", 20, 0, null]
+        ],
+        "date": "2026-09-25"
+      },
+      "expect": {"kind": "rain", "startHour": 8, "endHour": 19, "moreLater": false, "totalMm": null, "peakMm": null}
+    },
+    {
+      "name": "nothing wet is left today",
+      "fn": "forDay",
+      "input": {
+        "now": "2026-09-24T23:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T23:00", 0, 0, null],
+          ["2026-09-25T00:00", 0, 0, null],
+          ["2026-09-25T01:00", 0, 0, null],
+          ["2026-09-25T02:00", 0, 0, null],
+          ["2026-09-25T03:00", 0, 0, null],
+          ["2026-09-25T04:00", 0, 0, null],
+          ["2026-09-25T05:00", 0, 0, null],
+          ["2026-09-25T06:00", 20, 0, null],
+          ["2026-09-25T07:00", 30, 0, null],
+          ["2026-09-25T08:00", 58, 61, null],
+          ["2026-09-25T09:00", 55, 61, null],
+          ["2026-09-25T10:00", 50, 61, null],
+          ["2026-09-25T11:00", 58, 61, null],
+          ["2026-09-25T12:00", 78, 61, null],
+          ["2026-09-25T13:00", 90, 61, null],
+          ["2026-09-25T14:00", 90, 61, null],
+          ["2026-09-25T15:00", 88, 61, null],
+          ["2026-09-25T16:00", 83, 61, null],
+          ["2026-09-25T17:00", 78, 61, null],
+          ["2026-09-25T18:00", 70, 61, null],
+          ["2026-09-25T19:00", 40, 0, null],
+          ["2026-09-25T20:00", 20, 0, null]
+        ],
+        "date": "2026-09-24"
+      },
+      "expect": null
+    },
+    {
+      "name": "a day not in the data has no window",
+      "fn": "forDay",
+      "input": {
+        "now": "2026-09-24T11:00",
+        "currentCode": 0,
+        "hourly": [["2026-09-24T11:00", 80, 61, null], ["2026-09-24T12:00", 80, 61, null]],
+        "date": "2026-09-30"
+      },
+      "expect": null
+    },
+    {
+      "name": "a dry day has no window",
+      "fn": "forDay",
+      "input": {
+        "now": "2026-09-24T00:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T00:00", 0, 0, null],
+          ["2026-09-24T01:00", 0, 0, null],
+          ["2026-09-24T02:00", 0, 0, null],
+          ["2026-09-24T03:00", 0, 0, null],
+          ["2026-09-24T04:00", 0, 0, null],
+          ["2026-09-24T05:00", 0, 0, null],
+          ["2026-09-24T06:00", 0, 0, null],
+          ["2026-09-24T07:00", 0, 0, null],
+          ["2026-09-24T08:00", 0, 0, null],
+          ["2026-09-24T09:00", 0, 0, null],
+          ["2026-09-24T10:00", 0, 0, null],
+          ["2026-09-24T11:00", 0, 0, null],
+          ["2026-09-24T12:00", 0, 0, null],
+          ["2026-09-24T13:00", 0, 0, null],
+          ["2026-09-24T14:00", 0, 0, null],
+          ["2026-09-24T15:00", 0, 0, null],
+          ["2026-09-24T16:00", 0, 0, null],
+          ["2026-09-24T17:00", 0, 0, null],
+          ["2026-09-24T18:00", 0, 0, null],
+          ["2026-09-24T19:00", 0, 0, null],
+          ["2026-09-24T20:00", 0, 0, null],
+          ["2026-09-24T21:00", 0, 0, null],
+          ["2026-09-24T22:00", 0, 0, null],
+          ["2026-09-24T23:00", 0, 0, null]
+        ],
+        "date": "2026-09-24"
+      },
+      "expect": null
+    },
+    {
+      "name": "50% starts the run, 49% ends it",
+      "fn": "forDay",
+      "input": {
+        "now": "2026-09-24T00:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T00:00", 0, 0, null],
+          ["2026-09-24T01:00", 0, 0, null],
+          ["2026-09-24T02:00", 0, 0, null],
+          ["2026-09-24T03:00", 0, 0, null],
+          ["2026-09-24T04:00", 0, 0, null],
+          ["2026-09-24T05:00", 0, 0, null],
+          ["2026-09-24T06:00", 0, 0, null],
+          ["2026-09-24T07:00", 0, 0, null],
+          ["2026-09-24T08:00", 0, 0, null],
+          ["2026-09-24T09:00", 0, 0, null],
+          ["2026-09-24T10:00", 50, 61, null],
+          ["2026-09-24T11:00", 49, 0, null],
+          ["2026-09-24T12:00", 0, 0, null],
+          ["2026-09-24T13:00", 0, 0, null],
+          ["2026-09-24T14:00", 0, 0, null],
+          ["2026-09-24T15:00", 0, 0, null],
+          ["2026-09-24T16:00", 0, 0, null],
+          ["2026-09-24T17:00", 0, 0, null],
+          ["2026-09-24T18:00", 0, 0, null],
+          ["2026-09-24T19:00", 0, 0, null],
+          ["2026-09-24T20:00", 0, 0, null],
+          ["2026-09-24T21:00", 0, 0, null],
+          ["2026-09-24T22:00", 0, 0, null],
+          ["2026-09-24T23:00", 0, 0, null]
+        ],
+        "date": "2026-09-24"
+      },
+      "expect": {"kind": "rain", "startHour": 10, "endHour": 11, "moreLater": false, "totalMm": null, "peakMm": null}
+    },
+    {
+      "name": "rain into midnight ends at 24",
+      "fn": "forDay",
+      "input": {
+        "now": "2026-09-24T00:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T00:00", 0, 0, null],
+          ["2026-09-24T01:00", 0, 0, null],
+          ["2026-09-24T02:00", 0, 0, null],
+          ["2026-09-24T03:00", 0, 0, null],
+          ["2026-09-24T04:00", 0, 0, null],
+          ["2026-09-24T05:00", 0, 0, null],
+          ["2026-09-24T06:00", 0, 0, null],
+          ["2026-09-24T07:00", 0, 0, null],
+          ["2026-09-24T08:00", 0, 0, null],
+          ["2026-09-24T09:00", 0, 0, null],
+          ["2026-09-24T10:00", 0, 0, null],
+          ["2026-09-24T11:00", 0, 0, null],
+          ["2026-09-24T12:00", 0, 0, null],
+          ["2026-09-24T13:00", 0, 0, null],
+          ["2026-09-24T14:00", 0, 0, null],
+          ["2026-09-24T15:00", 0, 0, null],
+          ["2026-09-24T16:00", 0, 0, null],
+          ["2026-09-24T17:00", 0, 0, null],
+          ["2026-09-24T18:00", 0, 0, null],
+          ["2026-09-24T19:00", 0, 0, null],
+          ["2026-09-24T20:00", 60, 61, null],
+          ["2026-09-24T21:00", 60, 61, null],
+          ["2026-09-24T22:00", 60, 61, null],
+          ["2026-09-24T23:00", 60, 61, null]
+        ],
+        "date": "2026-09-24"
+      },
+      "expect": {"kind": "rain", "startHour": 20, "endHour": 24, "moreLater": false, "totalMm": null, "peakMm": null}
+    },
+    {
+      "name": "a wet day from the first hour to the last",
+      "fn": "forDay",
+      "input": {
+        "now": "2026-09-24T00:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T00:00", 60, 61, null],
+          ["2026-09-24T01:00", 60, 61, null],
+          ["2026-09-24T02:00", 60, 61, null],
+          ["2026-09-24T03:00", 60, 61, null],
+          ["2026-09-24T04:00", 60, 61, null],
+          ["2026-09-24T05:00", 60, 61, null],
+          ["2026-09-24T06:00", 60, 61, null],
+          ["2026-09-24T07:00", 60, 61, null],
+          ["2026-09-24T08:00", 60, 61, null],
+          ["2026-09-24T09:00", 60, 61, null],
+          ["2026-09-24T10:00", 60, 61, null],
+          ["2026-09-24T11:00", 60, 61, null],
+          ["2026-09-24T12:00", 60, 61, null],
+          ["2026-09-24T13:00", 60, 61, null],
+          ["2026-09-24T14:00", 60, 61, null],
+          ["2026-09-24T15:00", 60, 61, null],
+          ["2026-09-24T16:00", 60, 61, null],
+          ["2026-09-24T17:00", 60, 61, null],
+          ["2026-09-24T18:00", 60, 61, null],
+          ["2026-09-24T19:00", 60, 61, null],
+          ["2026-09-24T20:00", 60, 61, null],
+          ["2026-09-24T21:00", 60, 61, null],
+          ["2026-09-24T22:00", 60, 61, null],
+          ["2026-09-24T23:00", 60, 61, null]
+        ],
+        "date": "2026-09-24"
+      },
+      "expect": {"kind": "rain", "startHour": 0, "endHour": 24, "moreLater": false, "totalMm": null, "peakMm": null}
+    },
+    {
+      "name": "the data stops mid-day while it is still wet",
+      "fn": "forDay",
+      "input": {
+        "now": "2026-09-24T14:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T14:00", 0, 0, null],
+          ["2026-09-24T15:00", 0, 0, null],
+          ["2026-09-24T16:00", 0, 0, null],
+          ["2026-09-24T17:00", 0, 0, null],
+          ["2026-09-24T18:00", 60, 61, null],
+          ["2026-09-24T19:00", 60, 61, null],
+          ["2026-09-24T20:00", 60, 61, null]
+        ],
+        "date": "2026-09-24"
+      },
+      "expect": {"kind": "rain", "startHour": 18, "endHour": null, "moreLater": false, "totalMm": null, "peakMm": null}
+    },
+    {
+      "name": "the run ends at the last hour of the day when it is dry",
+      "fn": "forDay",
+      "input": {
+        "now": "2026-09-24T00:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T00:00", 0, 0, null],
+          ["2026-09-24T01:00", 0, 0, null],
+          ["2026-09-24T02:00", 0, 0, null],
+          ["2026-09-24T03:00", 0, 0, null],
+          ["2026-09-24T04:00", 0, 0, null],
+          ["2026-09-24T05:00", 0, 0, null],
+          ["2026-09-24T06:00", 0, 0, null],
+          ["2026-09-24T07:00", 0, 0, null],
+          ["2026-09-24T08:00", 0, 0, null],
+          ["2026-09-24T09:00", 0, 0, null],
+          ["2026-09-24T10:00", 0, 0, null],
+          ["2026-09-24T11:00", 0, 0, null],
+          ["2026-09-24T12:00", 0, 0, null],
+          ["2026-09-24T13:00", 0, 0, null],
+          ["2026-09-24T14:00", 0, 0, null],
+          ["2026-09-24T15:00", 0, 0, null],
+          ["2026-09-24T16:00", 0, 0, null],
+          ["2026-09-24T17:00", 0, 0, null],
+          ["2026-09-24T18:00", 0, 0, null],
+          ["2026-09-24T19:00", 0, 0, null],
+          ["2026-09-24T20:00", 0, 0, null],
+          ["2026-09-24T21:00", 60, 61, null],
+          ["2026-09-24T22:00", 60, 61, null],
+          ["2026-09-24T23:00", 0, 0, null]
+        ],
+        "date": "2026-09-24"
+      },
+      "expect": {"kind": "rain", "startHour": 21, "endHour": 23, "moreLater": false, "totalMm": null, "peakMm": null}
+    },
+    {
+      "name": "more wet hours later the same day",
+      "fn": "forDay",
+      "input": {
+        "now": "2026-09-24T00:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T00:00", 0, 0, null],
+          ["2026-09-24T01:00", 0, 0, null],
+          ["2026-09-24T02:00", 0, 0, null],
+          ["2026-09-24T03:00", 0, 0, null],
+          ["2026-09-24T04:00", 0, 0, null],
+          ["2026-09-24T05:00", 0, 0, null],
+          ["2026-09-24T06:00", 0, 0, null],
+          ["2026-09-24T07:00", 0, 0, null],
+          ["2026-09-24T08:00", 60, 61, null],
+          ["2026-09-24T09:00", 60, 61, null],
+          ["2026-09-24T10:00", 0, 0, null],
+          ["2026-09-24T11:00", 0, 0, null],
+          ["2026-09-24T12:00", 0, 0, null],
+          ["2026-09-24T13:00", 0, 0, null],
+          ["2026-09-24T14:00", 0, 0, null],
+          ["2026-09-24T15:00", 60, 61, null],
+          ["2026-09-24T16:00", 60, 61, null],
+          ["2026-09-24T17:00", 0, 0, null],
+          ["2026-09-24T18:00", 0, 0, null],
+          ["2026-09-24T19:00", 0, 0, null],
+          ["2026-09-24T20:00", 0, 0, null],
+          ["2026-09-24T21:00", 0, 0, null],
+          ["2026-09-24T22:00", 0, 0, null],
+          ["2026-09-24T23:00", 0, 0, null]
+        ],
+        "date": "2026-09-24"
+      },
+      "expect": {"kind": "rain", "startHour": 8, "endHour": 10, "moreLater": true, "totalMm": null, "peakMm": null}
+    },
+    {
+      "name": "a run that begins at hour 0",
+      "fn": "forDay",
+      "input": {
+        "now": "2026-09-24T00:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T00:00", 60, 61, null],
+          ["2026-09-24T01:00", 60, 61, null],
+          ["2026-09-24T02:00", 60, 61, null],
+          ["2026-09-24T03:00", 0, 0, null],
+          ["2026-09-24T04:00", 0, 0, null],
+          ["2026-09-24T05:00", 0, 0, null],
+          ["2026-09-24T06:00", 0, 0, null],
+          ["2026-09-24T07:00", 0, 0, null],
+          ["2026-09-24T08:00", 0, 0, null],
+          ["2026-09-24T09:00", 0, 0, null],
+          ["2026-09-24T10:00", 0, 0, null],
+          ["2026-09-24T11:00", 0, 0, null],
+          ["2026-09-24T12:00", 0, 0, null],
+          ["2026-09-24T13:00", 0, 0, null],
+          ["2026-09-24T14:00", 0, 0, null],
+          ["2026-09-24T15:00", 0, 0, null],
+          ["2026-09-24T16:00", 0, 0, null],
+          ["2026-09-24T17:00", 0, 0, null],
+          ["2026-09-24T18:00", 0, 0, null],
+          ["2026-09-24T19:00", 0, 0, null],
+          ["2026-09-24T20:00", 0, 0, null],
+          ["2026-09-24T21:00", 0, 0, null],
+          ["2026-09-24T22:00", 0, 0, null],
+          ["2026-09-24T23:00", 0, 0, null]
+        ],
+        "date": "2026-09-24"
+      },
+      "expect": {"kind": "rain", "startHour": 0, "endHour": 3, "moreLater": false, "totalMm": null, "peakMm": null}
+    },
+    {
+      "name": "a day with a single hour of data, wet",
+      "fn": "forDay",
+      "input": {
+        "now": "2026-09-25T00:00",
+        "currentCode": 0,
+        "hourly": [["2026-09-25T00:00", 60, 61, null]],
+        "date": "2026-09-25"
+      },
+      "expect": {"kind": "rain", "startHour": 0, "endHour": null, "moreLater": false, "totalMm": null, "peakMm": null}
+    },
+    {
+      "name": "amounts and kind come from the first run only",
+      "fn": "forDay",
+      "input": {
+        "now": "2026-09-24T00:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T00:00", 0, 0, null],
+          ["2026-09-24T01:00", 0, 0, null],
+          ["2026-09-24T02:00", 0, 0, null],
+          ["2026-09-24T03:00", 0, 0, null],
+          ["2026-09-24T04:00", 0, 0, null],
+          ["2026-09-24T05:00", 0, 0, null],
+          ["2026-09-24T06:00", 0, 0, null],
+          ["2026-09-24T07:00", 0, 0, null],
+          ["2026-09-24T08:00", 60, 61, 0.5],
+          ["2026-09-24T09:00", 60, 61, 0.5],
+          ["2026-09-24T10:00", 0, 0, null],
+          ["2026-09-24T11:00", 0, 0, null],
+          ["2026-09-24T12:00", 0, 0, null],
+          ["2026-09-24T13:00", 0, 0, null],
+          ["2026-09-24T14:00", 0, 0, null],
+          ["2026-09-24T15:00", 60, 95, 9.0],
+          ["2026-09-24T16:00", 0, 0, null],
+          ["2026-09-24T17:00", 0, 0, null],
+          ["2026-09-24T18:00", 0, 0, null],
+          ["2026-09-24T19:00", 0, 0, null],
+          ["2026-09-24T20:00", 0, 0, null],
+          ["2026-09-24T21:00", 0, 0, null],
+          ["2026-09-24T22:00", 0, 0, null],
+          ["2026-09-24T23:00", 0, 0, null]
+        ],
+        "date": "2026-09-24"
+      },
+      "expect": {"kind": "rain", "startHour": 8, "endHour": 10, "moreLater": true, "totalMm": 1.0, "peakMm": 0.5}
+    },
+    {
+      "name": "thunder inside the run wins",
+      "fn": "forDay",
+      "input": {
+        "now": "2026-09-24T00:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T00:00", 0, 0, null],
+          ["2026-09-24T01:00", 0, 0, null],
+          ["2026-09-24T02:00", 0, 0, null],
+          ["2026-09-24T03:00", 0, 0, null],
+          ["2026-09-24T04:00", 0, 0, null],
+          ["2026-09-24T05:00", 0, 0, null],
+          ["2026-09-24T06:00", 0, 0, null],
+          ["2026-09-24T07:00", 0, 0, null],
+          ["2026-09-24T08:00", 60, 61, 1.0],
+          ["2026-09-24T09:00", 60, 95, 5.0],
+          ["2026-09-24T10:00", 60, 61, 2.0],
+          ["2026-09-24T11:00", 0, 0, null],
+          ["2026-09-24T12:00", 0, 0, null],
+          ["2026-09-24T13:00", 0, 0, null],
+          ["2026-09-24T14:00", 0, 0, null],
+          ["2026-09-24T15:00", 0, 0, null],
+          ["2026-09-24T16:00", 0, 0, null],
+          ["2026-09-24T17:00", 0, 0, null],
+          ["2026-09-24T18:00", 0, 0, null],
+          ["2026-09-24T19:00", 0, 0, null],
+          ["2026-09-24T20:00", 0, 0, null],
+          ["2026-09-24T21:00", 0, 0, null],
+          ["2026-09-24T22:00", 0, 0, null],
+          ["2026-09-24T23:00", 0, 0, null]
+        ],
+        "date": "2026-09-24"
+      },
+      "expect": {"kind": "thunder", "startHour": 8, "endHour": 11, "moreLater": false, "totalMm": 8.0, "peakMm": 5.0}
+    },
+    {
+      "name": "snow inside the run",
+      "fn": "forDay",
+      "input": {
+        "now": "2026-09-24T00:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T00:00", 0, 0, null],
+          ["2026-09-24T01:00", 0, 0, null],
+          ["2026-09-24T02:00", 0, 0, null],
+          ["2026-09-24T03:00", 0, 0, null],
+          ["2026-09-24T04:00", 0, 0, null],
+          ["2026-09-24T05:00", 0, 0, null],
+          ["2026-09-24T06:00", 60, 71, null],
+          ["2026-09-24T07:00", 60, 71, null],
+          ["2026-09-24T08:00", 0, 0, null],
+          ["2026-09-24T09:00", 0, 0, null],
+          ["2026-09-24T10:00", 0, 0, null],
+          ["2026-09-24T11:00", 0, 0, null],
+          ["2026-09-24T12:00", 0, 0, null],
+          ["2026-09-24T13:00", 0, 0, null],
+          ["2026-09-24T14:00", 0, 0, null],
+          ["2026-09-24T15:00", 0, 0, null],
+          ["2026-09-24T16:00", 0, 0, null],
+          ["2026-09-24T17:00", 0, 0, null],
+          ["2026-09-24T18:00", 0, 0, null],
+          ["2026-09-24T19:00", 0, 0, null],
+          ["2026-09-24T20:00", 0, 0, null],
+          ["2026-09-24T21:00", 0, 0, null],
+          ["2026-09-24T22:00", 0, 0, null],
+          ["2026-09-24T23:00", 0, 0, null]
+        ],
+        "date": "2026-09-24"
+      },
+      "expect": {"kind": "snow", "startHour": 6, "endHour": 8, "moreLater": false, "totalMm": null, "peakMm": null}
+    },
+    {
+      "name": "for a day already begun the data starts at the current hour",
+      "fn": "forDay",
+      "input": {
+        "now": "2026-09-24T14:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T14:00", 0, 0, null],
+          ["2026-09-24T15:00", 60, 61, null],
+          ["2026-09-24T16:00", 60, 61, null],
+          ["2026-09-24T17:00", 0, 0, null],
+          ["2026-09-24T18:00", 0, 0, null],
+          ["2026-09-24T19:00", 0, 0, null],
+          ["2026-09-24T20:00", 0, 0, null],
+          ["2026-09-24T21:00", 0, 0, null],
+          ["2026-09-24T22:00", 0, 0, null],
+          ["2026-09-24T23:00", 0, 0, null]
+        ],
+        "date": "2026-09-24"
+      },
+      "expect": {"kind": "rain", "startHour": 15, "endHour": 17, "moreLater": false, "totalMm": null, "peakMm": null}
+    },
+    {
+      "name": "the right day is picked out of several",
+      "fn": "forDay",
+      "input": {
+        "now": "2026-09-24T20:00",
+        "currentCode": 0,
+        "hourly": [
+          ["2026-09-24T20:00", 0, 0, null],
+          ["2026-09-24T21:00", 0, 0, null],
+          ["2026-09-24T22:00", 60, 61, null],
+          ["2026-09-24T23:00", 0, 0, null],
+          ["2026-09-25T00:00", 0, 0, null],
+          ["2026-09-25T01:00", 0, 0, null],
+          ["2026-09-25T02:00", 0, 0, null],
+          ["2026-09-25T03:00", 0, 0, null],
+          ["2026-09-25T04:00", 0, 0, null],
+          ["2026-09-25T05:00", 60, 61, null],
+          ["2026-09-25T06:00", 60, 61, null],
+          ["2026-09-25T07:00", 0, 0, null],
+          ["2026-09-25T08:00", 0, 0, null],
+          ["2026-09-25T09:00", 0, 0, null],
+          ["2026-09-25T10:00", 0, 0, null],
+          ["2026-09-25T11:00", 0, 0, null],
+          ["2026-09-25T12:00", 0, 0, null],
+          ["2026-09-25T13:00", 0, 0, null],
+          ["2026-09-25T14:00", 0, 0, null],
+          ["2026-09-25T15:00", 0, 0, null],
+          ["2026-09-25T16:00", 0, 0, null],
+          ["2026-09-25T17:00", 0, 0, null],
+          ["2026-09-25T18:00", 0, 0, null],
+          ["2026-09-25T19:00", 0, 0, null],
+          ["2026-09-25T20:00", 0, 0, null],
+          ["2026-09-25T21:00", 0, 0, null],
+          ["2026-09-25T22:00", 0, 0, null],
+          ["2026-09-25T23:00", 0, 0, null]
+        ],
+        "date": "2026-09-25"
+      },
+      "expect": {"kind": "rain", "startHour": 5, "endHour": 7, "moreLater": false, "totalMm": null, "peakMm": null}
+    },
+    {
+      "name": "empty hourly data has no window",
+      "fn": "forDay",
+      "input": {"now": "2026-09-24T11:00", "currentCode": 0, "hourly": [], "date": "2026-09-24"},
+      "expect": null
+    },
+    {
+      "name": "unknown peak is plain rain",
+      "fn": "intensity",
+      "input": {"kind": "rain", "peakMm": null},
+      "expect": {"intensity": "rain"}
+    },
+    {
+      "name": "zero peak is a drizzle",
+      "fn": "intensity",
+      "input": {"kind": "rain", "peakMm": 0},
+      "expect": {"intensity": "drizzle"}
+    },
+    {
+      "name": "just under 0.5 is a drizzle",
+      "fn": "intensity",
+      "input": {"kind": "rain", "peakMm": 0.49},
+      "expect": {"intensity": "drizzle"}
+    },
+    {
+      "name": "exactly 0.5 is plain rain",
+      "fn": "intensity",
+      "input": {"kind": "rain", "peakMm": 0.5},
+      "expect": {"intensity": "rain"}
+    },
+    {
+      "name": "just under 4 is plain rain",
+      "fn": "intensity",
+      "input": {"kind": "rain", "peakMm": 3.99},
+      "expect": {"intensity": "rain"}
+    },
+    {
+      "name": "exactly 4 is a downpour",
+      "fn": "intensity",
+      "input": {"kind": "rain", "peakMm": 4},
+      "expect": {"intensity": "heavy"}
+    },
+    {
+      "name": "a lot is a downpour",
+      "fn": "intensity",
+      "input": {"kind": "rain", "peakMm": 25.5},
+      "expect": {"intensity": "heavy"}
+    },
+    {
+      "name": "snow keeps its noun whatever the amount",
+      "fn": "intensity",
+      "input": {"kind": "snow", "peakMm": 10},
+      "expect": {"intensity": "rain"}
+    },
+    {
+      "name": "a light snow keeps its noun",
+      "fn": "intensity",
+      "input": {"kind": "snow", "peakMm": 0.1},
+      "expect": {"intensity": "rain"}
+    },
+    {
+      "name": "thunder keeps its noun whatever the amount",
+      "fn": "intensity",
+      "input": {"kind": "thunder", "peakMm": 10},
+      "expect": {"intensity": "rain"}
+    },
+    {
+      "name": "thunder with an unknown amount",
+      "fn": "intensity",
+      "input": {"kind": "thunder", "peakMm": null},
+      "expect": {"intensity": "rain"}
+    }
+  ]
+}

@@ -91,7 +91,14 @@ export function withCity(list: Coords[], c: Coords): Coords[] {
     if (i === at) next.push(c);
     else if (!sameCity(x, c)) next.push(x); // a stored duplicate of the same place goes
   });
-  return next.slice(0, MAX_CITIES);
+  // Over the cap (a list stored before the cap, or by an older version): drop
+  // from the end, but never the entry that was just refreshed.
+  while (next.length > MAX_CITIES) {
+    let drop = next.length - 1;
+    if (next[drop] === c) drop--;
+    next.splice(drop, 1);
+  }
+  return next;
 }
 
 // A day to open on, written by the Android side when a widget's day column is
@@ -118,6 +125,9 @@ export type NotificationSettings = {
   uvThreshold: number; // UV index (daily max)
   gustEnabled: boolean;
   gustThreshold: number; // km/h
+  // High pollen goes into the morning brief and onto the widget (Europe only:
+  // the air-quality model has no pollen elsewhere).
+  pollenEnabled: boolean;
   // Storm, hail, gale and extreme heat, derived from the forecast. Always sent
   // immediately — never folded into the brief.
   severeEnabled: boolean;
@@ -145,6 +155,7 @@ export const DEFAULT_NOTIFICATION_SETTINGS: NotificationSettings = {
   uvThreshold: 8,
   gustEnabled: true,
   gustThreshold: 60,
+  pollenEnabled: true,
   severeEnabled: true,
   briefEnabled: true,
   briefHour: 7,
@@ -166,6 +177,7 @@ const NOTIF_KEYS: Record<keyof NotificationSettings, string> = {
   uvThreshold: "settings:notif-uv-threshold",
   gustEnabled: "settings:notif-gust-enabled",
   gustThreshold: "settings:notif-gust-threshold",
+  pollenEnabled: "settings:notif-pollen-enabled",
   severeEnabled: "settings:notif-severe-enabled",
   briefEnabled: "settings:brief-enabled",
   briefHour: "settings:brief-hour",

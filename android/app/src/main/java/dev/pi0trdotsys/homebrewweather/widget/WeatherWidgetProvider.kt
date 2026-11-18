@@ -186,7 +186,7 @@ class WeatherWidgetProvider : AppWidgetProvider() {
                 // Read against the real clock, like the full render does.
                 val weather = WidgetPrefs.getCachedWeather(context, id)?.rebasedTo(System.currentTimeMillis())
                 val content = weather?.let {
-                    WidgetContent.build(it, WidgetPrefs.getDensity(context, id), offline = false, texts = CapacitorStorage.lang(context).texts)
+                    WidgetContent.build(it, WidgetPrefs.getDensity(context, id), offline = false, texts = CapacitorStorage.lang(context).texts, pollen = CapacitorStorage.pollenEnabled(context))
                 }
                 val rows = content?.rows() ?: WidgetMetrics.Rows.ALL
                 val m = WidgetSize.resolve(context, id).metrics(rows)
@@ -196,6 +196,8 @@ class WeatherWidgetProvider : AppWidgetProvider() {
                 // honest between refreshes. Text only — if that line appears or
                 // disappears the rows change, and that waits for the next full render.
                 content?.metaLine?.let { rv.setTextViewText(R.id.widget_meta_line, it) }
+                // ...and so can the hero's rain sentence ("deszcz za ok. 10 min").
+                content?.heroLine?.let { rv.setTextViewText(R.id.widget_now_line, it) }
                 // Re-render each day's icon at the new frame from cached weather codes
                 // only — no network call, matching the "no new battery cost" tradeoff.
                 if (weather != null) {
@@ -778,12 +780,15 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             var weather = if (debugForceOfflineCache) {
                 WidgetPrefs.getCachedWeather(context, appWidgetId, city)
             } else {
+                val cached = WidgetPrefs.getCachedWeather(context, appWidgetId, city)
                 try {
-                    val fresh = WeatherApi.fetchWeather(city.lat, city.lon)
+                    // The forecast, then air quality, pollen and official warnings, all
+                    // before anything evaluates notifications (see WeatherRepository).
+                    val fresh = WeatherRepository.fetch(context, city, cached)
                     isFresh = true
                     fresh
                 } catch (e: Exception) {
-                    WidgetPrefs.getCachedWeather(context, appWidgetId, city)
+                    cached
                 }
             }
 
@@ -822,26 +827,10 @@ class WeatherWidgetProvider : AppWidgetProvider() {
                     if (announce) {
                         WeatherNotifier.evaluate(context, appWidgetId, city, weather)
                     } else {
-                        WeatherNotifier.primeState(context, appWidgetId, weather)
+                        WeatherNotifier.primeState(context, appWidgetId, city, weather)
                     }
                 } catch (e: Exception) {
                     // best-effort, never break the widget refresh
-                }
-
-                // Separate Air Quality API call (different host) — fully best-effort:
-                // a failure here must never blank/break the main weather render. On
-                // failure, fall back to whatever AQI value was last cached rather than
-                // just dropping the line.
-                val aqi = try {
-                    WeatherApi.fetchAirQuality(city.lat, city.lon)
-                } catch (e: Exception) {
-                    null
-                }
-                weather = if (aqi != null) {
-                    weather.copy(usAqi = aqi)
-                } else {
-                    val cachedAqi = WidgetPrefs.getCachedWeather(context, appWidgetId, city)?.usAqi ?: -1
-                    if (cachedAqi >= 0) weather.copy(usAqi = cachedAqi) else weather
                 }
 
                 WidgetPrefs.setCachedWeather(context, appWidgetId, weather, city)
@@ -867,7 +856,7 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             // see WidgetContent for the "show the exceptions" rules and
             // WidgetMetrics.Rows for why sizing has to follow content now.
             val density = WidgetPrefs.getDensity(context, appWidgetId)
-            val content = WidgetContent.build(weather, density, offline = !online, texts = texts)
+            val content = WidgetContent.build(weather, density, offline = !online, texts = texts, pollen = CapacitorStorage.pollenEnabled(context))
             val metrics = size.metrics(content.rows())
             applyMetrics(context, rv, metrics)
 

@@ -1,0 +1,263 @@
+{
+  "rule": "wellbeing-situation",
+  "note": "hour is the local hour of the current time (null: no hourly data, Kotlin only). isDay is the sun being up now. uvMax is today's UV maximum. aqi (US AQI, -1 unknown) and pollen (grains/m3 per kind) exist only on the Kotlin side, so cases that set them are marked only: kotlin; the web never returns air or pollen.",
+  "cases": [
+    {
+      "name": "an ordinary day is calm",
+      "input": {"hour": 12, "isDay": true, "temp": 18.0, "code": 1, "gust": null, "uvMax": null},
+      "expect": {"situation": "calm"}
+    },
+    {
+      "name": "30 degrees is hot",
+      "input": {"hour": 12, "isDay": true, "temp": 30.0, "code": 1, "gust": null, "uvMax": null},
+      "expect": {"situation": "hot"}
+    },
+    {
+      "name": "29.9 degrees is not",
+      "input": {"hour": 12, "isDay": true, "temp": 29.9, "code": 1, "gust": null, "uvMax": null},
+      "expect": {"situation": "calm"}
+    },
+    {
+      "name": "0 degrees is cold",
+      "input": {"hour": 12, "isDay": true, "temp": 0.0, "code": 1, "gust": null, "uvMax": null},
+      "expect": {"situation": "cold"}
+    },
+    {
+      "name": "0.1 degrees is not cold",
+      "input": {"hour": 12, "isDay": true, "temp": 0.1, "code": 1, "gust": null, "uvMax": null},
+      "expect": {"situation": "calm"}
+    },
+    {
+      "name": "below freezing is cold",
+      "input": {"hour": 12, "isDay": true, "temp": -2.0, "code": 1, "gust": null, "uvMax": null},
+      "expect": {"situation": "cold"}
+    },
+    {
+      "name": "rain falling now",
+      "input": {"hour": 12, "isDay": true, "temp": 18.0, "code": 61, "gust": null, "uvMax": null},
+      "expect": {"situation": "rain"}
+    },
+    {
+      "name": "showers falling now",
+      "input": {"hour": 12, "isDay": true, "temp": 18.0, "code": 80, "gust": null, "uvMax": null},
+      "expect": {"situation": "rain"}
+    },
+    {
+      "name": "a storm falling now is rain",
+      "input": {"hour": 12, "isDay": true, "temp": 18.0, "code": 95, "gust": null, "uvMax": null},
+      "expect": {"situation": "rain"}
+    },
+    {
+      "name": "snow is not a rain tip",
+      "input": {"hour": 12, "isDay": true, "temp": 18.0, "code": 71, "gust": null, "uvMax": null},
+      "expect": {"situation": "calm"}
+    },
+    {
+      "name": "fog is calm",
+      "input": {"hour": 12, "isDay": true, "temp": 18.0, "code": 45, "gust": null, "uvMax": null},
+      "expect": {"situation": "calm"}
+    },
+    {
+      "name": "a gust of 60 is wind",
+      "input": {"hour": 12, "isDay": true, "temp": 18.0, "code": 1, "gust": 60.0, "uvMax": null},
+      "expect": {"situation": "wind"}
+    },
+    {
+      "name": "a gust of 59.9 is not",
+      "input": {"hour": 12, "isDay": true, "temp": 18.0, "code": 1, "gust": 59.9, "uvMax": null},
+      "expect": {"situation": "calm"}
+    },
+    {
+      "name": "night after dark",
+      "input": {"hour": 23, "isDay": false, "temp": 18.0, "code": 1, "gust": null, "uvMax": null},
+      "expect": {"situation": "night"}
+    },
+    {
+      "name": "after dark in the small hours",
+      "input": {"hour": 2, "isDay": false, "temp": 18.0, "code": 1, "gust": null, "uvMax": null},
+      "expect": {"situation": "night"}
+    },
+    {
+      "name": "UV 8 in the daytime is strong sun",
+      "input": {"hour": 12, "isDay": true, "temp": 18.0, "code": 1, "gust": null, "uvMax": 8.0},
+      "expect": {"situation": "sun"}
+    },
+    {
+      "name": "UV 7.9 is not",
+      "input": {"hour": 12, "isDay": true, "temp": 18.0, "code": 1, "gust": null, "uvMax": 7.9},
+      "expect": {"situation": "calm"}
+    },
+    {
+      "name": "UV 8 at 17:xx is still daytime",
+      "input": {"hour": 17, "isDay": true, "temp": 18.0, "code": 1, "gust": null, "uvMax": 8.0},
+      "expect": {"situation": "sun"}
+    },
+    {
+      "name": "UV 8 from 18 on is evening, not sun",
+      "input": {"hour": 18, "isDay": true, "temp": 18.0, "code": 1, "gust": null, "uvMax": 8.0},
+      "expect": {"situation": "calm"}
+    },
+    {
+      "name": "UV 11 at 23 with the sun still up (high latitude) is evening, not sun",
+      "input": {"hour": 23, "isDay": true, "temp": 18.0, "code": 1, "gust": null, "uvMax": 11.0},
+      "expect": {"situation": "calm"}
+    },
+    {
+      "name": "UV 9 after dark is not sun",
+      "input": {"hour": 12, "isDay": false, "temp": 18.0, "code": 1, "gust": null, "uvMax": 9.0},
+      "expect": {"situation": "night"}
+    },
+    {
+      "name": "an unknown UV never triggers sun",
+      "input": {"hour": 12, "isDay": true, "temp": 18.0, "code": 1, "gust": null, "uvMax": null},
+      "expect": {"situation": "calm"}
+    },
+    {
+      "name": "an unknown temperature never triggers hot or cold",
+      "input": {"hour": 12, "isDay": true, "temp": null, "code": 1, "gust": null, "uvMax": null},
+      "expect": {"situation": "calm"}
+    },
+    {
+      "name": "an unknown gust never triggers wind",
+      "input": {"hour": 12, "isDay": true, "temp": 18.0, "code": 1, "gust": null, "uvMax": null},
+      "expect": {"situation": "calm"}
+    },
+    {
+      "name": "everything unknown at night is night",
+      "input": {"hour": 12, "isDay": false, "temp": null, "code": 1, "gust": null, "uvMax": null},
+      "expect": {"situation": "night"}
+    },
+    {
+      "name": "sun wins over heat",
+      "input": {"hour": 12, "isDay": true, "temp": 33.0, "code": 1, "gust": null, "uvMax": 10.0},
+      "expect": {"situation": "sun"}
+    },
+    {
+      "name": "heat wins over rain",
+      "input": {"hour": 12, "isDay": true, "temp": 33.0, "code": 61, "gust": null, "uvMax": null},
+      "expect": {"situation": "hot"}
+    },
+    {
+      "name": "cold wins over snow",
+      "input": {"hour": 12, "isDay": true, "temp": -3.0, "code": 71, "gust": null, "uvMax": null},
+      "expect": {"situation": "cold"}
+    },
+    {
+      "name": "cold wins over rain",
+      "input": {"hour": 12, "isDay": true, "temp": -1.0, "code": 61, "gust": null, "uvMax": null},
+      "expect": {"situation": "cold"}
+    },
+    {
+      "name": "rain wins over wind",
+      "input": {"hour": 12, "isDay": true, "temp": 18.0, "code": 61, "gust": 80.0, "uvMax": null},
+      "expect": {"situation": "rain"}
+    },
+    {
+      "name": "wind wins over night",
+      "input": {"hour": 23, "isDay": false, "temp": 18.0, "code": 1, "gust": 70.0, "uvMax": null},
+      "expect": {"situation": "wind"}
+    },
+    {
+      "name": "hot wins over night",
+      "input": {"hour": 23, "isDay": false, "temp": 31.0, "code": 1, "gust": null, "uvMax": null},
+      "expect": {"situation": "hot"}
+    },
+    {
+      "name": "rain wins over night",
+      "input": {"hour": 23, "isDay": false, "temp": 18.0, "code": 61, "gust": null, "uvMax": null},
+      "expect": {"situation": "rain"}
+    },
+    {
+      "name": "sun beats heat and rain together",
+      "input": {"hour": 12, "isDay": true, "temp": 32.0, "code": 61, "gust": null, "uvMax": 9.0},
+      "expect": {"situation": "sun"}
+    },
+    {
+      "name": "US AQI 101 is bad air",
+      "only": "kotlin",
+      "input": {"hour": 12, "isDay": true, "temp": 18.0, "code": 1, "gust": null, "uvMax": null, "aqi": 101},
+      "expect": {"situation": "air"}
+    },
+    {
+      "name": "US AQI 100 is not",
+      "only": "kotlin",
+      "input": {"hour": 12, "isDay": true, "temp": 18.0, "code": 1, "gust": null, "uvMax": null, "aqi": 100},
+      "expect": {"situation": "calm"}
+    },
+    {
+      "name": "an unknown AQI (-1) never triggers air",
+      "only": "kotlin",
+      "input": {"hour": 12, "isDay": true, "temp": 18.0, "code": 1, "gust": null, "uvMax": null, "aqi": -1},
+      "expect": {"situation": "calm"}
+    },
+    {
+      "name": "bad air wins over everything",
+      "only": "kotlin",
+      "input": {"hour": 12, "isDay": true, "temp": 33.0, "code": 61, "gust": null, "uvMax": 10.0, "aqi": 150},
+      "expect": {"situation": "air"}
+    },
+    {
+      "name": "high grass pollen (30 grains) is a pollen tip",
+      "only": "kotlin",
+      "input": {
+        "hour": 12,
+        "isDay": true,
+        "temp": 18.0,
+        "code": 1,
+        "gust": null,
+        "uvMax": null,
+        "pollen": {"grass": 30.0}
+      },
+      "expect": {"situation": "pollen"}
+    },
+    {
+      "name": "grass pollen just under its line is not",
+      "only": "kotlin",
+      "input": {
+        "hour": 12,
+        "isDay": true,
+        "temp": 18.0,
+        "code": 1,
+        "gust": null,
+        "uvMax": null,
+        "pollen": {"grass": 29.0}
+      },
+      "expect": {"situation": "calm"}
+    },
+    {
+      "name": "pollen wins over strong sun and heat",
+      "only": "kotlin",
+      "input": {
+        "hour": 12,
+        "isDay": true,
+        "temp": 33.0,
+        "code": 1,
+        "gust": null,
+        "uvMax": 10.0,
+        "pollen": {"birch": 120.0}
+      },
+      "expect": {"situation": "pollen"}
+    },
+    {
+      "name": "bad air wins over pollen",
+      "only": "kotlin",
+      "input": {
+        "hour": 12,
+        "isDay": true,
+        "temp": 18.0,
+        "code": 1,
+        "gust": null,
+        "uvMax": null,
+        "aqi": 120,
+        "pollen": {"birch": 120.0}
+      },
+      "expect": {"situation": "air"}
+    },
+    {
+      "name": "no hourly data: the hour is unknown and UV 9 by day is sun",
+      "only": "kotlin",
+      "input": {"hour": null, "isDay": true, "temp": 18.0, "code": 1, "gust": null, "uvMax": 9.0},
+      "expect": {"situation": "sun"}
+    }
+  ]
+}

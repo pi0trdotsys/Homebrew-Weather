@@ -95,8 +95,8 @@ object OnThisDay {
     fun parsePolishWikitext(wikitext: String): List<Event> {
         val events = mutableListOf<Event>()
         var inEvents = false
-        val bullet = Regex("""^\*\s*(?:\[\[)?(\d{3,4})(?:\]\])?\s*[–—-]\s*(.+)$""")
-        val topHeading = Regex("""^==([^=].*?)==\s*$""")
+        val bullet = Regex("""(?U)^\*\s*(?:\[\[)?(\d{3,4})(?:\]\])?\s*[–—-]\s*(.+)$""")
+        val topHeading = Regex("""(?U)^==([^=].*?)==\s*$""")
         for (raw in wikitext.replace("\r\n", "\n").split('\n')) {
             val line = raw.trimEnd()
             val heading = topHeading.matchEntire(line)
@@ -117,8 +117,12 @@ object OnThisDay {
         val arr = JSONObject(json).optJSONArray("selected") ?: return emptyList()
         return (0 until arr.length()).mapNotNull { i ->
             val o = arr.optJSONObject(i) ?: return@mapNotNull null
-            val text = o.optString("text").trim()
-            val year = o.opt("year")?.toString().orEmpty()
+            // Strict about shapes, like the web side: a text that isn't a string, or a
+            // year that is neither a number nor a string (JSON null included), is no event.
+            val rawText = o.opt("text") as? String ?: return@mapNotNull null
+            val rawYear = o.opt("year")
+            val year = if (rawYear is Number || rawYear is String) rawYear.toString() else return@mapNotNull null
+            val text = rawText.replace('\u00a0', ' ').trim()
             if (text.isBlank() || year.isBlank()) null else Event(year, text)
         }
     }

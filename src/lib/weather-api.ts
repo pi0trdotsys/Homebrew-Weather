@@ -98,6 +98,12 @@ export type WeatherResponse = {
     uv_index_max?: number[];
     wind_gusts_10m_max?: number[];
   };
+  /**
+   * Precipitation (mm) per 15 minutes for the next few hours, for the rain
+   * nowcast (rain-nowcast.ts). Optional: a forecast cached before it was
+   * fetched doesn't have it. `time` is the local start of each step.
+   */
+  minutely_15?: { time: string[]; precipitation: number[] };
   timezone: string;
   /** The location's offset from UTC; used to read a cached forecast against the real clock. */
   utc_offset_seconds?: number;
@@ -113,6 +119,8 @@ export async function fetchWeather(lat: number, lon: number): Promise<WeatherRes
       "temperature_2m,weather_code,precipitation_probability,precipitation,wind_gusts_10m,is_day",
     daily:
       "weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max,precipitation_sum,uv_index_max,wind_gusts_10m_max,sunrise,sunset",
+    minutely_15: "precipitation",
+    forecast_minutely_15: "12",
     timezone: "auto",
     forecast_days: "7",
   });

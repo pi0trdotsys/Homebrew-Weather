@@ -47,6 +47,7 @@ object MorningBrief {
         val uvThreshold: Double = 8.0,
         val gustEnabled: Boolean = false,
         val gustThreshold: Double = 60.0,
+        val pollenEnabled: Boolean = false,
     )
 
     data class Brief(
@@ -89,6 +90,10 @@ object MorningBrief {
 
         // Ordered by how much each one should change what you do today.
         val items = mutableListOf<String>()
+        // An official warning outranks everything the forecast infers.
+        weather.official.firstOrNull()?.let {
+            items += "${texts.officialShort(it.event, it.degree)}, ${texts.officialValidity(it.from, it.to)}"
+        }
         when {
             window != null -> items += RainWindow.long(window, texts)
             today.precipitationProbabilityMax >= POSSIBLE_RAIN_POP -> {
@@ -107,6 +112,9 @@ object MorningBrief {
         }
         if (thresholds.uvEnabled && !today.uvIndexMax.isNaN() && today.uvIndexMax >= thresholds.uvThreshold) {
             items += texts.briefUv(today.uvIndexMax.roundToInt())
+        }
+        if (thresholds.pollenEnabled) {
+            Pollen.top(weather.pollen)?.let { items += texts.briefPollen(it.species, it.veryHigh) }
         }
         if (thresholds.aqiEnabled && weather.usAqi >= 0 && weather.usAqi >= thresholds.aqiThreshold) {
             items += texts.air(weather.usAqi, aqiLabel(weather.usAqi))

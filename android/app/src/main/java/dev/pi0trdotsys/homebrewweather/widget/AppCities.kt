@@ -69,11 +69,14 @@ object AppCities {
         } else {
             listOf(city) + list
         }
-        if (next.size <= MAX) return next
-        // Over the cap: drop from the end, but never the entry that was just added.
-        val keep = next.indexOfFirst { it === city }.coerceAtLeast(0)
-        val drop = next.indices.last { it != keep }
-        return next.filterIndexed { i, _ -> i != drop }
+        // Over the cap (a list saved by an older build can be): drop from the end until it
+        // fits, never the entry that was just added or refreshed.
+        val out = next.toMutableList()
+        while (out.size > MAX) {
+            val keep = out.indexOfFirst { it === city }
+            out.removeAt(out.indices.last { it != keep })
+        }
+        return out
     }
 
     fun load(context: Context): List<WidgetCity> = parse(CapacitorStorage.rawCities(context))

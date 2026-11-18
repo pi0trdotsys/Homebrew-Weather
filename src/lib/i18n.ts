@@ -92,6 +92,11 @@ const EN = {
   rainFromUntil: (noun: string, start: string, end: string) =>
     `${noun} from ${start} until about ${end}`,
   rainFrom: (noun: string, start: string) => `${noun} from ${start}`,
+  // Rain by the minute (rain-nowcast.ts): minutes are already rounded for speech.
+  rainInMinutes: (min: number) => `rain in about ${min} min`,
+  rainAnyMinute: "rain any minute",
+  rainStopsInMinutes: (min: number) => `raining, easing off in about ${min} min`,
+  rainStopsAnyMinute: "raining, easing off any minute",
   rainRange: (noun: string, start: string, end: string) => `${noun} ${start}–${end}`,
   againLater: ", again later",
   bandMax: (p: number) => `max ${p}%`,
@@ -154,9 +159,13 @@ const EN = {
   gustToggle: "wind gusts — strong wind",
   gustThreshold: "↳ gusts from",
   severeToggle: "severe weather — storm, hail, gale, heat",
+  pollenToggle: "pollen — high counts",
+  pollenNote:
+    "// high pollen goes into the morning brief and onto the widget — data for Europe only",
   uvGustNote:
     "// UV and gusts go into the morning brief; with the brief off, each is its own alert",
-  severeSettingsNote: "// severe warnings are always sent immediately, brief or not",
+  severeSettingsNote:
+    "// severe warnings are always sent immediately, brief or not — in Poland they also include the official IMGW warnings",
   threshold: "↳ threshold",
   minDelta: "↳ min. delta",
   aqiThreshold: "↳ AQI threshold",
@@ -244,6 +253,10 @@ const PL: Strings = {
   rainWithinHour: (noun) => `${noun} w ciągu godziny`,
   rainFromUntil: (noun, start, end) => `${noun} od ${start} do ok. ${end}`,
   rainFrom: (noun, start) => `${noun} od ${start}`,
+  rainInMinutes: (min) => `deszcz za ok. ${min} min`,
+  rainAnyMinute: "deszcz za chwilę",
+  rainStopsInMinutes: (min) => `pada, przestanie za ok. ${min} min`,
+  rainStopsAnyMinute: "pada, zaraz przestanie",
   rainRange: (noun, start, end) => `${noun} ${start}–${end}`,
   againLater: ", potem znowu",
   bandMax: (p) => `maks. ${p}%`,
@@ -302,10 +315,12 @@ const PL: Strings = {
   gustToggle: "porywy wiatru — silny wiatr",
   gustThreshold: "↳ porywy od",
   severeToggle: "groźna pogoda — burza, grad, wichura, upał",
+  pollenToggle: "pyłki — wysokie stężenie",
+  pollenNote: "// wysokie pylenie trafia do porannego briefu i na widget — dane tylko dla Europy",
   uvGustNote:
     "// UV i porywy trafiają do porannego briefu; przy wyłączonym briefie każde to osobny alert",
   severeSettingsNote:
-    "// ostrzeżenia o groźnej pogodzie zawsze przychodzą od razu, z briefem czy bez",
+    "// ostrzeżenia o groźnej pogodzie zawsze przychodzą od razu, z briefem czy bez — w Polsce obejmują też oficjalne ostrzeżenia IMGW",
   threshold: "↳ próg",
   minDelta: "↳ min. różnica",
   aqiThreshold: "↳ próg AQI",

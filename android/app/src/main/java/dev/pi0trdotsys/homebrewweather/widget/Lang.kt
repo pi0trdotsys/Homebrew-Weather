@@ -80,6 +80,23 @@ interface Texts {
     fun uv(index: Int): String
     fun gusts(kmh: Int): String
 
+    /** Rain by the minute (see [RainNowcast]); [minutes] is already rounded for speech, 0 = "any moment". */
+    fun nowcastStart(kind: RainWindow.Kind, minutes: Int): String
+    fun nowcastOngoing(kind: RainWindow.Kind, endsInMinutes: Int?): String
+
+    // ---- pollen -------------------------------------------------------------------
+    fun pollenName(species: Pollen.Species): String
+    fun pollenShort(species: Pollen.Species, veryHigh: Boolean): String
+    fun briefPollen(species: Pollen.Species, veryHigh: Boolean): String
+
+    // ---- official IMGW warnings ---------------------------------------------------
+    /** Widget meta line: "IMGW: silny wiatr 1°". */
+    fun officialShort(event: String, degree: Int): String
+    fun officialTitle(event: String, degree: Int): String
+
+    /** "od 18.11 19:00 do 19.11 01:00" — [from] and [to] are local ISO times. */
+    fun officialValidity(from: String, to: String): String
+
     /** "zachód za 40 min" — the sun about to set or rise, on the widget's meta line. */
     fun sunsetIn(min: Int): String
     fun sunriseIn(min: Int): String
@@ -270,6 +287,28 @@ object PlTexts : Texts {
     override fun rainAmount(mm: Double) = "opady ${mm(mm)}"
     override fun uv(index: Int) = "UV $index"
     override fun gusts(kmh: Int) = "porywy $kmh km/h"
+    override fun nowcastStart(kind: RainWindow.Kind, minutes: Int) =
+        if (minutes <= 0) "${rainNoun(kind)} za chwilę" else "${rainNoun(kind)} za ok. $minutes min"
+    override fun nowcastOngoing(kind: RainWindow.Kind, endsInMinutes: Int?) =
+        if (endsInMinutes == null) rainOngoing(kind) else "${rainOngoing(kind)}, koniec za ok. ${maxOf(5, endsInMinutes)} min"
+
+    override fun pollenName(species: Pollen.Species) = when (species) {
+        Pollen.Species.ALDER -> "olcha"
+        Pollen.Species.BIRCH -> "brzoza"
+        Pollen.Species.GRASS -> "trawy"
+        Pollen.Species.MUGWORT -> "bylica"
+        Pollen.Species.OLIVE -> "oliwka"
+        Pollen.Species.RAGWEED -> "ambrozja"
+    }
+    override fun pollenShort(species: Pollen.Species, veryHigh: Boolean) =
+        (if (veryHigh) "silne pylenie: " else "pylenie: ") + pollenName(species)
+    override fun briefPollen(species: Pollen.Species, veryHigh: Boolean) =
+        (if (veryHigh) "bardzo wysokie pylenie: " else "wysokie pylenie: ") + pollenName(species)
+
+    override fun officialShort(event: String, degree: Int) = "IMGW: ${event.lowercase()} $degree°"
+    override fun officialTitle(event: String, degree: Int) = "Ostrzeżenie IMGW, $degree. stopnia: ${event.lowercase()}"
+    override fun officialValidity(from: String, to: String) = "od ${shortDateTime(from)} do ${shortDateTime(to)}"
+
     override fun sunsetIn(min: Int) = "zachód za $min min"
     override fun sunriseIn(min: Int) = "wschód za $min min"
 
@@ -509,6 +548,29 @@ object EnTexts : Texts {
     override fun rainAmount(mm: Double) = "rain ${mm(mm)}"
     override fun uv(index: Int) = "UV $index"
     override fun gusts(kmh: Int) = "gusts $kmh km/h"
+    override fun nowcastStart(kind: RainWindow.Kind, minutes: Int) =
+        if (minutes <= 0) "${rainNoun(kind)} any moment" else "${rainNoun(kind)} in about $minutes min"
+    override fun nowcastOngoing(kind: RainWindow.Kind, endsInMinutes: Int?) =
+        if (endsInMinutes == null) rainOngoing(kind) else "${rainOngoing(kind)}, ends in about ${maxOf(5, endsInMinutes)} min"
+
+    override fun pollenName(species: Pollen.Species) = when (species) {
+        Pollen.Species.ALDER -> "alder"
+        Pollen.Species.BIRCH -> "birch"
+        Pollen.Species.GRASS -> "grass"
+        Pollen.Species.MUGWORT -> "mugwort"
+        Pollen.Species.OLIVE -> "olive"
+        Pollen.Species.RAGWEED -> "ragweed"
+    }
+    override fun pollenShort(species: Pollen.Species, veryHigh: Boolean) =
+        (if (veryHigh) "heavy pollen: " else "pollen: ") + pollenName(species)
+    override fun briefPollen(species: Pollen.Species, veryHigh: Boolean) =
+        (if (veryHigh) "very high pollen: " else "high pollen: ") + pollenName(species)
+
+    // IMGW's own wording is Polish; the event name stays as the met office wrote it.
+    override fun officialShort(event: String, degree: Int) = "IMGW: ${event.lowercase()} $degree°"
+    override fun officialTitle(event: String, degree: Int) = "IMGW warning, level $degree: ${event.lowercase()}"
+    override fun officialValidity(from: String, to: String) = "from ${shortDateTime(from)} to ${shortDateTime(to)}"
+
     override fun sunsetIn(min: Int) = "sunset in $min min"
     override fun sunriseIn(min: Int) = "sunrise in $min min"
 
@@ -682,4 +744,10 @@ object EnTexts : Texts {
         added -> "Place added: $name"
         else -> "Widget city: $name"
     }
+}
+
+/** "2026-11-18T19:00" -> "18.11 19:00" (day.month hour:minute); the string itself if it isn't that shape. */
+internal fun shortDateTime(iso: String): String {
+    val m = Regex("""(\d{4})-(\d{2})-(\d{2})T(\d{2}:\d{2})""").find(iso) ?: return iso
+    return "${m.groupValues[3]}.${m.groupValues[2]} ${m.groupValues[4]}"
 }

@@ -7,6 +7,7 @@ import {
   currentHour,
   findTodayRainWindow,
 } from "@/lib/rain-window";
+import { describeNowcast, nowcastFor } from "@/lib/rain-nowcast";
 import { GUST_NOTABLE, UV_NOTABLE, uvBand } from "@/lib/conditions";
 import { useI18n } from "@/lib/i18n";
 import { PixelIcon } from "./PixelIcon";
@@ -40,13 +41,16 @@ function gustAheadToday(data: WeatherResponse): number | null {
  * This puts one big number first, one sentence under it, and leaves the full
  * readout to the terminal panel further down.
  */
-export function HeroPanel({ data }: { data: WeatherResponse }) {
+export function HeroPanel({ data, nowMs }: { data: WeatherResponse; nowMs: number }) {
   const { lang, t } = useI18n();
   const c = data.current;
   const baseKind = wmoToKind(c.weather_code);
   const kind = !c.is_day && (baseKind === "sun" || baseKind === "partly") ? "moon" : baseKind;
   // Today's rain only: another day's belongs on its own row in DailyForecast.
   const rain = findTodayRainWindow(data);
+  // Rain within the hour is said in minutes (15-minute data); otherwise the
+  // hourly sentence stands.
+  const nowcast = describeNowcast(nowcastFor(data, nowMs), t);
   // UV and gusts only get a line when they're notable. UV peaks at midday, so
   // after the evening cut-off today's maximum is history and stays quiet.
   const uvToday = data.daily.uv_index_max?.[0];
@@ -75,10 +79,10 @@ export function HeroPanel({ data }: { data: WeatherResponse }) {
         <p
           className={
             "mt-2 text-sm sm:text-base " +
-            (rain ? "text-[color:var(--amber)]" : "text-[color:var(--phosphor)]")
+            (rain || nowcast ? "text-[color:var(--amber)]" : "text-[color:var(--phosphor)]")
           }
         >
-          {rain ? describeRainWindow(rain, t, lang) : wmoLabelIn(c.weather_code, lang)}
+          {nowcast ?? (rain ? describeRainWindow(rain, t, lang) : wmoLabelIn(c.weather_code, lang))}
         </p>
         {notable.length > 0 && (
           <p className="mt-1 text-xs text-[color:var(--amber)]">{notable.join(" · ")}</p>

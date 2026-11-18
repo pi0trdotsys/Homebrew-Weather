@@ -1,0 +1,529 @@
+{
+  "rule": "rain-nowcast",
+  "note": "analyse: steps are [local start of 15 minutes, mm in them] (null = unknown), now is the location's local clock; a null expect means no usable data around now. speech: roundForSpeech. localMinute: WeatherApi.localMinuteIso / localMinuteIso.",
+  "cases": [
+    {
+      "name": "dry now, rain in ten minutes",
+      "fn": "analyse",
+      "input": {
+        "now": "2026-11-17T16:05",
+        "steps": [
+          ["2026-11-17T16:00", 0],
+          ["2026-11-17T16:15", 0.3],
+          ["2026-11-17T16:30", 0.2],
+          ["2026-11-17T16:45", 0]
+        ]
+      },
+      "expect": {"ongoing": false, "startsInMinutes": 10, "endsInMinutes": null, "totalMm": 0.5}
+    },
+    {
+      "name": "a step exactly at the wet line counts as wet",
+      "fn": "analyse",
+      "input": {
+        "now": "2026-11-17T16:00",
+        "steps": [["2026-11-17T16:00", 0], ["2026-11-17T16:15", 0.1], ["2026-11-17T16:30", 0]]
+      },
+      "expect": {"ongoing": false, "startsInMinutes": 15, "endsInMinutes": null, "totalMm": 0.1}
+    },
+    {
+      "name": "a step just under the line is dry",
+      "fn": "analyse",
+      "input": {
+        "now": "2026-11-17T16:00",
+        "steps": [
+          ["2026-11-17T16:00", 0],
+          ["2026-11-17T16:15", 0.09],
+          ["2026-11-17T16:30", 0.099],
+          ["2026-11-17T16:45", 0]
+        ]
+      },
+      "expect": {"ongoing": false, "startsInMinutes": null, "endsInMinutes": null, "totalMm": 0.0}
+    },
+    {
+      "name": "the clock exactly at a step's start is in that step",
+      "fn": "analyse",
+      "input": {
+        "now": "2026-11-17T16:15",
+        "steps": [["2026-11-17T16:00", 0], ["2026-11-17T16:15", 0.4], ["2026-11-17T16:30", 0]]
+      },
+      "expect": {"ongoing": true, "startsInMinutes": null, "endsInMinutes": 15, "totalMm": 0.4}
+    },
+    {
+      "name": "the last minute of a step is still in it",
+      "fn": "analyse",
+      "input": {
+        "now": "2026-11-17T16:14",
+        "steps": [["2026-11-17T16:00", 0], ["2026-11-17T16:15", 0], ["2026-11-17T16:30", 0.4]]
+      },
+      "expect": {"ongoing": false, "startsInMinutes": 16, "endsInMinutes": null, "totalMm": 0.4}
+    },
+    {
+      "name": "raining now, the end is the first dry step",
+      "fn": "analyse",
+      "input": {
+        "now": "2026-11-17T16:05",
+        "steps": [
+          ["2026-11-17T16:00", 0.5],
+          ["2026-11-17T16:15", 0.2],
+          ["2026-11-17T16:30", 0],
+          ["2026-11-17T16:45", 0.3]
+        ]
+      },
+      "expect": {"ongoing": true, "startsInMinutes": null, "endsInMinutes": 25, "totalMm": 0.7}
+    },
+    {
+      "name": "raining now and still wet when the data ends",
+      "fn": "analyse",
+      "input": {
+        "now": "2026-11-17T16:05",
+        "steps": [["2026-11-17T16:00", 0.5], ["2026-11-17T16:15", 0.2], ["2026-11-17T16:30", 0.3]]
+      },
+      "expect": {"ongoing": true, "startsInMinutes": null, "endsInMinutes": null, "totalMm": 1.0}
+    },
+    {
+      "name": "raining now in the last step of the data",
+      "fn": "analyse",
+      "input": {
+        "now": "2026-11-17T17:05",
+        "steps": [["2026-11-17T16:30", 0], ["2026-11-17T16:45", 0], ["2026-11-17T17:00", 0.3]]
+      },
+      "expect": {"ongoing": true, "startsInMinutes": null, "endsInMinutes": null, "totalMm": 0.3}
+    },
+    {
+      "name": "a dry gap ends the run, the later rain is not part of it",
+      "fn": "analyse",
+      "input": {
+        "now": "2026-11-17T16:00",
+        "steps": [["2026-11-17T16:00", 0.2], ["2026-11-17T16:15", 0], ["2026-11-17T16:30", 0.9]]
+      },
+      "expect": {"ongoing": true, "startsInMinutes": null, "endsInMinutes": 15, "totalMm": 0.2}
+    },
+    {
+      "name": "the total of a coming run covers only that run",
+      "fn": "analyse",
+      "input": {
+        "now": "2026-11-17T16:00",
+        "steps": [
+          ["2026-11-17T16:00", 0],
+          ["2026-11-17T16:15", 0],
+          ["2026-11-17T16:30", 0.2],
+          ["2026-11-17T16:45", 0.3],
+          ["2026-11-17T17:00", 0],
+          ["2026-11-17T17:15", 0.9]
+        ]
+      },
+      "expect": {"ongoing": false, "startsInMinutes": 30, "endsInMinutes": null, "totalMm": 0.5}
+    },
+    {
+      "name": "dry now and dry for the whole data",
+      "fn": "analyse",
+      "input": {
+        "now": "2026-11-17T16:05",
+        "steps": [["2026-11-17T16:00", 0], ["2026-11-17T16:15", 0], ["2026-11-17T16:30", 0], ["2026-11-17T16:45", 0]]
+      },
+      "expect": {"ongoing": false, "startsInMinutes": null, "endsInMinutes": null, "totalMm": 0.0}
+    },
+    {
+      "name": "rain exactly 120 minutes away is within the horizon",
+      "fn": "analyse",
+      "input": {
+        "now": "2026-11-17T16:00",
+        "steps": [
+          ["2026-11-17T16:00", 0],
+          ["2026-11-17T16:15", 0],
+          ["2026-11-17T16:30", 0],
+          ["2026-11-17T16:45", 0],
+          ["2026-11-17T17:00", 0],
+          ["2026-11-17T17:15", 0],
+          ["2026-11-17T17:30", 0],
+          ["2026-11-17T17:45", 0],
+          ["2026-11-17T18:00", 0.4]
+        ]
+      },
+      "expect": {"ongoing": false, "startsInMinutes": 120, "endsInMinutes": null, "totalMm": 0.4}
+    },
+    {
+      "name": "rain 121 minutes away is beyond the horizon",
+      "fn": "analyse",
+      "input": {
+        "now": "2026-11-17T16:00",
+        "steps": [["2026-11-17T16:00", 0], ["2026-11-17T18:01", 0.4]]
+      },
+      "expect": {"ongoing": false, "startsInMinutes": null, "endsInMinutes": null, "totalMm": 0.0}
+    },
+    {
+      "name": "rain 130 minutes away is beyond the horizon",
+      "fn": "analyse",
+      "input": {
+        "now": "2026-11-17T16:05",
+        "steps": [
+          ["2026-11-17T16:00", 0],
+          ["2026-11-17T16:15", 0],
+          ["2026-11-17T16:30", 0],
+          ["2026-11-17T16:45", 0],
+          ["2026-11-17T17:00", 0],
+          ["2026-11-17T17:15", 0],
+          ["2026-11-17T17:30", 0],
+          ["2026-11-17T17:45", 0],
+          ["2026-11-17T18:00", 0],
+          ["2026-11-17T18:15", 0.4]
+        ]
+      },
+      "expect": {"ongoing": false, "startsInMinutes": null, "endsInMinutes": null, "totalMm": 0.0}
+    },
+    {
+      "name": "the clock past the last step is no answer",
+      "fn": "analyse",
+      "input": {
+        "now": "2026-11-17T17:00",
+        "steps": [
+          ["2026-11-17T16:00", 0.4],
+          ["2026-11-17T16:15", 0.4],
+          ["2026-11-17T16:30", 0.4],
+          ["2026-11-17T16:45", 0.4]
+        ]
+      },
+      "expect": null
+    },
+    {
+      "name": "the clock in the last minute of the last step still answers",
+      "fn": "analyse",
+      "input": {
+        "now": "2026-11-17T16:59",
+        "steps": [["2026-11-17T16:00", 0], ["2026-11-17T16:15", 0], ["2026-11-17T16:30", 0], ["2026-11-17T16:45", 0.4]]
+      },
+      "expect": {"ongoing": true, "startsInMinutes": null, "endsInMinutes": null, "totalMm": 0.4}
+    },
+    {
+      "name": "the clock before the first step is no answer",
+      "fn": "analyse",
+      "input": {
+        "now": "2026-11-17T15:59",
+        "steps": [["2026-11-17T16:00", 0.4], ["2026-11-17T16:15", 0.4]]
+      },
+      "expect": null
+    },
+    {
+      "name": "a hole in the data: the current step is over and nothing follows",
+      "fn": "analyse",
+      "input": {
+        "now": "2026-11-17T16:20",
+        "steps": [["2026-11-17T16:00", 0.4], ["2026-11-17T17:00", 0.4]]
+      },
+      "expect": null
+    },
+    {"name": "no steps", "fn": "analyse", "input": {"now": "2026-11-17T16:05", "steps": []}, "expect": null},
+    {
+      "name": "steps given out of order are sorted",
+      "fn": "analyse",
+      "input": {
+        "now": "2026-11-17T16:05",
+        "steps": [["2026-11-17T16:30", 0], ["2026-11-17T16:00", 0.5], ["2026-11-17T16:15", 0.2]]
+      },
+      "expect": {"ongoing": true, "startsInMinutes": null, "endsInMinutes": 25, "totalMm": 0.7}
+    },
+    {
+      "name": "a step with an unreadable time is skipped",
+      "fn": "analyse",
+      "input": {
+        "now": "2026-11-17T16:05",
+        "steps": [["garbage", 9.0], ["2026-11-17T16:00", 0], ["2026-11-17T16:15", 0.3]]
+      },
+      "expect": {"ongoing": false, "startsInMinutes": 10, "endsInMinutes": null, "totalMm": 0.3}
+    },
+    {
+      "name": "only unreadable steps",
+      "fn": "analyse",
+      "input": {"now": "2026-11-17T16:05", "steps": [["garbage", 9.0], ["", 0.4]]},
+      "expect": null
+    },
+    {
+      "name": "an unreadable clock is no answer",
+      "fn": "analyse",
+      "input": {
+        "now": "garbage",
+        "steps": [["2026-11-17T16:00", 0.4], ["2026-11-17T16:15", 0.4]]
+      },
+      "expect": null
+    },
+    {
+      "name": "a missing reading is not rain",
+      "fn": "analyse",
+      "input": {
+        "now": "2026-11-17T16:05",
+        "steps": [["2026-11-17T16:00", null], ["2026-11-17T16:15", 0.3], ["2026-11-17T16:30", 0]]
+      },
+      "expect": {"ongoing": false, "startsInMinutes": 10, "endsInMinutes": null, "totalMm": 0.3}
+    },
+    {
+      "name": "a missing reading ends a wet run",
+      "fn": "analyse",
+      "input": {
+        "now": "2026-11-17T16:05",
+        "steps": [["2026-11-17T16:00", 0.4], ["2026-11-17T16:15", null], ["2026-11-17T16:30", 0.4]]
+      },
+      "expect": {"ongoing": true, "startsInMinutes": null, "endsInMinutes": 10, "totalMm": 0.4}
+    },
+    {
+      "name": "a missing reading in the current step with rain after",
+      "fn": "analyse",
+      "input": {
+        "now": "2026-11-17T16:05",
+        "steps": [
+          ["2026-11-17T16:00", null],
+          ["2026-11-17T16:15", null],
+          ["2026-11-17T16:30", 0.2],
+          ["2026-11-17T16:45", 0.2],
+          ["2026-11-17T17:00", 0]
+        ]
+      },
+      "expect": {"ongoing": false, "startsInMinutes": 25, "endsInMinutes": null, "totalMm": 0.4}
+    },
+    {
+      "name": "seconds in the clock are ignored",
+      "fn": "analyse",
+      "input": {
+        "now": "2026-11-17T16:05:59",
+        "steps": [["2026-11-17T16:00", 0], ["2026-11-17T16:15", 0.3]]
+      },
+      "expect": {"ongoing": false, "startsInMinutes": 10, "endsInMinutes": null, "totalMm": 0.3}
+    },
+    {
+      "name": "a clock at the end of a step, with seconds, is still that step",
+      "fn": "analyse",
+      "input": {
+        "now": "2026-11-17T16:14:59",
+        "steps": [["2026-11-17T16:00", 0], ["2026-11-17T16:15", 0.3]]
+      },
+      "expect": {"ongoing": false, "startsInMinutes": 1, "endsInMinutes": null, "totalMm": 0.3}
+    },
+    {
+      "name": "rain starts just after midnight",
+      "fn": "analyse",
+      "input": {
+        "now": "2026-11-17T23:50",
+        "steps": [
+          ["2026-11-17T23:30", 0],
+          ["2026-11-17T23:45", 0],
+          ["2026-11-18T00:00", 0.3],
+          ["2026-11-18T00:15", 0.4]
+        ]
+      },
+      "expect": {"ongoing": false, "startsInMinutes": 10, "endsInMinutes": null, "totalMm": 0.7}
+    },
+    {
+      "name": "raining across midnight and ending after it",
+      "fn": "analyse",
+      "input": {
+        "now": "2026-11-17T23:50",
+        "steps": [["2026-11-17T23:45", 0.3], ["2026-11-18T00:00", 0.2], ["2026-11-18T00:15", 0]]
+      },
+      "expect": {"ongoing": true, "startsInMinutes": null, "endsInMinutes": 25, "totalMm": 0.5}
+    },
+    {
+      "name": "a month boundary",
+      "fn": "analyse",
+      "input": {
+        "now": "2026-11-30T23:55",
+        "steps": [["2026-11-30T23:45", 0], ["2026-12-01T00:00", 0.3]]
+      },
+      "expect": {"ongoing": false, "startsInMinutes": 5, "endsInMinutes": null, "totalMm": 0.3}
+    },
+    {
+      "name": "a year boundary",
+      "fn": "analyse",
+      "input": {
+        "now": "2026-12-31T23:55",
+        "steps": [["2026-12-31T23:45", 0], ["2027-01-01T00:00", 0.3]]
+      },
+      "expect": {"ongoing": false, "startsInMinutes": 5, "endsInMinutes": null, "totalMm": 0.3}
+    },
+    {
+      "name": "a leap day",
+      "fn": "analyse",
+      "input": {
+        "now": "2028-02-28T23:55",
+        "steps": [["2028-02-28T23:45", 0], ["2028-02-29T00:00", 0.3]]
+      },
+      "expect": {"ongoing": false, "startsInMinutes": 5, "endsInMinutes": null, "totalMm": 0.3}
+    },
+    {
+      "name": "floating-point amounts add up",
+      "fn": "analyse",
+      "input": {
+        "now": "2026-11-17T16:00",
+        "steps": [
+          ["2026-11-17T16:00", 0.1],
+          ["2026-11-17T16:15", 0.2],
+          ["2026-11-17T16:30", 0.3],
+          ["2026-11-17T16:45", 0]
+        ]
+      },
+      "expect": {"ongoing": true, "startsInMinutes": null, "endsInMinutes": 45, "totalMm": 0.6}
+    },
+    {
+      "name": "a later wet step does not hide the first one",
+      "fn": "analyse",
+      "input": {
+        "now": "2026-11-17T16:00",
+        "steps": [
+          ["2026-11-17T16:00", 0],
+          ["2026-11-17T16:15", 0],
+          ["2026-11-17T16:30", 0.2],
+          ["2026-11-17T16:45", 0],
+          ["2026-11-17T17:00", 0],
+          ["2026-11-17T17:15", 0],
+          ["2026-11-17T17:30", 0],
+          ["2026-11-17T17:45", 0],
+          ["2026-11-17T18:00", 0],
+          ["2026-11-17T18:15", 0.9]
+        ]
+      },
+      "expect": {"ongoing": false, "startsInMinutes": 30, "endsInMinutes": null, "totalMm": 0.2}
+    },
+    {"name": "speech: 0 min is said as 0", "fn": "speech", "input": {"minutes": 0}, "expect": {"minutes": 0}},
+    {"name": "speech: 1 min is said as 0", "fn": "speech", "input": {"minutes": 1}, "expect": {"minutes": 0}},
+    {"name": "speech: 2 min is said as 0", "fn": "speech", "input": {"minutes": 2}, "expect": {"minutes": 0}},
+    {"name": "speech: 3 min is said as 5", "fn": "speech", "input": {"minutes": 3}, "expect": {"minutes": 5}},
+    {"name": "speech: 4 min is said as 5", "fn": "speech", "input": {"minutes": 4}, "expect": {"minutes": 5}},
+    {"name": "speech: 7 min is said as 5", "fn": "speech", "input": {"minutes": 7}, "expect": {"minutes": 5}},
+    {
+      "name": "speech: 8 min is said as 10",
+      "fn": "speech",
+      "input": {"minutes": 8},
+      "expect": {"minutes": 10}
+    },
+    {
+      "name": "speech: 12 min is said as 10",
+      "fn": "speech",
+      "input": {"minutes": 12},
+      "expect": {"minutes": 10}
+    },
+    {
+      "name": "speech: 13 min is said as 15",
+      "fn": "speech",
+      "input": {"minutes": 13},
+      "expect": {"minutes": 15}
+    },
+    {
+      "name": "speech: 15 min is said as 15",
+      "fn": "speech",
+      "input": {"minutes": 15},
+      "expect": {"minutes": 15}
+    },
+    {
+      "name": "speech: 17 min is said as 15",
+      "fn": "speech",
+      "input": {"minutes": 17},
+      "expect": {"minutes": 15}
+    },
+    {
+      "name": "speech: 18 min is said as 20",
+      "fn": "speech",
+      "input": {"minutes": 18},
+      "expect": {"minutes": 20}
+    },
+    {
+      "name": "speech: 22 min is said as 20",
+      "fn": "speech",
+      "input": {"minutes": 22},
+      "expect": {"minutes": 20}
+    },
+    {
+      "name": "speech: 23 min is said as 25",
+      "fn": "speech",
+      "input": {"minutes": 23},
+      "expect": {"minutes": 25}
+    },
+    {
+      "name": "speech: 57 min is said as 55",
+      "fn": "speech",
+      "input": {"minutes": 57},
+      "expect": {"minutes": 55}
+    },
+    {
+      "name": "speech: 58 min is said as 60",
+      "fn": "speech",
+      "input": {"minutes": 58},
+      "expect": {"minutes": 60}
+    },
+    {
+      "name": "speech: 62 min is said as 60",
+      "fn": "speech",
+      "input": {"minutes": 62},
+      "expect": {"minutes": 60}
+    },
+    {
+      "name": "speech: 63 min is said as 65",
+      "fn": "speech",
+      "input": {"minutes": 63},
+      "expect": {"minutes": 65}
+    },
+    {
+      "name": "speech: 118 min is said as 120",
+      "fn": "speech",
+      "input": {"minutes": 118},
+      "expect": {"minutes": 120}
+    },
+    {
+      "name": "speech: 120 min is said as 120",
+      "fn": "speech",
+      "input": {"minutes": 120},
+      "expect": {"minutes": 120}
+    },
+    {
+      "name": "speech: -5 min is said as 0",
+      "fn": "speech",
+      "input": {"minutes": -5},
+      "expect": {"minutes": 0}
+    },
+    {
+      "name": "UTC itself",
+      "fn": "localMinute",
+      "input": {"nowMs": 1794927930000, "offsetSeconds": 0},
+      "expect": {"iso": "2026-11-17T15:05"}
+    },
+    {
+      "name": "an hour east of UTC",
+      "fn": "localMinute",
+      "input": {"nowMs": 1794927930000, "offsetSeconds": 3600},
+      "expect": {"iso": "2026-11-17T16:05"}
+    },
+    {
+      "name": "seconds are cut, not rounded",
+      "fn": "localMinute",
+      "input": {"nowMs": 1794927959000, "offsetSeconds": 0},
+      "expect": {"iso": "2026-11-17T15:05"}
+    },
+    {
+      "name": "west of UTC crosses back over midnight",
+      "fn": "localMinute",
+      "input": {"nowMs": 1794882600000, "offsetSeconds": -18000},
+      "expect": {"iso": "2026-11-16T21:30"}
+    },
+    {
+      "name": "a half-hour zone",
+      "fn": "localMinute",
+      "input": {"nowMs": 1794940800000, "offsetSeconds": 19800},
+      "expect": {"iso": "2026-11-18T00:10"}
+    },
+    {
+      "name": "a quarter-hour zone",
+      "fn": "localMinute",
+      "input": {"nowMs": 1794940800000, "offsetSeconds": 20700},
+      "expect": {"iso": "2026-11-18T00:25"}
+    },
+    {
+      "name": "summer time, Warsaw",
+      "fn": "localMinute",
+      "input": {"nowMs": 1782943140000, "offsetSeconds": 7200},
+      "expect": {"iso": "2026-07-01T23:59"}
+    },
+    {
+      "name": "into the next year",
+      "fn": "localMinute",
+      "input": {"nowMs": 1798759800000, "offsetSeconds": 3600},
+      "expect": {"iso": "2027-01-01T00:30"}
+    }
+  ]
+}

@@ -118,4 +118,12 @@ object NotifStatePrefs {
     fun setGustNotifiedDate(context: Context, appWidgetId: Int, isoDate: String) {
         prefs(context).edit().putString("gust_date_$appWidgetId", isoDate).apply()
     }
+
+    /** Ids of official warnings already announced for this place (see WeatherNotifier.checkOfficial). */
+    fun officialSeen(context: Context, appWidgetId: Int): Set<String> =
+        prefs(context).getStringSet("official_seen_$appWidgetId", emptySet())?.toSet() ?: emptySet()
+
+    fun setOfficialSeen(context: Context, appWidgetId: Int, ids: Set<String>) {
+        prefs(context).edit().putStringSet("official_seen_$appWidgetId", ids).apply()
+    }
 }

@@ -72,9 +72,23 @@ Nothing checks it automatically, so change both in the same commit:
 | "on this day": parsing, which event, how it is cut | `OnThisDay.kt` | `src/lib/on-this-day.ts` |
 | which well-being tip situation applies | `WellbeingTips.situation` | `src/lib/wellbeing.ts` |
 | saved cities: order, one live slot, cap of 8 | `AppCities.with` | `withCity` in `src/lib/settings.ts` |
+| rain by the minute (15-minute steps) | `RainNowcast.kt` | `src/lib/rain-nowcast.ts` |
 
 Severe warnings are deliberately plain-voiced whatever the tone setting says, and a
 storm warning replaces the rain heads-up for that storm rather than doubling it.
+
+What does check them is `testdata/parity/*.json`: one file per rule (`rain-window`, `severe-weather`,
+`on-this-day`, `saved-cities`, `wellbeing-situation`, `rain-nowcast`), each a list of
+`{ name, input, expect }` cases read by **both** `bun test` (`src/lib/parity.test.ts`,
+`rain-nowcast.test.ts`) and the JVM tests (`ParityTest.kt`). Changing a rule means changing its
+fixture; a case one side fails is a real disagreement between the two implementations. A case only
+one side can meaningfully run (air quality and pollen exist on the native side alone) is marked
+as such in the fixture. CI runs both suites.
+
+```bash
+bun test
+cd android && ./gradlew testDebugUnitTest
+```
 
 ### City map background
 
@@ -86,6 +100,36 @@ contour lines (`Contours`, marching squares) where the relief is at least 40 m, 
 made from the city's name (`Skyline`) otherwise — on flat land contours only trace noise in the
 elevation model — and while the grid is still coming. Everything is the theme's colour at low
 alpha, lower with high contrast, rendered at half size so RemoteViews carries little memory.
+
+### Rain by the minute, pollen, official warnings
+
+All three ride on the refresh the widget already makes; `WeatherRepository` fetches them together,
+*before* anything evaluates notifications (they used to be fetched after, so the air-quality
+figure never reached the alerts).
+
+- **Nowcast** (`RainNowcast`): Open-Meteo's `minutely_15` precipitation, 12 steps. A step is wet
+  from 0.1 mm. Rain within 30 minutes (and at least 0.3 mm in that spell) is the heads-up;
+  the hero says "deszcz za ok. 10 min" up to an hour ahead. When rain is expected further out,
+  `WeatherWorker.scheduleRecheck` looks again in 12 minutes instead of waiting for the next
+  scheduled refresh.
+- **Pollen** (`Pollen`): counts from the air-quality call, Europe only. The "high" lines per kind
+  are this app's own, not a medical scale.
+- **IMGW** (`ImgwWarnings`, `PolandCounty`): the open-data feed lists warnings by county TERYT
+  code. A place is matched to a county once per ~5 km cell through OpenStreetMap's Nominatim
+  (identifying User-Agent, one request per cell, cached for good), and only inside Poland. An
+  official warning for a hazard suppresses the derived notification for the same hazard.
+
+### Alerts for every place
+
+State and notification ids are scoped per (widget, place) (`WeatherNotifier.scopeOf`). The worker
+checks the places a widget holds but isn't showing for the time-critical alerts only (rain,
+storms, official warnings: `evaluate(..., criticalOnly = true)`); the brief, temperature, air
+quality, UV and gust alerts stay with the place on show.
+
+### Backup
+
+`allowBackup` is off: saved cities and settings (a location history, in effect) stay on the
+phone. The cost is that a new phone starts without them.
 
 ### Places
 

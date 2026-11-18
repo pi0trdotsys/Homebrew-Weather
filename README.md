@@ -37,6 +37,9 @@
 12  ─  the sun, when it matters     "sunset in 40 min", only in that last hour
 13  ─  a tip or a fact, not a joke  well-being tips, or what happened on this day
 14  ─  a map of the city behind it  terrain contours, or a skyline on flat land (per widget)
+15  ─  rain, to the minute          "rain in about 10 min", from the 15-minute forecast
+16  ─  pollen, when it's high       birch, grass...: on the widget and in the brief
+17  ─  official warnings (Poland)   IMGW's, beside the ones worked out from the forecast
 ```
 
 <br/>
@@ -52,6 +55,7 @@
 3. Pick a city and a density (*minimal*, *standard* or *full*). That's it. It refreshes on its own.
 
 Tap the widget to open the full forecast for that city, or tap a day to see its hours.
+With several places on a widget, rain and storms are watched for all of them, not just the one on show.
 To keep more than one place on a widget, open its setup, switch on *add as another place*
 and pick another city; from then on tapping the city name switches between them (the
 **≡** next to it opens the setup).
@@ -74,7 +78,7 @@ along with a button that sends one of each notification so you can see them righ
 
 <sub>
 
-**private by default**: no account, no ads, no tracking, no server of ours  
+**private by default**: no account, no ads, no tracking, no server of ours, no cloud backup  
 weather straight from [Open-Meteo](https://open-meteo.com/) · location is optional, a city name works too  
 polski or english, your pick · still in beta, so rough edges are expected
 

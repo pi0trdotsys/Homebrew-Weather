@@ -114,7 +114,8 @@ export function parseEnglishEvents(json: unknown): OnThisDayEvent[] {
     if (typeof e?.text !== "string" || (typeof e.year !== "number" && typeof e.year !== "string"))
       continue;
     const text = e.text.replace(/\u00a0/g, " ").trim();
-    if (text) events.push({ year: String(e.year), text });
+    const year = String(e.year);
+    if (text && year.trim()) events.push({ year, text });
   }
   return events;
 }

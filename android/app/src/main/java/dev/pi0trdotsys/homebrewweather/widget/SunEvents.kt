@@ -1,9 +1,5 @@
 package dev.pi0trdotsys.homebrewweather.widget
 
-import java.text.SimpleDateFormat
-import java.util.Locale
-import java.util.TimeZone
-
 /**
  * The sun about to set or rise — "zachód za 40 min" — as a widget exception.
  *
@@ -31,7 +27,7 @@ object SunEvents {
      * times (an old cache, polar day or night).
      */
     fun next(weather: WeatherApi.WeatherData, nowLocalIso: String): Next? {
-        val now = minutesOf(nowLocalIso) ?: return null
+        val now = LocalIso.minutes(nowLocalIso) ?: return null
         return weather.daily.take(2)
             .flatMap { d ->
                 listOfNotNull(
@@ -39,18 +35,9 @@ object SunEvents {
                     d.sunset?.let { it to Kind.SUNSET },
                 )
             }
-            .mapNotNull { (iso, kind) -> minutesOf(iso)?.let { Next(kind, (it - now).toInt()) } }
+            .mapNotNull { (iso, kind) -> LocalIso.minutes(iso)?.let { Next(kind, (it - now).toInt()) } }
             .filter { it.minutes in 0..WITHIN_MINUTES }
             .minByOrNull { it.minutes }
-    }
-
-    /** "…T07:12" or a full local ISO string, as whole minutes on a common timeline. */
-    private fun minutesOf(iso: String): Long? = try {
-        val sdf = SimpleDateFormat("yyyy-MM-dd'T'HH:mm", Locale.US)
-        sdf.timeZone = TimeZone.getTimeZone("UTC")
-        sdf.parse(iso.take(16))!!.time / 60_000L
-    } catch (e: Exception) {
-        null
     }
 
     fun text(next: Next, texts: Texts): String = when (next.kind) {

@@ -438,6 +438,14 @@ function Settings() {
               {t.uvGustNote}
             </p>
             <Toggle
+              label={t.pollenToggle}
+              checked={notif.pollenEnabled}
+              onChange={(v) => patch({ pollenEnabled: v })}
+            />
+            <p className="px-1 text-[10px] uppercase tracking-widest text-[color:var(--phosphor-dim)]">
+              {t.pollenNote}
+            </p>
+            <Toggle
               label={t.severeToggle}
               checked={notif.severeEnabled}
               onChange={(v) => patch({ severeEnabled: v })}
