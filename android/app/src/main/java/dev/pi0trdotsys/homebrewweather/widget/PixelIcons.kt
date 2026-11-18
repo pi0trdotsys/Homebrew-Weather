@@ -339,7 +339,29 @@ object PixelIcons {
      * there is no new alarm/timer here, this just reads whatever frame value
      * was last persisted.
      */
-    fun render(kind: String, finalSize: Int = 96, frame: Int = 0): Bitmap {
+    /**
+     * The same icons for a light background: every tone darker or more saturated so
+     * the pale ones (white clouds, snow, the cyan stars) don't vanish on paper.
+     */
+    private val LIGHT_COLORS: Map<Char, Int> = mapOf(
+        'Y' to Color.parseColor("#e59400"),
+        'o' to Color.parseColor("#b86e00"),
+        'W' to Color.parseColor("#8fa0ad"),
+        'w' to Color.parseColor("#5f7280"),
+        'D' to Color.parseColor("#4a5a63"),
+        'd' to Color.parseColor("#2b373d"),
+        'B' to Color.parseColor("#2f7fd0"),
+        'b' to Color.parseColor("#1c5aa8"),
+        'S' to Color.parseColor("#6f9cc4"),
+        'G' to Color.parseColor("#7d8f87"),
+        'g' to Color.parseColor("#566860"),
+        'L' to Color.parseColor("#d98200"),
+        'l' to Color.parseColor("#8a5a00"),
+        'C' to Color.parseColor("#1b8f98"),
+        'K' to Color.parseColor("#000000"),
+    )
+
+    fun render(kind: String, finalSize: Int = 96, frame: Int = 0, light: Boolean = false): Bitmap {
         val baseGrid = ICONS[kind] ?: ICONS.getValue("cloud")
         val grid = transformGrid(kind, baseGrid, frame)
         val bmp = Bitmap.createBitmap(finalSize, finalSize, Bitmap.Config.ARGB_8888)
@@ -367,7 +389,7 @@ object PixelIcons {
             for (x in row.indices) {
                 val ch = row[x]
                 if (ch == '.') continue
-                val color = COLORS[ch] ?: Color.parseColor("#33ff66")
+                val color = (if (light) LIGHT_COLORS[ch] else COLORS[ch]) ?: Color.parseColor(if (light) "#157a2e" else "#33ff66")
                 paint.color = color
                 val left = Math.round(x * px)
                 val right = Math.round((x + 1) * px)

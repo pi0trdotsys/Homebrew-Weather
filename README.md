@@ -40,6 +40,11 @@
 15  ─  rain, to the minute          "rain in about 10 min", from the 15-minute forecast
 16  ─  pollen, when it's high       birch, grass...: on the widget and in the brief
 17  ─  official warnings (Poland)   IMGW's, beside the ones worked out from the forecast
+18  ─  warm to cold, in colour       the temperature runs cyan → amber → red: number, curve, chart
+19  ─  day and night on the curve    a night band, and the sun where it rises and sets
+20  ─  paper or terminal             light "paper" for a bright wallpaper, or switch with the sun
+21  ─  icons, not words              wind, UV, pollen, rain, warnings as tiny pixel glyphs
+22  ─  the sky behind the numbers    rain streaks, snow, a flash in a storm, stars at night
 ```
 
 <br/>
@@ -61,7 +66,9 @@ and pick another city; from then on tapping the city name switches between them 
 **≡** next to it opens the setup).
 Can't find the widget picker? **./settings** has an *add widget* button that asks your launcher
 to pin one. The widget's setup also offers a *Material You* colour theme (Android 12+), a *city map* background
-(terrain contours around the city, or a pixel skyline where the land is flat), and
+(terrain contours around the city, or a pixel skyline where the land is flat), a *weather*
+background (rain, snow, storms and stars drawn behind the numbers, moving only while it
+precipitates), an *appearance* choice (dark, light paper, or paper by day and dark at night), and
 **./settings** a *high contrast* option for the dim text, in the app and on the widget.
 Language, brief and evening times, alert thresholds, tone and what the footer says (a joke, a
 well-being tip, or an event from this day in history) are under **./settings**,

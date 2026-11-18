@@ -57,7 +57,7 @@ class WidgetPreviewDebugActivity : Activity() {
 
         WeatherWidgetProvider.debugForceOfflineCache = true
         try {
-            SIZES.forEach { (label, w, h, hideBanner, density, data, places) ->
+            SIZES.forEach { (label, w, h, hideBanner, density, data, places, appearance, backdrop) ->
                 root.addView(
                     caption(
                         "${w}x${h}dp · ${density.label} · ${data.name.lowercase()} — $label",
@@ -72,6 +72,8 @@ class WidgetPreviewDebugActivity : Activity() {
                 WidgetPrefs.setLastKnownMinWidthDp(this, FAKE_WIDGET_ID, w)
                 WidgetPrefs.setLastKnownMinHeightDp(this, FAKE_WIDGET_ID, h)
                 WidgetPrefs.setDensity(this, FAKE_WIDGET_ID, density)
+                WidgetPrefs.setAppearance(this, FAKE_WIDGET_ID, appearance)
+                WidgetPrefs.setBackdrop(this, FAKE_WIDGET_ID, backdrop)
                 // A widget with several places shows "n/m" and the setup button.
                 WidgetPrefs.setPlaceState(
                     this,
@@ -85,6 +87,8 @@ class WidgetPreviewDebugActivity : Activity() {
                         Data.CALM -> CALM_DAY
                         Data.EVENTFUL -> EVENTFUL_DAY
                         Data.EVENING -> EVENING
+                        Data.STORM -> EVENTFUL_DAY.copy(currentWeatherCode = 95)
+                        Data.CLEAR_NIGHT -> CALM_DAY.copy(isDay = false, currentWeatherCode = 0)
                     },
                 )
 
@@ -198,7 +202,7 @@ class WidgetPreviewDebugActivity : Activity() {
         )
     }
 
-    private enum class Data { CALM, EVENTFUL, EVENING }
+    private enum class Data { CALM, EVENTFUL, EVENING, STORM, CLEAR_NIGHT }
 
     private data class Preview(
         val label: String,
@@ -208,6 +212,8 @@ class WidgetPreviewDebugActivity : Activity() {
         val density: WidgetDensity = WidgetDensity.STANDARD,
         val data: Data = Data.EVENTFUL,
         val places: Boolean = false,
+        val appearance: WidgetAppearance = WidgetAppearance.DARK,
+        val backdrop: WidgetBackdrop = WidgetBackdrop.NONE,
     )
 
     companion object {
@@ -227,6 +233,7 @@ class WidgetPreviewDebugActivity : Activity() {
                     weatherCode = codes.getOrNull(i) ?: if (p >= 50) 61 else 2,
                     // A day's rise and fall, warmest mid-afternoon, so the 24-hour curve has a shape.
                     temperature = base + 6.0 * kotlin.math.sin((((11 + i) % 24) - 9) * Math.PI / 12.0),
+                    isDay = ((11 + i) % 24) in 6..20,
                 )
             }
 
@@ -245,8 +252,8 @@ class WidgetPreviewDebugActivity : Activity() {
             currentPrecipitationProbability = 0,
             usAqi = 36,
             daily = listOf(
-                WeatherApi.DailyEntry("2026-07-31", 1, 31.0, 18.0, 0),
-                WeatherApi.DailyEntry("2026-08-01", 1, 30.0, 18.0, 0),
+                WeatherApi.DailyEntry("2026-07-31", 1, 31.0, 18.0, 0, sunrise = "2026-07-31T05:31", sunset = "2026-07-31T21:05"),
+                WeatherApi.DailyEntry("2026-08-01", 1, 30.0, 18.0, 0, sunrise = "2026-08-01T05:33", sunset = "2026-08-01T21:03"),
                 WeatherApi.DailyEntry("2026-08-02", 2, 33.0, 18.0, 0),
                 WeatherApi.DailyEntry("2026-08-03", 3, 32.0, 21.0, 0),
             ),
@@ -270,9 +277,13 @@ class WidgetPreviewDebugActivity : Activity() {
             currentPrecipitationProbability = 20,
             usAqi = 142, // -> "sensitive", the longest short AQI label
             windGustKmh = 71.0,
+            pollen = WeatherApi.PollenReading(birch = 150.0, grass = 12.0),
+            official = listOf(
+                WeatherApi.OfficialWarning("harness", "Silny wiatr", 2, "2026-07-31T15:00", "2026-08-01T01:00", "Prognozuje się silny wiatr."),
+            ),
             daily = listOf(
-                WeatherApi.DailyEntry("2026-07-31", 61, 22.0, 14.0, 70, precipitationSumMm = 11.0, uvIndexMax = 9.0, windGustMaxKmh = 71.0),
-                WeatherApi.DailyEntry("2026-08-01", 2, 22.0, 11.0, 12),
+                WeatherApi.DailyEntry("2026-07-31", 61, 22.0, 14.0, 70, precipitationSumMm = 11.0, uvIndexMax = 9.0, windGustMaxKmh = 71.0, sunrise = "2026-07-31T05:31", sunset = "2026-07-31T21:05"),
+                WeatherApi.DailyEntry("2026-08-01", 2, 22.0, 11.0, 12, sunrise = "2026-08-01T05:33", sunset = "2026-08-01T21:03"),
                 WeatherApi.DailyEntry("2026-08-02", 95, 19.0, 9.0, 100),
                 WeatherApi.DailyEntry("2026-08-03", 71, -2.0, -8.0, 45),
             ),
@@ -317,6 +328,12 @@ class WidgetPreviewDebugActivity : Activity() {
         )
 
         private val SIZES = listOf(
+            Preview("paper: everything happening", 368, 176, appearance = WidgetAppearance.PAPER, density = WidgetDensity.FULL),
+            Preview("paper: ordinary day, minimal", 368, 120, appearance = WidgetAppearance.PAPER, data = Data.CALM, density = WidgetDensity.MINIMAL),
+            Preview("auto by day = paper, with places", 368, 176, appearance = WidgetAppearance.AUTO, places = true),
+            Preview("auto at night = dark, stars", 368, 176, appearance = WidgetAppearance.AUTO, data = Data.CLEAR_NIGHT, backdrop = WidgetBackdrop.SCENE),
+            Preview("scene: storm (dark)", 368, 176, data = Data.STORM, backdrop = WidgetBackdrop.SCENE),
+            Preview("scene: storm (paper)", 368, 176, data = Data.STORM, appearance = WidgetAppearance.PAPER, backdrop = WidgetBackdrop.SCENE),
             Preview("evening: rain pinned to tomorrow", 368, 176, data = Data.EVENING),
             Preview("evening, minimal", 368, 176, density = WidgetDensity.MINIMAL, data = Data.EVENING),
             Preview("evening at minResize", 180, 90, data = Data.EVENING),

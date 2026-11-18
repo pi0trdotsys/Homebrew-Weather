@@ -233,6 +233,21 @@ export async function saveHighContrast(on: boolean): Promise<void> {
   await Preferences.set({ key: HIGH_CONTRAST_KEY, value: String(on) });
 }
 
+// The "city map" behind the dashboard's temperature: terrain contours, or a
+// skyline on flat land (CityBackdrop.tsx). Stored as "true"/"false"; on unless
+// switched off. The widget has its own per-widget background setting.
+export const APP_BACKDROP_KEY = "settings:app-backdrop";
+export const DEFAULT_APP_BACKDROP = true;
+
+export async function loadAppBackdrop(): Promise<boolean> {
+  const { value } = await Preferences.get({ key: APP_BACKDROP_KEY });
+  return value === "true" ? true : value === "false" ? false : DEFAULT_APP_BACKDROP;
+}
+
+export async function saveAppBackdrop(on: boolean): Promise<void> {
+  await Preferences.set({ key: APP_BACKDROP_KEY, value: String(on) });
+}
+
 export async function loadRefreshInterval(): Promise<RefreshInterval> {
   const { value } = await Preferences.get({ key: REFRESH_INTERVAL_KEY });
   const n = Number(value);

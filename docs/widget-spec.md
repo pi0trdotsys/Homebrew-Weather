@@ -994,3 +994,18 @@ rozmiaru widgetu (`centerCrop`), więc RemoteViews przenosi mało pamięci.
 - Pyłki pokazują się tylko gdy któryś rodzaj przekracza własną granicę (`Pollen.Species`),
   a „silne” od trzykrotności; w Europie, bo gdzie indziej model ich nie ma.
 
+## Kolor temperatury, papier, scena pogody (0.6.0-beta.15)
+
+- **Kolor temperatury.** Duża liczba, linia krzywej 24 h i jej etykiety biorą kolor z jednej skali
+  (`TempColor`): −15° niebiesko-fioletowy, 0° cyjan, 22° bursztyn, 35° czerwony, między nimi
+  liniowo. Przestarzała prognoza dostaje ten sam odcień, przygaszony.
+- **Krzywa 24 h:** pasmo nocy (godziny z `isDay == false`) i znaczniki słońca o dokładnej minucie
+  wschodu i zachodu, jeśli mieszczą się w oknie.
+- **Linia meta** jest obrazkiem: ikonki 7×7 (słońce, wiatr, pyłek, kropla, ostrzeżenie, …) i wartości
+  czcionką pikselową, tak duże, jak pozwala szerokość, kosztem ostatnich odczytów; najwyżej trzy.
+- **Wygląd** (osobno dla widgetu, `WidgetAppearance`): ciemny (domyślny), „papier” (jasne tło,
+  kolory przyciemnione do kontrastu 4,5:1) albo automatyczny — papier za dnia, ciemny nocą.
+- **Tło „pogoda”** (`WidgetBackdrop.SCENE`): smugi deszczu, śnieg, burza (błysk co czwarte
+  tyknięcie) lub gwiazdy w pogodną noc; rusza się tylko przy opadach, na tym samym tyknięciu co
+  kursor, więc bez dodatkowych wybudzeń.
+- **Ikona aplikacji** ma wariant monochromatyczny (motywowany).

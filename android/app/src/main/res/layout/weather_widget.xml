@@ -360,6 +360,7 @@
             </LinearLayout>
 
             <FrameLayout
+                android:id="@+id/widget_div0"
                 android:layout_width="1dp"
                 android:layout_height="match_parent"
                 android:background="@drawable/widget_grid_divider" />
@@ -415,6 +416,7 @@
             </LinearLayout>
 
             <FrameLayout
+                android:id="@+id/widget_div1"
                 android:layout_width="1dp"
                 android:layout_height="match_parent"
                 android:background="@drawable/widget_grid_divider" />
@@ -470,6 +472,7 @@
             </LinearLayout>
 
             <FrameLayout
+                android:id="@+id/widget_div2"
                 android:layout_width="1dp"
                 android:layout_height="match_parent"
                 android:background="@drawable/widget_grid_divider" />
@@ -538,17 +541,14 @@
             android:layout_marginBottom="2dp"
             android:visibility="gone" />
 
-        <TextView
+        <!-- The meta line: icons and values drawn in the pixel font (MetaLineArt), sized
+             to its bitmap like the rain row. -->
+        <ImageView
             android:id="@+id/widget_meta_line"
-            android:layout_width="match_parent"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:ellipsize="end"
-            android:fontFamily="monospace"
-            android:includeFontPadding="false"
-            android:singleLine="true"
-            android:textColor="@color/widget_green_dim"
-            android:textSize="10sp" />
+            android:layout_gravity="start"
+            android:layout_marginTop="4dp" />
 
         <TextView
             android:id="@+id/widget_footer_joke"

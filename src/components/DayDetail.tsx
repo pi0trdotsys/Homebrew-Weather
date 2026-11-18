@@ -9,7 +9,7 @@ import {
 } from "@/lib/rain-window";
 import { formatMm, useI18n } from "@/lib/i18n";
 import { GUST_NOTABLE, UV_NOTABLE, uvBand } from "@/lib/conditions";
-import { HourlyStrip } from "./HourlyStrip";
+import { HourlyChart } from "./HourlyChart";
 import { RAIN_COLOR } from "./DailyForecast";
 
 /**
@@ -124,7 +124,7 @@ export function DayDetail({
           )}
         </div>
       )}
-      <HourlyStrip data={data} date={date} />
+      <HourlyChart data={data} date={date} />
     </div>
   );
 }

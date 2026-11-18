@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The launcher icon as one flat colour, for Android 13+ "themed icons": the system
+     tints it with the wallpaper's palette. The same pixel sun-and-cloud as the full-colour
+     icon (the "partly" grid in PixelIcons), 16 x 16 cells, centred in the adaptive icon's
+     safe zone. Generated from that grid; regenerate if the icon changes. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M39.60,34.20h14.40v3.60h-14.40zM28.80,37.80h3.60v3.60h-3.60zM39.60,37.80h14.40v3.60h-14.40zM61.20,37.80h3.60v3.60h-3.60zM32.40,41.40h28.80v3.60h-28.80zM28.80,45.00h36.00v3.60h-36.00zM28.80,48.60h18.00v3.60h-18.00zM50.40,48.60h14.40v3.60h-14.40zM32.40,52.20h10.80v3.60h-10.80zM46.80,52.20h25.20v3.60h-25.20zM39.60,55.80h36.00v3.60h-36.00zM32.40,59.40h46.80v3.60h-46.80zM28.80,63.00h50.40v3.60h-50.40zM28.80,66.60h50.40v3.60h-50.40zM32.40,70.20h43.20v3.60h-43.20z" />
+</vector>

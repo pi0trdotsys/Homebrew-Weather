@@ -71,6 +71,12 @@
   --hud-line: rgba(85, 255, 255, 0.35);
   --hud-scan: rgba(85, 255, 255, 0.06);
   --hud-magenta: #ff4fd8;
+  /* 24-hour chart (HourlyChart.tsx): translucent so the temperature line stays readable. */
+  --chart-night: rgba(122, 155, 255, 0.1);
+  --chart-rain: rgba(85, 255, 255, 0.32);
+  --chart-storm: rgba(255, 176, 0, 0.42);
+  /* Loading skeleton (Skeleton.tsx). */
+  --skeleton: rgba(31, 138, 63, 0.22);
 }
 
 .dark {
@@ -100,9 +106,15 @@
   --muted-foreground: #4fc46f;
   --border: #4fc46f;
   --hud-cyan-dim: #5ec2c2; /* mockup-only token: 3.0:1 -> 9.5:1 on the box */
+  /* Fills carry the chart's meaning without glow: a little more body, a fainter night. */
+  --chart-night: rgba(122, 155, 255, 0.07);
+  --chart-rain: rgba(85, 255, 255, 0.45);
+  --chart-storm: rgba(255, 176, 0, 0.55);
+  --skeleton: rgba(79, 196, 111, 0.28);
 }
 :root[data-contrast="high"] body,
 :root[data-contrast="high"] .crt-glow,
+:root[data-contrast="high"] .temp-glow,
 :root[data-contrast="high"] .glow-breathe {
   text-shadow: none;
 }
@@ -290,6 +302,33 @@
   }
 }
 
+/* The hero temperature: the glow takes the number's own colour (--glow, set inline). */
+.temp-glow {
+  text-shadow:
+    0 0 2px currentColor,
+    0 0 8px var(--glow, rgba(51, 255, 102, 0.6));
+}
+
+/* City backdrop (CityBackdrop.tsx): behind the hero's content and the rain. */
+.city-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: -20;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Scrubbing the chart swaps the tooltip's icon hour by hour: no raster-scan boot-in each time. */
+.hbw-chart-tip .pixel-materialize {
+  animation: none;
+}
+
+/* Loading skeleton (Skeleton.tsx): dim phosphor blocks. */
+.skeleton-block {
+  background: var(--skeleton);
+}
+
 .terminal-box {
   border: 1px solid var(--phosphor-dim);
   background: rgba(10, 26, 10, 0.35);
@@ -400,6 +439,46 @@
     height: 100%;
     pointer-events: none;
     image-rendering: pixelated;
+  }
+
+  /* 24-hour chart (HourlyChart.tsx): the line is drawn in from the left, once. */
+  .hbw-chart-draw {
+    animation: hbw-chart-draw 450ms ease-out both;
+  }
+  @keyframes hbw-chart-draw {
+    from {
+      clip-path: inset(-6px 100% -6px 0);
+    }
+    to {
+      clip-path: inset(-6px -6px -6px 0);
+    }
+  }
+
+  /* Skeleton (Skeleton.tsx): one slow scanline sweeps down the whole placeholder. */
+  .skeleton-scan::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 28px;
+    pointer-events: none;
+    background: linear-gradient(
+      to bottom,
+      transparent,
+      rgba(51, 255, 102, 0.1) 60%,
+      rgba(51, 255, 102, 0.22) 95%,
+      transparent
+    );
+    animation: skeleton-scan 2.6s linear infinite;
+  }
+  @keyframes skeleton-scan {
+    from {
+      top: -30px;
+    }
+    to {
+      top: 100%;
+    }
   }
 
   /* Rain / snow (fx/Precipitation.tsx): behind the hero's content. */

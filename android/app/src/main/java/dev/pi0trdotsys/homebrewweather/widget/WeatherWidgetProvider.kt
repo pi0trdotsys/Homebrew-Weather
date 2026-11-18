@@ -6,6 +6,8 @@ import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Color
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.location.Location
@@ -149,7 +151,10 @@ class WeatherWidgetProvider : AppWidgetProvider() {
                 spinner.setViewVisibility(R.id.widget_refresh_spinner, View.VISIBLE)
                 spinner.setViewVisibility(R.id.widget_status_banner, View.VISIBLE)
                 spinner.setTextViewText(R.id.widget_status_banner, CapacitorStorage.lang(context).texts.refreshing)
-                spinner.setTextColor(R.id.widget_status_banner, context.getColor(R.color.widget_cyan))
+                val cachedDay = WidgetPrefs.getCachedWeather(context, appWidgetId)?.isDay
+                val pal = paletteFor(context, appWidgetId, cachedDay)
+                spinner.setTextColor(R.id.widget_status_banner, pal.color(R.color.widget_cyan))
+                spinner.setInt(R.id.widget_status_banner, "setBackgroundResource", bannerBackground(pal))
                 appWidgetManager.partiallyUpdateAppWidget(appWidgetId, spinner)
             } catch (e: Exception) {
                 // best-effort; the full render below still runs regardless
@@ -188,6 +193,7 @@ class WeatherWidgetProvider : AppWidgetProvider() {
                 val content = weather?.let {
                     WidgetContent.build(it, WidgetPrefs.getDensity(context, id), offline = false, texts = CapacitorStorage.lang(context).texts, pollen = CapacitorStorage.pollenEnabled(context))
                 }
+                val pal = paletteFor(context, id, weather?.isDay)
                 val rows = content?.rows() ?: WidgetMetrics.Rows.ALL
                 val m = WidgetSize.resolve(context, id).metrics(rows)
                 val iconPx = dpToPx(context, m.dayIconDp)
@@ -195,7 +201,22 @@ class WeatherWidgetProvider : AppWidgetProvider() {
                 // The meta line may carry a countdown ("zachód za 40 min"): keep it
                 // honest between refreshes. Text only — if that line appears or
                 // disappears the rows change, and that waits for the next full render.
-                content?.metaLine?.let { rv.setTextViewText(R.id.widget_meta_line, it) }
+                content?.metaReadouts?.takeIf { it.isNotEmpty() }?.let { r ->
+                    metaBitmap(context, r, m, pal)?.let { rv.setImageViewBitmap(R.id.widget_meta_line, it) }
+                }
+                // The weather scene moves only while it rains, snows or storms; on any
+                // other sky there is nothing to re-draw (see WidgetScene).
+                if (weather != null && WidgetPrefs.getBackdrop(context, id) == WidgetBackdrop.SCENE) {
+                    val kind = WidgetScene.kindOf(Wmo.wmoToKind(weather.currentWeatherCode), weather.isDay)
+                    if (WidgetScene.animated(kind)) {
+                        val name = WidgetPrefs.getCity(context, id)?.name ?: ""
+                        sceneBitmap(context, weather, name, m.widthDp, m.heightDp, frame, pal)
+                            ?.let {
+                                rv.setImageViewBitmap(R.id.widget_backdrop, it)
+                                rv.setViewVisibility(R.id.widget_backdrop, View.VISIBLE)
+                            }
+                    }
+                }
                 // ...and so can the hero's rain sentence ("deszcz za ok. 10 min").
                 content?.heroLine?.let { rv.setTextViewText(R.id.widget_now_line, it) }
                 // Re-render each day's icon at the new frame from cached weather codes
@@ -205,14 +226,14 @@ class WeatherWidgetProvider : AppWidgetProvider() {
                     for (i in 0 until 4) {
                         val entry = weather.daily.getOrNull(offset + i) ?: continue
                         val kind = Wmo.wmoToKind(entry.weatherCode)
-                        rv.setImageViewBitmap(ICON_IDS[i], WidgetGraphics.icon(context, kind, iconPx, frame))
+                        rv.setImageViewBitmap(ICON_IDS[i], WidgetGraphics.icon(context, kind, iconPx, frame, pal.paper))
                     }
                     // Keep the "now" line's icon animating in lockstep with the
                     // day-grid icons on every blink tick too (same kind-resolution
                     // rule as the full buildRemoteViews() path below).
                     val nowKind = Wmo.wmoToKind(weather.currentWeatherCode)
                     val nowIconKind = if (!weather.isDay && (nowKind == "sun" || nowKind == "partly")) "moon" else nowKind
-                    rv.setImageViewBitmap(R.id.widget_now_icon, WidgetGraphics.icon(context, nowIconKind, nowIconPx, frame))
+                    rv.setImageViewBitmap(R.id.widget_now_icon, WidgetGraphics.icon(context, nowIconKind, nowIconPx, frame, pal.paper))
                 }
                 try {
                     appWidgetManager.partiallyUpdateAppWidget(id, rv)
@@ -438,12 +459,12 @@ class WeatherWidgetProvider : AppWidgetProvider() {
          * night = cyan — mirrors the mockup's amber/hudCyanDim/hudCyan split
          * (previously night was widget_green here, a pre-existing deviation
          * from the token file fixed as part of this pass). */
-        private fun tempSpannable(context: Context, dayMax: Double, nightMin: Double): SpannableString {
+        private fun tempSpannable(pal: Palette, dayMax: Double, nightMin: Double): SpannableString {
             val text = "${Math.round(dayMax)}°/${Math.round(nightMin)}°"
             val span = SpannableString(text)
-            val amber = context.getColor(R.color.widget_amber)
-            val cyan = context.getColor(R.color.widget_cyan)
-            val cyanDim = themedDim(context, R.color.widget_cyan_dim)
+            val amber = pal.color(R.color.widget_amber)
+            val cyan = pal.color(R.color.widget_cyan)
+            val cyanDim = pal.dim(R.color.widget_cyan_dim)
             val slashIdx = text.indexOf('/')
             span.setSpan(ForegroundColorSpan(amber), 0, slashIdx, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
             span.setSpan(ForegroundColorSpan(cyanDim), slashIdx, slashIdx + 1, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
@@ -457,11 +478,11 @@ class WeatherWidgetProvider : AppWidgetProvider() {
          * pushes the PoP row below it off the bottom of the grid. Dropping the
          * night-min figure here (still shown in the default 250dp-wide layout)
          * is the deliberate trade-off. */
-        private fun compactTempSpannable(context: Context, dayMax: Double): SpannableString {
+        private fun compactTempSpannable(pal: Palette, dayMax: Double): SpannableString {
             val text = "${Math.round(dayMax)}°"
             val span = SpannableString(text)
             span.setSpan(
-                ForegroundColorSpan(context.getColor(R.color.widget_amber)),
+                ForegroundColorSpan(pal.color(R.color.widget_amber)),
                 0,
                 text.length,
                 Spannable.SPAN_EXCLUSIVE_EXCLUSIVE,
@@ -474,37 +495,71 @@ class WeatherWidgetProvider : AppWidgetProvider() {
         private val ICON_IDS = intArrayOf(R.id.widget_icon0, R.id.widget_icon1, R.id.widget_icon2, R.id.widget_icon3)
         private val TEMP_IDS = intArrayOf(R.id.widget_temp0, R.id.widget_temp1, R.id.widget_temp2, R.id.widget_temp3)
         private val POP_IDS = intArrayOf(R.id.widget_pop0, R.id.widget_pop1, R.id.widget_pop2, R.id.widget_pop3)
+        private val DIVIDER_IDS = intArrayOf(R.id.widget_div0, R.id.widget_div1, R.id.widget_div2)
         private val COL_IDS = intArrayOf(R.id.widget_col0, R.id.widget_col1, R.id.widget_col2, R.id.widget_col3)
 
-        private const val WIDGET_BG = 0xFF0A0F0A.toInt()
+        /**
+         * The palette this widget renders with right now: dark or paper per its
+         * appearance setting (AUTO follows [isDay], dark while that is unknown),
+         * and the high-contrast preference.
+         */
+        internal fun paletteFor(context: Context, appWidgetId: Int, isDay: Boolean?): Palette =
+            Palette(
+                context,
+                WidgetPrefs.getAppearance(context, appWidgetId).isPaper(isDay),
+                CapacitorStorage.highContrast(context),
+            )
+
+        /** The weather scene for [weather] at [frame], or null when the sky has none (see [WidgetScene]). */
+        private fun sceneBitmap(
+            context: Context,
+            weather: WeatherApi.WeatherData,
+            cityName: String,
+            widthDp: Int,
+            heightDp: Int,
+            frame: Int,
+            pal: Palette,
+        ): Bitmap? {
+            val kind = WidgetScene.kindOf(Wmo.wmoToKind(weather.currentWeatherCode), weather.isDay)
+            return WidgetScene.render(
+                context,
+                dpToPx(context, widthDp),
+                dpToPx(context, heightDp),
+                kind,
+                frame,
+                cityName.lowercase().hashCode(),
+                pal,
+            )
+        }
+
+        private fun bannerBackground(pal: Palette): Int =
+            if (pal.paper) R.drawable.widget_status_banner_bg_paper else R.drawable.widget_status_banner_bg
+
+        /** The meta line as a bitmap that fills the widget's inner width and the row the solver reserved. */
+        private fun metaBitmap(context: Context, readouts: List<Readout>, m: WidgetMetrics, pal: Palette): Bitmap? {
+            val density = context.resources.displayMetrics.density
+            val innerWidthPx = Math.round((m.widthDp - 2f * m.padDp) * density)
+            val heightPx = Math.round(m.metaRowDp * density)
+            return MetaLineArt.render(readouts, innerWidthPx, heightPx) { pal.meta(it) }
+                ?.let { WidgetGraphics.sized(context, it) }
+        }
 
         /**
-         * A dim ("comment") colour as the user wants to read it: the quiet shade
-         * as designed, or — with high contrast on — a shade of the same hue that
-         * reaches WCAG AA against the widget background (see [HighContrast]).
-         * Anything that isn't one of the known dim shades is returned as is.
+         * The big number's colour: cold to hot by [TempColor], the same scale as the
+         * curve and the dashboard. A stale or offline forecast gets the same hue, dimmed.
          */
-        private fun themedDim(context: Context, dimRes: Int): Int {
-            val normal = context.getColor(dimRes)
-            if (!CapacitorStorage.highContrast(context)) return normal
-            val primaryRes = when (dimRes) {
-                R.color.widget_green_dim -> R.color.widget_green
-                R.color.widget_cyan_dim -> R.color.widget_cyan
-                R.color.widget_amber_dim -> R.color.widget_amber
-                R.color.widget_crimson_dim -> R.color.widget_crimson
-                R.color.widget_monet_dim -> R.color.widget_monet
-                else -> return normal
-            }
-            return HighContrast.dim(context.getColor(primaryRes), WIDGET_BG)
+        private fun heroTempColor(pal: Palette, celsius: Double, dimmed: Boolean): Int {
+            val base = pal.large(TempColor.argb(celsius))
+            return if (dimmed) HighContrast.dim(base, pal.background) else base
         }
 
         /** A storm has to stand out from plain rain at a glance; a chance
          * (no likely window) stays quiet. */
-        private fun popColor(context: Context, style: WidgetContent.PopStyle): Int = when (style) {
-            WidgetContent.PopStyle.THUNDER -> context.getColor(R.color.widget_amber)
-            WidgetContent.PopStyle.SNOW -> context.getColor(R.color.widget_snow)
-            WidgetContent.PopStyle.RAIN -> context.getColor(R.color.widget_cyan)
-            WidgetContent.PopStyle.CHANCE, WidgetContent.PopStyle.NONE -> themedDim(context, R.color.widget_cyan_dim)
+        private fun popColor(pal: Palette, style: WidgetContent.PopStyle): Int = when (style) {
+            WidgetContent.PopStyle.THUNDER -> pal.color(R.color.widget_amber)
+            WidgetContent.PopStyle.SNOW -> pal.color(R.color.widget_snow)
+            WidgetContent.PopStyle.RAIN -> pal.color(R.color.widget_cyan)
+            WidgetContent.PopStyle.CHANCE, WidgetContent.PopStyle.NONE -> pal.dim(R.color.widget_cyan_dim)
         }
 
         /** 0 = Sunday .. 6 = Saturday, for [Texts.dowLong]; null if the date doesn't parse. */
@@ -586,7 +641,6 @@ class WeatherWidgetProvider : AppWidgetProvider() {
                 sp(rv, TEMP_IDS[i], m.dayTempSp)
             }
 
-            sp(rv, R.id.widget_meta_line, m.metaSp)
             sp(rv, R.id.widget_footer_joke, m.footerSp)
             sp(rv, R.id.widget_status_banner, m.bannerSp)
 
@@ -671,20 +725,42 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             // "offline, no cache" placeholder states respect the chosen look.
             val theme = WidgetPrefs.getTheme(context, appWidgetId)
             val transparency = WidgetPrefs.getTransparency(context, appWidgetId)
-            rv.setInt(R.id.widget_root, "setBackgroundResource", transparency.drawableRes)
 
-            fun applyThemeColors(primaryColorRes: Int, dimColorRes: Int) {
-                rv.setTextColor(R.id.widget_header_label, themedDim(context, dimColorRes))
-                rv.setTextColor(R.id.widget_cfg_btn, themedDim(context, dimColorRes))
-                // These two take their (quiet green) colour from the layout; with
-                // high contrast on, they are re-set to a shade that reads.
-                if (CapacitorStorage.highContrast(context)) {
-                    rv.setTextColor(R.id.widget_meta_line, themedDim(context, R.color.widget_green_dim))
-                    rv.setTextColor(R.id.widget_sync_line, themedDim(context, R.color.widget_green_dim))
+            // Light or dark: for AUTO, by whether it is day at the place — known from the
+            // cached forecast until the real one is in hand (see below).
+            var pal = paletteFor(context, appWidgetId, WidgetPrefs.getCachedWeather(context, appWidgetId)?.isDay)
+
+            /** Everything the appearance changes that is not drawn per render: fills, hairlines, the
+             * fixed-colour views of the layout, and the theme's own colours on top. */
+            fun applyLook(primaryColorRes: Int, dimColorRes: Int) {
+                rv.setInt(
+                    R.id.widget_root,
+                    "setBackgroundResource",
+                    if (pal.paper) transparency.paperDrawableRes else transparency.drawableRes,
+                )
+                rv.setInt(R.id.widget_rule, "setBackgroundColor", if (pal.paper) 0x552B3B2B else context.getColor(R.color.widget_hud_line))
+                DIVIDER_IDS.forEach {
+                    if (pal.paper) rv.setInt(it, "setBackgroundColor", 0x332B3B2B)
+                    else rv.setInt(it, "setBackgroundResource", R.drawable.widget_grid_divider)
                 }
-                rv.setTextColor(R.id.widget_cursor, context.getColor(primaryColorRes))
-                rv.setTextColor(R.id.widget_now_line, context.getColor(primaryColorRes))
-                DAY_LABEL_IDS.forEach { rv.setTextColor(it, context.getColor(primaryColorRes)) }
+                rv.setInt(
+                    R.id.widget_col0,
+                    "setBackgroundResource",
+                    if (pal.paper) R.drawable.widget_today_col_paper else R.drawable.widget_today_col,
+                )
+                rv.setInt(R.id.widget_status_banner, "setBackgroundResource", bannerBackground(pal))
+                // The refresh glyph is white in the file; ink on paper.
+                rv.setInt(R.id.widget_refresh_btn, "setColorFilter", if (pal.paper) pal.adapt(Color.WHITE) else Color.WHITE)
+                rv.setInt(R.id.widget_online_dot, "setColorFilter", pal.color(R.color.widget_online))
+
+                rv.setTextColor(R.id.widget_header_label, pal.dim(dimColorRes))
+                rv.setTextColor(R.id.widget_cfg_btn, pal.dim(dimColorRes))
+                rv.setTextColor(R.id.widget_hero_unit, pal.dim(R.color.widget_cyan_dim))
+                rv.setTextColor(R.id.widget_sync_line, pal.dim(R.color.widget_green_dim))
+                rv.setTextColor(R.id.widget_footer_joke, pal.color(R.color.widget_amber))
+                rv.setTextColor(R.id.widget_cursor, pal.color(primaryColorRes))
+                rv.setTextColor(R.id.widget_now_line, pal.color(primaryColorRes))
+                DAY_LABEL_IDS.forEach { rv.setTextColor(it, pal.color(primaryColorRes)) }
             }
 
             // WidgetTheme.AUTO_HEALTH's real color depends on live weather data
@@ -694,9 +770,9 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             // recompute for real once weather data is available (see the
             // `theme == WidgetTheme.AUTO_HEALTH` block after the weather fetch).
             if (theme == WidgetTheme.AUTO_HEALTH) {
-                applyThemeColors(WidgetTheme.PHOSPHOR_GREEN.primaryColorRes, WidgetTheme.PHOSPHOR_GREEN.dimColorRes)
+                applyLook(WidgetTheme.PHOSPHOR_GREEN.primaryColorRes, WidgetTheme.PHOSPHOR_GREEN.dimColorRes)
             } else {
-                applyThemeColors(theme.primaryColorRes, theme.dimColorRes)
+                applyLook(theme.primaryColorRes, theme.dimColorRes)
             }
 
             val online = isOnline(context)
@@ -797,7 +873,7 @@ class WeatherWidgetProvider : AppWidgetProvider() {
                 rv.setViewVisibility(R.id.widget_aqi_line, View.GONE)
                 rv.setViewVisibility(R.id.widget_refresh_spinner, View.GONE)
                 rv.setTextViewText(R.id.widget_status_banner, texts.bannerOfflineNoCache)
-                rv.setTextColor(R.id.widget_status_banner, context.getColor(R.color.widget_offline))
+                rv.setTextColor(R.id.widget_status_banner, pal.color(R.color.widget_offline))
                 rv.setViewVisibility(R.id.widget_status_banner, View.VISIBLE)
                 return rv
             }
@@ -807,12 +883,12 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             when {
                 !online -> {
                     rv.setTextViewText(R.id.widget_status_banner, texts.bannerOfflineCached)
-                    rv.setTextColor(R.id.widget_status_banner, context.getColor(R.color.widget_offline))
+                    rv.setTextColor(R.id.widget_status_banner, pal.color(R.color.widget_offline))
                     rv.setViewVisibility(R.id.widget_status_banner, View.VISIBLE)
                 }
                 !isFresh -> {
                     rv.setTextViewText(R.id.widget_status_banner, texts.bannerStale)
-                    rv.setTextColor(R.id.widget_status_banner, context.getColor(R.color.widget_amber))
+                    rv.setTextColor(R.id.widget_status_banner, pal.color(R.color.widget_amber))
                     rv.setViewVisibility(R.id.widget_status_banner, View.VISIBLE)
                 }
                 else -> rv.setViewVisibility(R.id.widget_status_banner, View.GONE)
@@ -842,15 +918,10 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             // comes back unchanged. The cache above keeps the raw fetch.
             weather = weather.rebasedTo(System.currentTimeMillis())
 
-            // Now that real weather data (including this refresh's best-effort AQI)
-            // is available, resolve WidgetTheme.AUTO_HEALTH's actual color — this
-            // overwrites the green fallback [applyThemeColors] call applied above,
-            // same "last RemoteViews call before .apply() wins" pattern used
-            // elsewhere in this function (e.g. widget_aqi_line's text/visibility).
-            if (theme == WidgetTheme.AUTO_HEALTH) {
-                val healthTheme = computeHealthTheme(weather)
-                applyThemeColors(healthTheme.primaryColorRes, healthTheme.dimColorRes)
-            }
+            // The real day/night is known now: an AUTO widget may flip here.
+            pal = paletteFor(context, appWidgetId, weather.isDay)
+            val lookTheme = if (theme == WidgetTheme.AUTO_HEALTH) computeHealthTheme(weather) else theme
+            applyLook(lookTheme.primaryColorRes, lookTheme.dimColorRes)
 
             // Decide what to say first, then size the widget for exactly that —
             // see WidgetContent for the "show the exceptions" rules and
@@ -887,11 +958,11 @@ class WeatherWidgetProvider : AppWidgetProvider() {
                 val dayLabel = if (i == 0) content.firstDayLabel else dowAbbrev(entry.date, texts)
                 val kind = Wmo.wmoToKind(entry.weatherCode)
                 rv.setTextViewText(DAY_LABEL_IDS[i], dayLabel)
-                rv.setImageViewBitmap(ICON_IDS[i], WidgetGraphics.icon(context, kind, iconPx, frame))
+                rv.setImageViewBitmap(ICON_IDS[i], WidgetGraphics.icon(context, kind, iconPx, frame, pal.paper))
                 rv.setTextViewText(
                     TEMP_IDS[i],
-                    if (metrics.showTempPair) tempSpannable(context, entry.tempMax, entry.tempMin)
-                    else compactTempSpannable(context, entry.tempMax),
+                    if (metrics.showTempPair) tempSpannable(pal, entry.tempMax, entry.tempMin)
+                    else compactTempSpannable(pal, entry.tempMax),
                 )
                 // Blank rather than hidden for a day below the threshold: the
                 // row exists because *some* day merits a figure, and the four
@@ -903,7 +974,7 @@ class WeatherWidgetProvider : AppWidgetProvider() {
                         context,
                         PixelFont.render(
                             popRow[i],
-                            popColor(context, content.dayPopStyle[i]),
+                            popColor(pal, content.dayPopStyle[i]),
                             scale = popScale,
                             heightPx = popHeightPx,
                         ),
@@ -940,7 +1011,13 @@ class WeatherWidgetProvider : AppWidgetProvider() {
 
             // widget_footer_comment stays permanently GONE/0dp (WidgetMock4x2.tsx
             // never had it; id kept only for RemoteViews-action compatibility).
-            content.metaLine?.let { rv.setTextViewText(R.id.widget_meta_line, it) }
+            // The meta line is a picture (icons and values in the pixel font), so a
+            // widget too narrow for even one readout simply has none.
+            if (content.metaReadouts.isNotEmpty()) {
+                val meta = metaBitmap(context, content.metaReadouts, metrics, pal)
+                if (meta != null) rv.setImageViewBitmap(R.id.widget_meta_line, meta)
+                else rv.setViewVisibility(R.id.widget_meta_line, View.GONE)
+            }
 
             // Hero: icon, big current temperature, and one line under it — the
             // rain sentence when there's rain coming, the condition otherwise.
@@ -948,7 +1025,7 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             val isNight = !weather.isDay
             val nowIconKind = if (isNight && (kind0 == "sun" || kind0 == "partly")) "moon" else kind0
             val nowIconPx = dpToPx(context, metrics.heroIconDp)
-            rv.setImageViewBitmap(R.id.widget_now_icon, WidgetGraphics.icon(context, nowIconKind, nowIconPx, frame))
+            rv.setImageViewBitmap(R.id.widget_now_icon, WidgetGraphics.icon(context, nowIconKind, nowIconPx, frame, pal.paper))
 
             rv.setTextViewText(
                 R.id.widget_hero_temp,
@@ -956,7 +1033,7 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             )
             rv.setTextColor(
                 R.id.widget_hero_temp,
-                if (dimmed) themedDim(context, R.color.widget_cyan_dim) else context.getColor(R.color.widget_cyan),
+                heroTempColor(pal, weather.currentTemperature, dimmed),
             )
             rv.setTextViewText(R.id.widget_now_line, content.heroLine)
 
@@ -964,7 +1041,7 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             // against it (replaced the per-day range bars).
             val curveBitmap = if (metrics.showCurve && content.showCurve) {
                 val innerWidthPx = dpToPx(context, (metrics.widthDp - 2 * metrics.padDp))
-                WidgetGraphics.tempCurve(context, innerWidthPx, dpToPx(context, metrics.curveHeightDp), weather.hourly)
+                WidgetGraphics.tempCurve(context, innerWidthPx, dpToPx(context, metrics.curveHeightDp), weather.hourly, weather.daily, pal)
             } else {
                 null
             }
@@ -997,7 +1074,7 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             val next4Pops = days.map { it.precipitationProbabilityMax }
             val maxPop = next4Pops.maxOrNull() ?: 0
             val hasRain = next4Pops.any { it >= 50 }
-            val sparkColor = context.getColor(if (hasRain) R.color.widget_amber else R.color.widget_cyan)
+            val sparkColor = pal.color(if (hasRain) R.color.widget_amber else R.color.widget_cyan)
             rv.setTextViewText(R.id.widget_sparkline, popSparkline(next4Pops))
             rv.setTextColor(R.id.widget_sparkline, sparkColor)
             rv.setTextViewText(R.id.widget_pop_max, "▽ $maxPop%")
@@ -1009,7 +1086,7 @@ class WeatherWidgetProvider : AppWidgetProvider() {
                 val colorRes = aqiLabelAndColor(aqi).second
                 val text = "AQI $aqi · ${aqiShortLabel(aqi, texts)}"
                 val span = SpannableString(text)
-                span.setSpan(ForegroundColorSpan(context.getColor(colorRes)), 0, text.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                span.setSpan(ForegroundColorSpan(pal.adapt(context.getColor(colorRes))), 0, text.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
                 rv.setTextViewText(R.id.widget_aqi_line, span)
                 rv.setViewVisibility(R.id.widget_aqi_line, View.VISIBLE)
             } else {
@@ -1039,13 +1116,22 @@ class WeatherWidgetProvider : AppWidgetProvider() {
                         context,
                         dpToPx(context, metrics.widthDp),
                         dpToPx(context, metrics.heightDp),
-                        context.getColor(primaryRes),
+                        pal.color(primaryRes),
                         city.name,
                         grid,
                         quiet = CapacitorStorage.highContrast(context),
                     ),
                 )
                 rv.setViewVisibility(R.id.widget_backdrop, View.VISIBLE)
+            } else if (WidgetPrefs.getBackdrop(context, appWidgetId) == WidgetBackdrop.SCENE) {
+                // The weather scene: rain, snow, a storm, or stars. Nothing for a calm day.
+                val scene = sceneBitmap(context, weather, city.name, metrics.widthDp, metrics.heightDp, frame, pal)
+                if (scene != null) {
+                    rv.setImageViewBitmap(R.id.widget_backdrop, scene)
+                    rv.setViewVisibility(R.id.widget_backdrop, View.VISIBLE)
+                } else {
+                    rv.setViewVisibility(R.id.widget_backdrop, View.GONE)
+                }
             } else {
                 rv.setViewVisibility(R.id.widget_backdrop, View.GONE)
             }

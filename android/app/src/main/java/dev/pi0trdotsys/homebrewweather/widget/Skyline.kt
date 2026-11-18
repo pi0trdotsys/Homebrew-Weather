@@ -1,7 +1,5 @@
 package dev.pi0trdotsys.homebrewweather.widget
 
-import kotlin.random.Random
-
 /**
  * A pixel skyline made from nothing but the city's name — the widget background
  * for flat country, where contour lines would only trace noise in the elevation
@@ -25,7 +23,7 @@ object Skyline {
      */
     fun buildings(seed: String, widthUnits: Int, maxHeightUnits: Int): List<Building> {
         if (widthUnits <= 0 || maxHeightUnits < 4) return emptyList()
-        val rnd = Random(seed.lowercase().hashCode())
+        val rnd = Mulberry32(seed.lowercase().hashCode())
         val out = ArrayList<Building>()
         var x = 0
         while (x < widthUnits) {
@@ -44,4 +42,29 @@ object Skyline {
         }
         return out
     }
+}
+
+/**
+ * The pseudo-random source of the skyline: Mulberry32, a few lines that behave the
+ * same in every language — which is the point. Kotlin's own `Random` can't be
+ * reproduced on the web, and the dashboard draws the same skyline for a city as the
+ * widget does (src/lib/skyline.ts; testdata/parity/skyline.json pins them together).
+ * The seed is the name's `String.hashCode()` (UTF-16 code units, 32-bit).
+ */
+internal class Mulberry32(seed: Int) {
+    private var state = seed
+
+    /** The next value in [0, 1). */
+    fun nextDouble(): Double {
+        state += 0x6D2B79F5
+        var t = state
+        t = (t xor (t ushr 15)) * (t or 1)
+        t = t xor (t + (t xor (t ushr 7)) * (t or 61))
+        return ((t xor (t ushr 14)).toLong() and 0xFFFFFFFFL) / 4294967296.0
+    }
+
+    /** An integer in [from, until). */
+    fun nextInt(from: Int, until: Int): Int = from + Math.floor(nextDouble() * (until - from)).toInt()
+
+    fun nextBoolean(): Boolean = nextDouble() < 0.5
 }

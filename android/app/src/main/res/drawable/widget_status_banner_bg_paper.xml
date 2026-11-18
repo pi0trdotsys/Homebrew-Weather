@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The status banner chip on the paper appearance: paper with an ink hairline. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android" android:shape="rectangle">
+    <solid android:color="#EBF3EFE2" />
+    <stroke android:width="1px" android:color="#882B3B2B" />
+    <corners android:radius="3dp" />
+</shape>

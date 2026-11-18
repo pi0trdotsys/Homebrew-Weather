@@ -59,4 +59,27 @@ object HighContrast {
         }
         return primary or (0xFF shl 24)
     }
+
+    /**
+     * [color] itself if it already reaches [minRatio] against [background]; otherwise
+     * the nearest darker shade of the same hue that does (RGB scaled toward black in
+     * 5% steps), or black if none does. The way a colour built for a dark widget
+     * becomes legible ink on a light one: a cyan that is 17:1 on near-black is under
+     * 2:1 on paper, and this keeps its hue while it makes it readable.
+     */
+    fun darkenToContrast(color: Int, background: Int, minRatio: Double): Int {
+        if (contrast(color, background) >= minRatio) return color or (0xFF shl 24)
+        var f = 0.95
+        while (f > 0.0) {
+            val c = scale(color, f)
+            if (contrast(c, background) >= minRatio) return c
+            f -= 0.05
+        }
+        return 0xFF000000.toInt()
+    }
+
+    private fun scale(color: Int, f: Double): Int {
+        fun ch(shift: Int) = (((color shr shift) and 0xFF) * f).toInt().coerceIn(0, 255)
+        return (0xFF shl 24) or (ch(16) shl 16) or (ch(8) shl 8) or ch(0)
+    }
 }

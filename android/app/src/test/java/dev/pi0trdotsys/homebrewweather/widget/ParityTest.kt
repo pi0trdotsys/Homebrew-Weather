@@ -28,17 +28,26 @@ class ParityTest {
         assertTrue("fixtures not found at ${it.absolutePath}", it.isDirectory)
     }
 
-    private fun fixture(rule: String): List<JSONObject> {
+    private fun root(rule: String): JSONObject {
         val root = JSONObject(File(dir, "$rule.json").readText())
         assertTrue("rule name in $rule.json", root.getString("rule") == rule)
-        val cases = root.getJSONArray("cases")
+        return root
+    }
+
+    private fun fixture(rule: String): List<JSONObject> {
+        val cases = root(rule).getJSONArray("cases")
         return (0 until cases.length()).map { cases.getJSONObject(it) }.filter { it.optString("only") != "ts" }
     }
 
-    /** Runs [adapter] over every case of [rule] and fails once with all mismatches. */
+    /**
+     * Runs [adapter] over every case of [rule] and fails once with all mismatches.
+     * A fixture with a `"tolerance"` compares its numbers within that (the Kotlin
+     * geometry computes in 32-bit floats, the fixtures were made with doubles).
+     */
     private fun run(rule: String, adapter: (JSONObject) -> Any?) {
         val cases = fixture(rule)
         assertTrue("$rule has cases", cases.isNotEmpty())
+        val tolerance = root(rule).optDouble("tolerance", Double.NaN)
         val failures = cases.mapNotNull { c ->
             val expected = norm(c.get("expect"))
             val actual = try {
@@ -46,7 +55,8 @@ class ParityTest {
             } catch (e: Exception) {
                 return@mapNotNull "  ${c.getString("name")}: threw $e"
             }
-            if (actual == expected) null else "  ${c.getString("name")}\n      expected $expected\n      actual   $actual"
+            val same = if (tolerance.isNaN()) actual == expected else close(actual, expected, tolerance)
+            if (same) null else "  ${c.getString("name")}\n      expected $expected\n      actual   $actual"
         }
         assertTrue("$rule: ${failures.size} of ${cases.size} cases differ\n" + failures.joinToString("\n"), failures.isEmpty())
     }
@@ -62,6 +72,14 @@ class ParityTest {
         is Float -> num(v.toDouble())
         is Number -> num(v.toDouble())
         else -> v
+    }
+
+    /** Normalised values equal, numbers within [tol]. */
+    private fun close(a: Any?, e: Any?, tol: Double): Boolean = when {
+        a is Number && e is Number -> Math.abs(a.toDouble() - e.toDouble()) <= tol
+        a is List<*> && e is List<*> -> a.size == e.size && a.indices.all { close(a[it], e[it], tol) }
+        a is Map<*, *> && e is Map<*, *> -> a.keys == e.keys && a.keys.all { close(a[it], e[it], tol) }
+        else -> a == e
     }
 
     private fun num(d: Double): Any {
@@ -220,6 +238,77 @@ class ParityTest {
             }
             "speech" -> mapOf("minutes" to RainNowcast.roundForSpeech(input.getInt("minutes")))
             "localMinute" -> mapOf("iso" to WeatherApi.localMinuteIso(input.getLong("nowMs"), input.getInt("offsetSeconds")))
+            else -> error("unknown fn in ${c.getString("name")}")
+        }
+    }
+
+    // ------------------------------------------------------------ 7. temperature colour
+
+    @Test
+    fun `temperature colour`() = run("temp-color") { c ->
+        mapOf("hex" to TempColor.hex(c.getJSONObject("input").nan("celsius")))
+    }
+
+    // ------------------------------------------------------------ 8. terrain
+
+    @Test
+    fun `terrain grid helpers`() = run("terrain") { c ->
+        val input = c.getJSONObject("input")
+        when (c.getString("fn")) {
+            "cellKey" -> mapOf("key" to Terrain.cellKey(input.getDouble("lat"), input.getDouble("lon")))
+            "samplePoints" -> {
+                val p = Terrain.samplePoints(input.getDouble("lat"), input.getDouble("lon")).map { listOf(it.first, it.second) }
+                mapOf(
+                    "count" to p.size, "first" to p[0], "second" to p[1], "endOfFirstRow" to p[23], "startOfSecondRow" to p[24],
+                    "middle" to p[150], "last" to p.last(), "sumLat" to p.sumOf { it[0] }, "sumLon" to p.sumOf { it[1] },
+                )
+            }
+            "parseElevations" -> mapOf("elevations" to Terrain.parseElevations(input.getString("json")))
+            "relief" -> {
+                val e = input.getJSONArray("elevation")
+                mapOf("relief" to Terrain.Grid(input.getInt("cols"), input.getInt("rows"), IntArray(e.length()) { e.getInt(it) }).relief)
+            }
+            else -> error("unknown fn in ${c.getString("name")}")
+        }
+    }
+
+    // ------------------------------------------------------------ 9. contours
+
+    private fun floats(a: JSONArray) = FloatArray(a.length()) { a.getDouble(it).toFloat() }
+
+    @Test
+    fun `contour lines`() = run("contours") { c ->
+        val input = c.getJSONObject("input")
+        when (c.getString("fn")) {
+            "upsample" -> Contours.upsample(floats(input.getJSONArray("field")), input.getInt("w"), input.getInt("h"), input.getInt("factor"))
+                .let { (field, w, h) -> mapOf("w" to w, "h" to h, "field" to field.toList()) }
+            "smooth" -> mapOf("field" to Contours.smooth(floats(input.getJSONArray("field")), input.getInt("w"), input.getInt("h")).toList())
+            "segments" -> mapOf(
+                "segments" to Contours.segments(
+                    floats(input.getJSONArray("field")), input.getInt("w"), input.getInt("h"), input.getDouble("level").toFloat(),
+                ).map { listOf(it.x1, it.y1, it.x2, it.y2) },
+            )
+            "niceStep" -> mapOf("step" to Contours.niceStep(input.getDouble("relief").toFloat()))
+            else -> error("unknown fn in ${c.getString("name")}")
+        }
+    }
+
+    // ------------------------------------------------------------ 10. skyline
+
+    @Test
+    fun `skyline`() = run("skyline") { c ->
+        val input = c.getJSONObject("input")
+        when (c.getString("fn")) {
+            "hash" -> mapOf("hash" to input.getString("text").lowercase().hashCode())
+            "prng" -> {
+                val r = Mulberry32(input.getString("text").lowercase().hashCode())
+                mapOf("doubles" to List(input.getInt("count")) { r.nextDouble() })
+            }
+            "buildings" -> mapOf(
+                "buildings" to Skyline.buildings(input.getString("seed"), input.getInt("widthUnits"), input.getInt("maxHeightUnits")).map {
+                    mapOf("x" to it.x, "width" to it.width, "height" to it.height, "windows" to it.windows.map { w -> listOf(w.first, w.second) })
+                },
+            )
             else -> error("unknown fn in ${c.getString("name")}")
         }
     }

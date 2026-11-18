@@ -1,3 +1,4 @@
+import type { CSSProperties } from "react";
 import type { WeatherResponse } from "@/lib/weather-api";
 import { wmoLabelIn, wmoToKind } from "@/lib/wmo";
 import {
@@ -10,7 +11,10 @@ import {
 import { describeNowcast, nowcastFor } from "@/lib/rain-nowcast";
 import { GUST_NOTABLE, UV_NOTABLE, uvBand } from "@/lib/conditions";
 import { useI18n } from "@/lib/i18n";
+import { tempColor, tempColorAlpha } from "@/lib/temp-color";
+import { useCountUp } from "@/hooks/useCountUp";
 import { PixelIcon } from "./PixelIcon";
+import { CityBackdrop } from "./CityBackdrop";
 import { Precipitation, type PrecipitationKind } from "./fx/Precipitation";
 
 /** Feels-like is only information when it disagrees with the thermometer — the
@@ -41,9 +45,27 @@ function gustAheadToday(data: WeatherResponse): number | null {
  * This puts one big number first, one sentence under it, and leaves the full
  * readout to the terminal panel further down.
  */
-export function HeroPanel({ data, nowMs }: { data: WeatherResponse; nowMs: number }) {
+export function HeroPanel({
+  data,
+  nowMs,
+  city,
+  backdrop = false,
+}: {
+  data: WeatherResponse;
+  nowMs: number;
+  /** The place shown: its name and position feed the backdrop, and a change of it replays the count-up. */
+  city?: { name: string; lat: number; lon: number };
+  /** Draw the terrain contours / skyline behind the content (the app-backdrop setting). */
+  backdrop?: boolean;
+}) {
   const { lang, t } = useI18n();
   const c = data.current;
+  const cityKey = city ? `${city.lat.toFixed(2)},${city.lon.toFixed(2)}` : "";
+  const { value: shownTemp, from: countFrom } = useCountUp(c.temperature_2m, cityKey);
+  const finalText = `${Math.round(c.temperature_2m)}°`;
+  // Room for the wider of the number counted from and the one counted to, so the
+  // unit doesn't slide about while the digits run.
+  const reserve = Math.max(finalText.length, `${Math.round(countFrom)}°`.length);
   const baseKind = wmoToKind(c.weather_code);
   const kind = !c.is_day && (baseKind === "sun" || baseKind === "partly") ? "moon" : baseKind;
   // Today's rain only: another day's belongs on its own row in DailyForecast.
@@ -67,14 +89,30 @@ export function HeroPanel({ data, nowMs }: { data: WeatherResponse; nowMs: numbe
 
   return (
     <div className="terminal-box relative isolate flex items-center gap-5 overflow-hidden p-5">
+      {backdrop && city && <CityBackdrop name={city.name} lat={city.lat} lon={city.lon} />}
       <Precipitation kind={falling} />
       <PixelIcon kind={kind} size={88} />
       <div className="min-w-0">
         <div className="flex items-baseline gap-1">
-          <span className="font-display text-6xl leading-none text-[color:var(--cyan)] crt-glow sm:text-7xl">
-            {Math.round(c.temperature_2m)}°
+          {/* The number is coloured by its own value (lib/temp-color.ts, the widget's scale),
+              glow included; it runs up from the last one when a forecast first appears or
+              the city changes. Assistive tech gets the final value at once. */}
+          <span
+            className="temp-glow inline-block text-left font-display text-6xl leading-none tabular-nums sm:text-7xl"
+            style={
+              {
+                color: tempColor(shownTemp),
+                "--glow": tempColorAlpha(shownTemp, 0.6),
+                minWidth: `${reserve}ch`,
+              } as CSSProperties
+            }
+          >
+            <span aria-hidden="true">{Math.round(shownTemp)}°</span>
+            <span className="sr-only">{finalText}C</span>
           </span>
-          <span className="text-lg text-[color:var(--phosphor-dim)]">C</span>
+          <span aria-hidden="true" className="text-lg text-[color:var(--phosphor-dim)]">
+            C
+          </span>
         </div>
         <p
           className={

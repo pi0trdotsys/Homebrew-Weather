@@ -380,6 +380,78 @@
             android:textColor="#4a6a4a"
             android:textSize="11sp" />
 
+        <!-- Per-widget light/dark look: the original dark terminal, warm "paper" for a
+             bright wallpaper, or paper by day and dark by night. -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:fontFamily="monospace"
+            android:text="$ configure widget --appearance"
+            android:textColor="#4a6a4a"
+            android:textSize="13sp" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@+id/appearance_dark_btn"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="0dp"
+                android:layout_marginEnd="4dp"
+                android:layout_weight="1"
+                android:background="#0a0f0a"
+                android:fontFamily="monospace"
+                android:gravity="center"
+                android:padding="10dp"
+                android:text="dark"
+                android:textColor="#33ff66"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/appearance_paper_btn"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="4dp"
+                android:layout_weight="1"
+                android:background="#0a0f0a"
+                android:fontFamily="monospace"
+                android:gravity="center"
+                android:padding="10dp"
+                android:text="paper"
+                android:textColor="#33ff66"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/appearance_auto_btn"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="0dp"
+                android:layout_weight="1"
+                android:background="#0a0f0a"
+                android:fontFamily="monospace"
+                android:gravity="center"
+                android:padding="10dp"
+                android:text="auto"
+                android:textColor="#33ff66"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/appearance_hint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:fontFamily="monospace"
+            android:textColor="#4a6a4a"
+            android:textSize="12sp" />
+
         <!-- Per-widget background: the "city map" (terrain contours, or a skyline
              on flat land), or none. Applies immediately, like the rest. -->
         <TextView
@@ -416,12 +488,28 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="4dp"
+                android:layout_marginEnd="4dp"
                 android:layout_weight="1"
                 android:background="#0a0f0a"
                 android:fontFamily="monospace"
                 android:gravity="center"
                 android:padding="10dp"
                 android:text="city map"
+                android:textColor="#33ff66"
+                android:textSize="12sp" />
+
+            <TextView
+                android:id="@+id/backdrop_scene_btn"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:layout_marginEnd="0dp"
+                android:layout_weight="1"
+                android:background="#0a0f0a"
+                android:fontFamily="monospace"
+                android:gravity="center"
+                android:padding="10dp"
+                android:text="weather"
                 android:textColor="#33ff66"
                 android:textSize="12sp" />
         </LinearLayout>

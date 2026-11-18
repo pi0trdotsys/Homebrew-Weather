@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The light "paper" fill at ~85% opacity (see WidgetAppearance / WidgetTransparency). Warm paper,
+     a dark-ink hairline border, no HUD grid: a printed card rather than a screen. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="#D9F3EFE2" />
+            <stroke android:width="1dp" android:color="#CC2B3B2B" />
+            <corners android:radius="5dp" />
+        </shape>
+    </item>
+</layer-list>

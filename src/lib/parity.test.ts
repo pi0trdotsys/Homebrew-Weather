@@ -25,10 +25,14 @@ import { sameCity, withCity, type Coords } from "./settings";
 import { wellbeingSituation } from "./wellbeing";
 import { analyseNowcast, localMinuteIso, roundForSpeech } from "./rain-nowcast";
 import { STRINGS } from "./i18n";
+import { tempColor } from "./temp-color";
+import { cellKey, parseElevations, relief, samplePoints } from "./terrain";
+import { niceStep, segments, smooth, upsample } from "./contours";
+import { buildings, Mulberry32, skylineSeed } from "./skyline";
 
 type Json = any; // eslint-disable-line @typescript-eslint/no-explicit-any
 type Case = { name: string; fn?: string; only?: "kotlin" | "ts"; input: Json; expect: Json };
-type Fixture = { rule: string; cases: Case[] };
+type Fixture = { rule: string; tolerance?: number; cases: Case[] };
 
 const DIR = join(import.meta.dir, "../../testdata/parity");
 const fixtures: Fixture[] = readdirSync(DIR)
@@ -39,6 +43,25 @@ const fixtures: Fixture[] = readdirSync(DIR)
 /** Amounts are sums of doubles: compare to 6 decimals, like the Kotlin side. */
 const round6 = (v: unknown): unknown =>
   JSON.parse(JSON.stringify(v, (_k, x) => (typeof x === "number" ? Math.round(x * 1e6) / 1e6 : x)));
+
+/** Deep equality where numbers may differ by [tol] (the Kotlin side computes in 32-bit floats). */
+function expectClose(actual: unknown, expected: unknown, tol: number, path = "$"): void {
+  if (typeof expected === "number" && typeof actual === "number") {
+    if (Math.abs(actual - expected) > tol)
+      throw new Error(`${path}: ${actual} is not within ${tol} of ${expected}`);
+  } else if (Array.isArray(expected) && Array.isArray(actual)) {
+    if (actual.length !== expected.length)
+      throw new Error(`${path}: length ${actual.length}, expected ${expected.length}`);
+    expected.forEach((e, i) => expectClose(actual[i], e, tol, `${path}[${i}]`));
+  } else if (expected && typeof expected === "object" && actual && typeof actual === "object") {
+    const keys = Object.keys(expected as object);
+    expect(Object.keys(actual as object).sort()).toEqual([...keys].sort());
+    for (const k of keys)
+      expectClose((actual as Json)[k], (expected as Json)[k], tol, `${path}.${k}`);
+  } else {
+    expect(actual).toEqual(expected);
+  }
+}
 
 /** A forecast with only what the rules read filled in. */
 function forecast(over: {
@@ -194,6 +217,47 @@ const nowcast: Record<string, (i: Json) => Json> = {
   localMinute: (i) => ({ iso: localMinuteIso(i.nowMs, i.offsetSeconds) }),
 };
 
+const terrain: Record<string, (i: Json) => Json> = {
+  cellKey: (i) => ({ key: cellKey(i.lat, i.lon) }),
+  samplePoints(i) {
+    const p = samplePoints(i.lat, i.lon);
+    return {
+      count: p.length,
+      first: p[0],
+      second: p[1],
+      endOfFirstRow: p[23],
+      startOfSecondRow: p[24],
+      middle: p[150],
+      last: p[p.length - 1],
+      sumLat: p.reduce((a, q) => a + q[0], 0),
+      sumLon: p.reduce((a, q) => a + q[1], 0),
+    };
+  },
+  parseElevations: (i) => ({ elevations: parseElevations(i.json) }),
+  relief: (i) => ({ relief: relief(i) }),
+};
+
+const contours: Record<string, (i: Json) => Json> = {
+  upsample(i) {
+    const r = upsample(i.field, i.w, i.h, i.factor);
+    return { w: r.w, h: r.h, field: r.data };
+  },
+  smooth: (i) => ({ field: smooth(i.field, i.w, i.h) }),
+  segments: (i) => ({
+    segments: segments(i.field, i.w, i.h, i.level).map((s) => [s.x1, s.y1, s.x2, s.y2]),
+  }),
+  niceStep: (i) => ({ step: niceStep(i.relief) }),
+};
+
+const skyline: Record<string, (i: Json) => Json> = {
+  hash: (i) => ({ hash: skylineSeed(i.text) }),
+  prng(i) {
+    const r = new Mulberry32(skylineSeed(i.text));
+    return { doubles: Array.from({ length: i.count }, () => r.nextDouble()) };
+  },
+  buildings: (i) => ({ buildings: buildings(i.seed, i.widthUnits, i.maxHeightUnits) }),
+};
+
 const adapters: Record<string, (c: Case) => Json> = {
   "rain-window": (c) => rainWindow[c.fn!](c.input),
   "severe-weather": (c) => severe(c.input),
@@ -201,6 +265,10 @@ const adapters: Record<string, (c: Case) => Json> = {
   "saved-cities": (c) => citiesAdapter(c.input),
   "wellbeing-situation": (c) => wellbeing(c.input),
   "rain-nowcast": (c) => nowcast[c.fn!](c.input),
+  "temp-color": (c) => ({ hex: tempColor(c.input.celsius) }),
+  terrain: (c) => terrain[c.fn!](c.input),
+  contours: (c) => contours[c.fn!](c.input),
+  skyline: (c) => skyline[c.fn!](c.input),
 };
 
 // -------------------------------------------------------------------- tests
@@ -225,7 +293,8 @@ for (const f of fixtures) {
       if (c.only === "kotlin") continue;
       test(c.name, () => {
         const actual = adapters[f.rule](c);
-        expect(round6(actual)).toEqual(round6(c.expect));
+        if (f.tolerance !== undefined) expectClose(round6(actual), c.expect, f.tolerance);
+        else expect(round6(actual)).toEqual(round6(c.expect));
       });
     }
   });

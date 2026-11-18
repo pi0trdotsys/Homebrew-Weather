@@ -11,6 +11,9 @@ import {
   saveFooterSource,
   loadHighContrastChoice,
   saveHighContrast,
+  loadAppBackdrop,
+  saveAppBackdrop,
+  DEFAULT_APP_BACKDROP,
   DEFAULT_NOTIFICATION_SETTINGS,
   DEFAULT_TONE,
   DEFAULT_FOOTER_SOURCE,
@@ -176,6 +179,7 @@ function Settings() {
   const [footerSource, setFooterSource] = useState<FooterSource>(DEFAULT_FOOTER_SOURCE);
   // null = never chosen: the system's "more contrast" setting decides.
   const [contrastChoice, setContrastChoice] = useState<boolean | null>(null);
+  const [backdrop, setBackdrop] = useState(DEFAULT_APP_BACKDROP);
   const { status: widget } = useWidgetStatus();
   const [loaded, setLoaded] = useState(false);
   const [testState, setTestState] = useState<string | null>(null);
@@ -187,12 +191,14 @@ function Settings() {
       loadTone(),
       loadFooterSource(),
       loadHighContrastChoice(),
-    ]).then(([i, n, t, f, c]) => {
+      loadAppBackdrop(),
+    ]).then(([i, n, t, f, c, b]) => {
       setInterval(i);
       setNotif(n);
       setTone(t);
       setFooterSource(f);
       setContrastChoice(c);
+      setBackdrop(b);
       setLoaded(true);
     });
   }, []);
@@ -220,6 +226,11 @@ function Settings() {
     setContrastChoice(on);
     applyContrast(on);
     void saveHighContrast(on).then(refreshWidgets);
+  };
+
+  const changeBackdrop = (on: boolean) => {
+    setBackdrop(on);
+    void saveAppBackdrop(on);
   };
 
   const changeLang = (l: Lang) => {
@@ -531,6 +542,12 @@ function Settings() {
           <p className="px-1 pt-2 text-[10px] uppercase tracking-widest text-[color:var(--phosphor-dim)]">
             {t.contrastHint}
           </p>
+          <div className="mt-3">
+            <Toggle label={t.backdropToggle} checked={backdrop} onChange={changeBackdrop} />
+            <p className="px-1 pt-2 text-[10px] uppercase tracking-widest text-[color:var(--phosphor-dim)]">
+              {t.backdropHint}
+            </p>
+          </div>
         </div>
 
         <div>

@@ -97,6 +97,9 @@ interface Texts {
     /** "od 18.11 19:00 do 19.11 01:00" — [from] and [to] are local ISO times. */
     fun officialValidity(from: String, to: String): String
 
+    /** "za 40 min" / "in 40 min": the time part of a sun readout, which the icon introduces. */
+    fun inMinutes(min: Int): String
+
     /** "zachód za 40 min" — the sun about to set or rise, on the widget's meta line. */
     fun sunsetIn(min: Int): String
     fun sunriseIn(min: Int): String
@@ -203,6 +206,7 @@ interface Texts {
     fun cfgPlaceAdded(name: String): String
     val cfgPlacesFull: String
     fun cfgBackdropHint(b: WidgetBackdrop): String
+    fun cfgAppearanceHint(a: WidgetAppearance): String
 
     // ---- saved cities and confirmation toasts on the setup screen ---------------------
     val cfgSavedHeader: String
@@ -309,6 +313,7 @@ object PlTexts : Texts {
     override fun officialTitle(event: String, degree: Int) = "Ostrzeżenie IMGW, $degree. stopnia: ${event.lowercase()}"
     override fun officialValidity(from: String, to: String) = "od ${shortDateTime(from)} do ${shortDateTime(to)}"
 
+    override fun inMinutes(min: Int) = "za $min min"
     override fun sunsetIn(min: Int) = "zachód za $min min"
     override fun sunriseIn(min: Int) = "wschód za $min min"
 
@@ -473,6 +478,13 @@ object PlTexts : Texts {
     override fun cfgBackdropHint(b: WidgetBackdrop) = when (b) {
         WidgetBackdrop.NONE -> "// bez tła"
         WidgetBackdrop.CITY -> "// poziomice terenu wokół miasta, a na równinie pikselowy skyline"
+        WidgetBackdrop.SCENE -> "// deszcz, śnieg, burza i gwiazdy w tle, tylko gdy coś się dzieje"
+    }
+
+    override fun cfgAppearanceHint(a: WidgetAppearance) = when (a) {
+        WidgetAppearance.DARK -> "// ciemny terminal"
+        WidgetAppearance.PAPER -> "// jasny papier, dla jasnej tapety"
+        WidgetAppearance.AUTO -> "// papier za dnia, ciemny nocą"
     }
 
     override val cfgSavedHeader = "// miasta z aplikacji — dotknij, aby wybrać"
@@ -571,6 +583,7 @@ object EnTexts : Texts {
     override fun officialTitle(event: String, degree: Int) = "IMGW warning, level $degree: ${event.lowercase()}"
     override fun officialValidity(from: String, to: String) = "from ${shortDateTime(from)} to ${shortDateTime(to)}"
 
+    override fun inMinutes(min: Int) = "in $min min"
     override fun sunsetIn(min: Int) = "sunset in $min min"
     override fun sunriseIn(min: Int) = "sunrise in $min min"
 
@@ -735,6 +748,13 @@ object EnTexts : Texts {
     override fun cfgBackdropHint(b: WidgetBackdrop) = when (b) {
         WidgetBackdrop.NONE -> "// no background"
         WidgetBackdrop.CITY -> "// terrain contours around the city, or a pixel skyline on flat land"
+        WidgetBackdrop.SCENE -> "// rain, snow, a storm and stars behind the numbers, only when something is going on"
+    }
+
+    override fun cfgAppearanceHint(a: WidgetAppearance) = when (a) {
+        WidgetAppearance.DARK -> "// dark terminal"
+        WidgetAppearance.PAPER -> "// light paper, for a bright wallpaper"
+        WidgetAppearance.AUTO -> "// paper by day, dark at night"
     }
 
     override val cfgSavedHeader = "// cities from the app — tap to pick"

@@ -53,11 +53,17 @@ enum class WidgetTheme(val storageId: Int, val label: String, val primaryColorRe
  * corner geometry are identical across all of them — see the
  * widget_background_*.xml comments.
  */
-enum class WidgetTransparency(val storageId: Int, val label: String, val drawableRes: Int) {
-    OPAQUE(0, "Opaque (100%)", R.drawable.widget_background_100),
-    HIGH(1, "High (85%)", R.drawable.widget_background_85),
-    MEDIUM(2, "Medium (60%)", R.drawable.widget_background_60),
-    LOW(3, "Low (35%)", R.drawable.widget_background_35);
+enum class WidgetTransparency(
+    val storageId: Int,
+    val label: String,
+    val drawableRes: Int,
+    /** The same fill for the light "paper" appearance (see [WidgetAppearance]). */
+    val paperDrawableRes: Int,
+) {
+    OPAQUE(0, "Opaque (100%)", R.drawable.widget_background_100, R.drawable.widget_background_paper_100),
+    HIGH(1, "High (85%)", R.drawable.widget_background_85, R.drawable.widget_background_paper_85),
+    MEDIUM(2, "Medium (60%)", R.drawable.widget_background_60, R.drawable.widget_background_paper_60),
+    LOW(3, "Low (35%)", R.drawable.widget_background_35, R.drawable.widget_background_paper_35);
 
     companion object {
         val DEFAULT = OPAQUE
@@ -69,15 +75,46 @@ enum class WidgetTransparency(val storageId: Int, val label: String, val drawabl
 /**
  * Per-widget-instance background picture, independent of [WidgetTheme] and
  * [WidgetTransparency]. [CITY] is the "city map": contour lines of the terrain
- * around the place, or a skyline where the land is flat (see [WidgetBackdropArt]).
+ * around the place, or a skyline where the land is flat (see [WidgetBackdropArt]);
+ * [SCENE] is the weather picture — rain, snow, a storm, a starry night (see [WidgetScene]).
  */
 enum class WidgetBackdrop(val storageId: Int) {
     NONE(0),
-    CITY(1);
+    CITY(1),
+    SCENE(2);
 
     companion object {
         val DEFAULT = NONE
 
         fun fromStorageId(id: Int): WidgetBackdrop = entries.firstOrNull { it.storageId == id } ?: DEFAULT
+    }
+}
+
+/**
+ * Per-widget-instance light or dark look, independent of the accent [WidgetTheme]
+ * and the fill [WidgetTransparency].
+ *
+ * The widget was built dark: cyan, amber and a phosphor green on near-black. On a
+ * bright wallpaper, a translucent dark widget looks like a smudge. [PAPER] is the
+ * other look — ink on warm paper, every colour kept in its hue but darkened until it
+ * reads — and [AUTO] switches between the two with the sun: paper by day, dark by night.
+ * Dark is the default, so no existing widget changes.
+ */
+enum class WidgetAppearance(val storageId: Int) {
+    DARK(0),
+    PAPER(1),
+    AUTO(2);
+
+    /** Whether to draw paper, given whether it is daytime at the place ([isDay] null = not known yet, so dark). */
+    fun isPaper(isDay: Boolean?): Boolean = when (this) {
+        DARK -> false
+        PAPER -> true
+        AUTO -> isDay == true
+    }
+
+    companion object {
+        val DEFAULT = DARK
+
+        fun fromStorageId(id: Int): WidgetAppearance = entries.firstOrNull { it.storageId == id } ?: DEFAULT
     }
 }

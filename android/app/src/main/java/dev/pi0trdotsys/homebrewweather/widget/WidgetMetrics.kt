@@ -71,7 +71,8 @@ data class WidgetMetrics(
     val curveHeightDp: Int,
 
     // footer / meta / banner
-    val metaSp: Float,
+    /** Height of the meta line's picture, dp (see [MetaLineArt]). */
+    val metaRowDp: Float,
     val footerSp: Float,
     val bannerSp: Float,
 
@@ -124,7 +125,6 @@ data class WidgetMetrics(
         val curve: Boolean = true,
         val stats: Boolean = true,
         val heroLineCells: Int = 20,
-        val metaCells: Int = 34,
         /** Longest day label: "dziś" is 4 cells, "jutro" / "today" 5. */
         val dayLabelCells: Int = 4,
     ) {
@@ -405,7 +405,7 @@ data class WidgetMetrics(
                 popRowDp = popRowDp,
                 curveHeightDp = (REF_CURVE * scale).roundToInt().coerceIn(14, 56),
 
-                metaSp = min(10f * scale, innerW / (max(34, rows.metaCells) * MONO_ADVANCE)).coerceAtLeast(6.5f),
+                metaRowDp = REF_META * scale,
                 footerSp = min(11f * scale, innerW / (30f * MONO_ADVANCE)).coerceAtLeast(6.5f),
                 bannerSp = (9f * scale).coerceIn(7f, 14f),
 

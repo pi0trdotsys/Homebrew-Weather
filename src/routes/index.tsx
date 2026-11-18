@@ -5,7 +5,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { HeroPanel } from "@/components/HeroPanel";
 import { SevereBanner } from "@/components/SevereBanner";
 import { StatusLine } from "@/components/StatusLine";
-import { HourlyStrip } from "@/components/HourlyStrip";
+import { HourlyChart } from "@/components/HourlyChart";
+import { ForecastSkeleton } from "@/components/Skeleton";
 import { DailyForecast } from "@/components/DailyForecast";
 import { DayDetail } from "@/components/DayDetail";
 import { TerminalOutput } from "@/components/TerminalOutput";
@@ -38,6 +39,7 @@ import {
   DEFAULT_TONE,
   loadFooterSource,
   DEFAULT_FOOTER_SOURCE,
+  loadAppBackdrop,
   type Tone,
   type FooterSource,
   type RefreshInterval,
@@ -253,6 +255,13 @@ function Index() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view?.current.time, view?.current.weather_code, tone, lang]);
 
+  // The city map behind the hero (settings:app-backdrop). Unknown until read,
+  // which draws nothing rather than flashing it for someone who turned it off.
+  const [backdrop, setBackdrop] = useState<boolean | null>(null);
+  useEffect(() => {
+    loadAppBackdrop().then(setBackdrop);
+  }, []);
+
   // What the footer line shows: the joke above, a well-being tip for the
   // weather, or an event from Wikipedia for today's date (see settings).
   const [footerSource, setFooterSource] = useState<FooterSource>(DEFAULT_FOOTER_SOURCE);
@@ -339,11 +348,7 @@ function Index() {
       {coords && (
         // The relative box the channel-change static is drawn over.
         <div className="relative flex flex-col gap-4">
-          {isLoading && (
-            <div className="terminal-box p-4 text-sm">
-              <span className="blink">▓</span> GET api.open-meteo.com …
-            </div>
-          )}
+          {isLoading && <ForecastSkeleton />}
 
           {error && !data && (
             <div className="terminal-box p-4 text-sm text-[color:var(--crimson)]">
@@ -354,7 +359,12 @@ function Index() {
           {view && (
             <>
               <SevereBanner data={view} />
-              <HeroPanel data={view} nowMs={nowTick} />
+              <HeroPanel
+                data={view}
+                nowMs={nowTick}
+                city={{ name: coords.name, lat: coords.lat, lon: coords.lon }}
+                backdrop={backdrop === true}
+              />
               <StatusLine
                 online={online}
                 fromCache={fromCache}
@@ -366,7 +376,7 @@ function Index() {
               {shownDay && (
                 <DayDetail data={view} date={shownDay} onClose={() => setFocusDay(null)} />
               )}
-              <HourlyStrip data={view} />
+              <HourlyChart data={view} />
               <div className="grid gap-4 lg:grid-cols-2">
                 <DailyForecast data={view} focusDay={shownDay} onFocusDay={setFocusDay} />
                 <TerminalOutput data={view} joke={footerLine} source={footerAttribution} />

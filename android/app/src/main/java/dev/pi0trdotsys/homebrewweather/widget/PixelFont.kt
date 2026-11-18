@@ -30,7 +30,7 @@ object PixelFont {
     const val ROWS = 7
 
     /** Blank columns between glyphs, in font units. */
-    private const val GAP = 1
+    const val GAP = 1
 
     private val GLYPHS: Map<Char, Array<String>> = mapOf(
         ' ' to arrayOf("..", "..", "..", "..", "..", "..", ".."),
@@ -76,12 +76,121 @@ object PixelFont {
         'x' to arrayOf(".....", ".....", "#...#", ".#.#.", "..#..", ".#.#.", "#...#"),
         'y' to arrayOf(".....", "#...#", "#...#", "#...#", ".####", "....#", ".###."),
         'z' to arrayOf(".....", ".....", "#####", "...#.", "..#..", ".#...", "#####"),
+
+        // ---- punctuation the meta line needs ----
+        ':' to arrayOf("..", "#.", "#.", "..", "#.", "#.", ".."),
+        '/' to arrayOf("....#", "....#", "...#.", "..#..", ".#...", "#....", "#...."),
+        ',' to arrayOf("..", "..", "..", "..", "..", ".#", "#."),
+        '.' to arrayOf("..", "..", "..", "..", "..", "##", "##"),
+        '(' to arrayOf("..#", ".#.", "#..", "#..", "#..", ".#.", "..#"),
+        ')' to arrayOf("#..", ".#.", "..#", "..#", "..#", ".#.", "#.."),
+        '!' to arrayOf("#", "#", "#", "#", "#", ".", "#"),
+        '-' to arrayOf("...", "...", "...", "###", "...", "...", "..."),
+        // ---- capitals (UV, IMGW, AQI, city initials) ----
+        'A' to arrayOf(".###.", "#...#", "#...#", "#####", "#...#", "#...#", "#...#"),
+        'B' to arrayOf("####.", "#...#", "#...#", "####.", "#...#", "#...#", "####."),
+        'C' to arrayOf(".###.", "#...#", "#....", "#....", "#....", "#...#", ".###."),
+        'D' to arrayOf("####.", "#...#", "#...#", "#...#", "#...#", "#...#", "####."),
+        'E' to arrayOf("#####", "#....", "#....", "####.", "#....", "#....", "#####"),
+        'F' to arrayOf("#####", "#....", "#....", "####.", "#....", "#....", "#...."),
+        'G' to arrayOf(".###.", "#...#", "#....", "#.###", "#...#", "#...#", ".####"),
+        'H' to arrayOf("#...#", "#...#", "#...#", "#####", "#...#", "#...#", "#...#"),
+        'I' to arrayOf("###", ".#.", ".#.", ".#.", ".#.", ".#.", "###"),
+        'J' to arrayOf("..###", "...#.", "...#.", "...#.", "...#.", "#..#.", ".##.."),
+        'K' to arrayOf("#...#", "#..#.", "#.#..", "##...", "#.#..", "#..#.", "#...#"),
+        'L' to arrayOf("#....", "#....", "#....", "#....", "#....", "#....", "#####"),
+        'M' to arrayOf("#...#", "##.##", "#.#.#", "#.#.#", "#...#", "#...#", "#...#"),
+        'N' to arrayOf("#...#", "##..#", "#.#.#", "#..##", "#...#", "#...#", "#...#"),
+        'O' to arrayOf(".###.", "#...#", "#...#", "#...#", "#...#", "#...#", ".###."),
+        'P' to arrayOf("####.", "#...#", "#...#", "####.", "#....", "#....", "#...."),
+        'Q' to arrayOf(".###.", "#...#", "#...#", "#...#", "#.#.#", "#..#.", ".##.#"),
+        'R' to arrayOf("####.", "#...#", "#...#", "####.", "#.#..", "#..#.", "#...#"),
+        'S' to arrayOf(".####", "#....", "#....", ".###.", "....#", "....#", "####."),
+        'T' to arrayOf("#####", "..#..", "..#..", "..#..", "..#..", "..#..", "..#.."),
+        'U' to arrayOf("#...#", "#...#", "#...#", "#...#", "#...#", "#...#", ".###."),
+        'V' to arrayOf("#...#", "#...#", "#...#", "#...#", "#...#", ".#.#.", "..#.."),
+        'W' to arrayOf("#...#", "#...#", "#...#", "#.#.#", "#.#.#", "##.##", "#...#"),
+        'X' to arrayOf("#...#", "#...#", ".#.#.", "..#..", ".#.#.", "#...#", "#...#"),
+        'Y' to arrayOf("#...#", "#...#", ".#.#.", "..#..", "..#..", "..#..", "..#.."),
+        'Z' to arrayOf("#####", "....#", "...#.", "..#..", ".#...", "#....", "#####"),
+        // ---- Polish lowercase: the accent lives in the two empty rows above the x-height ----
+        'ą' to arrayOf("......", "......", ".###..", "....#.", ".####.", "#...#.", ".#####"),
+        'ć' to arrayOf("...#.", "..#..", ".###.", "#....", "#....", "#...#", ".###."),
+        'ę' to arrayOf("......", "......", ".###..", "#...#.", "#####.", "#.....", ".#####"),
+        'ł' to arrayOf("##..", ".#..", "##..", ".#..", ".#..", ".#..", "###."),
+        'ń' to arrayOf("...#.", "..#..", "#.##.", "##..#", "#...#", "#...#", "#...#"),
+        'ó' to arrayOf("...#.", "..#..", ".###.", "#...#", "#...#", "#...#", ".###."),
+        'ś' to arrayOf("...#.", "..#..", ".####", "#....", ".###.", "....#", "####."),
+        'ź' to arrayOf("...#.", "..#..", "#####", "...#.", "..#..", ".#...", "#####"),
+        'ż' to arrayOf("..#..", ".....", "#####", "...#.", "..#..", ".#...", "#####"),
     )
 
     /** Drawn for any character the font doesn't have. */
     private val MISSING = arrayOf("###", "#.#", "#.#", "#.#", "#.#", "#.#", "###")
 
     fun covers(c: Char): Boolean = c in GLYPHS
+
+    /**
+     * [text] with every character the font lacks swapped for its nearest one:
+     * capital Polish letters and other accented Latin to their base letter, a
+     * non-breaking space to a space, a middle dot or bullet to a space. Anything
+     * else becomes a "?" rather than the box a missing glyph would draw.
+     */
+    fun sanitize(text: String): String = buildString {
+        for (c in text) {
+            append(
+                when {
+                    covers(c) -> c
+                    c == '\u00a0' || c == '·' || c == '•' -> ' '
+                    c == '–' || c == '—' -> '–'
+                    else -> FOLD[c] ?: '?'
+                },
+            )
+        }
+    }
+
+    private val FOLD: Map<Char, Char> = buildMap {
+        "ĄÀÁÂÃÄÅ".forEach { put(it, 'A') }
+        "ĆÇ".forEach { put(it, 'C') }
+        "ĘÈÉÊË".forEach { put(it, 'E') }
+        "ÌÍÎÏ".forEach { put(it, 'I') }
+        "Ł".forEach { put(it, 'L') }
+        "ŃÑ".forEach { put(it, 'N') }
+        "ÓÒÔÕÖ".forEach { put(it, 'O') }
+        "ŚŠ".forEach { put(it, 'S') }
+        "ÙÚÛÜ".forEach { put(it, 'U') }
+        "ŹŻŽ".forEach { put(it, 'Z') }
+        "àáâãäå".forEach { put(it, 'a') }
+        "çč".forEach { put(it, 'c') }
+        "èéêë".forEach { put(it, 'e') }
+        "ìíîï".forEach { put(it, 'i') }
+        "ñ".forEach { put(it, 'n') }
+        "òôõö".forEach { put(it, 'o') }
+        "š".forEach { put(it, 's') }
+        "ùúûü".forEach { put(it, 'u') }
+        "ž".forEach { put(it, 'z') }
+    }
+
+    /** Draws [text] with its top-left at ([x], [y]) on [canvas]; returns the x just past it. */
+    fun draw(canvas: Canvas, text: String, x: Int, y: Int, color: Int, scale: Int): Int {
+        val paint = Paint().apply { this.color = color; isAntiAlias = false }
+        var cx = x
+        for (c in text) {
+            val g = glyph(c)
+            for (row in 0 until ROWS) {
+                val line = g[row]
+                for (col in line.indices) {
+                    if (line[col] == '#') {
+                        val l = (cx + col * scale).toFloat()
+                        val t = (y + row * scale).toFloat()
+                        canvas.drawRect(l, t, l + scale, t + scale, paint)
+                    }
+                }
+            }
+            cx += (g[0].length + GAP) * scale
+        }
+        return cx
+    }
 
     private fun glyph(c: Char): Array<String> = GLYPHS[c] ?: MISSING
 

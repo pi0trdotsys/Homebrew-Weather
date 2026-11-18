@@ -44,6 +44,12 @@ Unit tests:
 cd android && ./gradlew testDebugUnitTest
 ```
 
+Gradle does not treat `testdata/parity` as an input of the test task, so after editing a fixture
+run `./gradlew cleanTestDebugUnitTest testDebugUnitTest` or it may say "up to date".
+The dashboard has the same pieces as the widget: a scrubbable 24 h chart (`HourlyChart`, rain
+columns, night bands, sun markers, temperature colour) and, under *./settings*, a city-contours
+or skyline header (`CityBackdrop`, ports of `Terrain`/`Contours`/`Skyline`).
+
 They cover:
 
 - the widget's content rules;
@@ -78,7 +84,8 @@ Severe warnings are deliberately plain-voiced whatever the tone setting says, an
 storm warning replaces the rain heads-up for that storm rather than doubling it.
 
 What does check them is `testdata/parity/*.json`: one file per rule (`rain-window`, `severe-weather`,
-`on-this-day`, `saved-cities`, `wellbeing-situation`, `rain-nowcast`), each a list of
+`on-this-day`, `saved-cities`, `wellbeing-situation`, `rain-nowcast`, `temp-color`, `terrain`,
+`contours`, `skyline`), each a list of
 `{ name, input, expect }` cases read by **both** `bun test` (`src/lib/parity.test.ts`,
 `rain-nowcast.test.ts`) and the JVM tests (`ParityTest.kt`). Changing a rule means changing its
 fixture; a case one side fails is a real disagreement between the two implementations. A case only
@@ -100,6 +107,27 @@ contour lines (`Contours`, marching squares) where the relief is at least 40 m, 
 made from the city's name (`Skyline`) otherwise — on flat land contours only trace noise in the
 elevation model — and while the grid is still coming. Everything is the theme's colour at low
 alpha, lower with high contrast, rendered at half size so RemoteViews carries little memory.
+
+### Temperature colour, paper appearance, weather scene
+
+- `TempColor` is the one cold-to-hot scale (-15 → #7a9bff, 0 → cyan, 22 → amber, 35 → red, linear
+  between) used for the hero number, the 24 h curve and its labels. The same stops and the same
+  rounding are in the web app, so a number is the same colour on both.
+- `WidgetAppearance` (per widget: dark, paper, auto) decides a `Palette` for one render. Code asks
+  the palette for a colour (`pal.color(R.color.…)`, `pal.dim(…)`, `pal.adapt(…)`) instead of the
+  resource: on paper `HighContrast.darkenToContrast` keeps the hue and darkens it until it reaches
+  4.5:1 against the paper (3:1 for the hero number and fine graphics). Auto is paper while
+  `weather.isDay` and dark otherwise or when unknown. The palette is built per render and passed
+  down, never global; the blink tick builds the same one. Backgrounds are separate drawables
+  (`widget_background_paper_*`), icons have a light colour set (`PixelIcons.LIGHT_COLORS`).
+- `WidgetScene` (the *weather* background, `WidgetBackdrop.SCENE`) draws rain, snow, a storm
+  (rain, a flash on every fourth frame, a bolt) or stars from `Mulberry32` + the shared blink
+  frame. Only precipitation animates, so on any other sky the 60 s tick neither renders nor
+  sends a bitmap for it. Marks are pure data (`marks`, `bolt`) and tested; the drawing is checked
+  in the debug harness.
+- The meta line is a bitmap (`MetaLineArt` + `PixelFont`, which covers the Latin alphabet and
+  Polish letters; anything else is folded or shown as `?`). `ic_launcher_monochrome` is the themed
+  (Android 13+) launcher icon.
 
 ### Rain by the minute, pollen, official warnings
 

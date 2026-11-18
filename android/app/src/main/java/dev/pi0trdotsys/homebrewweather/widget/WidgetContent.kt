@@ -52,6 +52,8 @@ data class WidgetContent(
     val showCurve: Boolean,
     /** Secondary conditions line, or null to hide the row entirely. */
     val metaLine: String?,
+    /** The same readouts as [metaLine], structured for the pixel-icon meta line (empty when there is none). */
+    val metaReadouts: List<Readout>,
     val showFooter: Boolean,
 ) {
     val showStats: Boolean get() = aqi != null || showSync || showSparkline || showPopMax
@@ -64,7 +66,6 @@ data class WidgetContent(
         curve = showCurve,
         stats = showStats,
         heroLineCells = heroLine.length,
-        metaCells = metaLine?.length ?: 0,
         dayLabelCells = firstDayLabel.length,
     )
 
@@ -203,6 +204,11 @@ data class WidgetContent(
                 // restated the two numbers printed above them (on a settled spell
                 // all four came out the same bar). Only when there are enough hours.
                 showCurve = full && weather.hourly.count { !it.temperature.isNaN() } >= WidgetGraphics.CURVE_MIN_POINTS,
+                metaReadouts = when (density) {
+                    WidgetDensity.FULL -> fullMetaReadouts(weather, texts, nowMillis, pollen)
+                    WidgetDensity.STANDARD -> notableReadouts(weather, texts, nowMillis, pollen).take(NOTABLE_MAX)
+                    WidgetDensity.MINIMAL -> emptyList()
+                },
                 metaLine = when (density) {
                     WidgetDensity.FULL -> fullMeta(weather, texts, nowMillis, pollen)
                     WidgetDensity.STANDARD -> notableMeta(weather, texts, nowMillis, pollen)
@@ -231,37 +237,6 @@ data class WidgetContent(
                 .maxOfOrNull { it.precipitationProbability }
         }
 
-        /** Only the secondary conditions that are out of the ordinary, or null.
-         * Most useful first, and at most three: the line is one row wide. */
-        fun notableMeta(
-            weather: WeatherApi.WeatherData,
-            texts: Texts = PlTexts,
-            nowMillis: Long = System.currentTimeMillis(),
-            pollen: Boolean = true,
-        ): String? {
-            val parts = mutableListOf<String>()
-            officialText(weather, texts)?.let { parts += it }
-            sunEventText(weather, texts, nowMillis)?.let { parts += it }
-            if (pollen) pollenText(weather, texts)?.let { parts += it }
-            remainingTodayMm(weather)?.takeIf { it >= RAIN_AMOUNT_NOTABLE_MM }?.let { parts += texts.rainAmount(it) }
-            val gust = weather.windGustKmh
-            if (!gust.isNaN() && gust >= GUST_NOTABLE_KMH) parts += texts.gusts(gust.roundToInt())
-            todayUv(weather)?.takeIf { it >= UV_NOTABLE }?.let { parts += texts.uv(it) }
-            val t = weather.currentTemperature
-            val feels = weather.apparentTemperature
-            if (!t.isNaN() && !feels.isNaN() && abs(feels - t) >= FEELS_DELTA) {
-                parts += texts.feels(feels.roundToInt())
-            }
-            val wind = weather.windSpeedKmh
-            if (!wind.isNaN() && wind >= WINDY_KMH) parts += texts.wind(wind.roundToInt())
-            val hum = weather.humidityPercent
-            when {
-                hum >= HUMID_PCT -> parts += texts.humid(hum)
-                hum in 0..DRY_PCT -> parts += texts.dry(hum)
-            }
-            return parts.take(3).takeIf { it.isNotEmpty() }?.joinToString(" · ")
-        }
-
         /** Rain starts within this many minutes: say it by the minute in the hero. */
         const val NOWCAST_START_WITHIN_MIN = 60
 
@@ -287,19 +262,81 @@ data class WidgetContent(
             }
         }
 
-        /** The most severe official warning, as the meta line says it, or null. */
-        private fun officialText(weather: WeatherApi.WeatherData, texts: Texts): String? =
-            weather.official.firstOrNull()?.let { texts.officialShort(it.event, it.degree) }
+        /** The meta line holds at most this many ordinary readouts: it is one row wide. */
+        const val NOTABLE_MAX = 3
 
-        private fun pollenText(weather: WeatherApi.WeatherData, texts: Texts): String? =
-            Pollen.top(weather.pollen)?.let { texts.pollenShort(it.species, it.veryHigh) }
+        /**
+         * The secondary conditions that are out of the ordinary, most useful first
+         * (official warning, sun, pollen, rain amount, gusts, UV, feels-like, wind,
+         * humidity) — uncapped; [notableMeta] and the widget keep the first
+         * [NOTABLE_MAX].
+         */
+        fun notableReadouts(
+            weather: WeatherApi.WeatherData,
+            texts: Texts = PlTexts,
+            nowMillis: Long = System.currentTimeMillis(),
+            pollen: Boolean = true,
+        ): List<Readout> {
+            val out = mutableListOf<Readout>()
+            officialReadout(weather, texts)?.let { out += it }
+            sunReadout(weather, texts, nowMillis)?.let { out += it }
+            if (pollen) pollenReadout(weather, texts)?.let { out += it }
+            remainingTodayMm(weather)?.takeIf { it >= RAIN_AMOUNT_NOTABLE_MM }?.let { out += rainReadout(it, texts) }
+            val gust = weather.windGustKmh
+            if (!gust.isNaN() && gust >= GUST_NOTABLE_KMH) {
+                out += Readout(MetaGlyph.WIND, "${gust.roundToInt()} km/h", texts.gusts(gust.roundToInt()))
+            }
+            todayUv(weather)?.takeIf { it >= UV_NOTABLE }?.let { out += Readout(MetaGlyph.SUN, "$it", texts.uv(it), MetaTint.AMBER) }
+            val t = weather.currentTemperature
+            val feels = weather.apparentTemperature
+            if (!t.isNaN() && !feels.isNaN() && abs(feels - t) >= FEELS_DELTA) {
+                out += Readout(MetaGlyph.THERMOMETER, "${feels.roundToInt()}°", texts.feels(feels.roundToInt()))
+            }
+            val wind = weather.windSpeedKmh
+            if (!wind.isNaN() && wind >= WINDY_KMH) {
+                out += Readout(MetaGlyph.WIND, "${wind.roundToInt()} km/h", texts.wind(wind.roundToInt()))
+            }
+            val hum = weather.humidityPercent
+            when {
+                hum >= HUMID_PCT -> out += Readout(MetaGlyph.DROP_HOLLOW, "$hum%", texts.humid(hum))
+                hum in 0..DRY_PCT -> out += Readout(MetaGlyph.DROP_HOLLOW, "$hum%", texts.dry(hum))
+            }
+            return out
+        }
 
-        /** "zachód za 40 min" when the sun is about to set or rise, else null. */
-        private fun sunEventText(weather: WeatherApi.WeatherData, texts: Texts, nowMillis: Long): String? {
+        /** Only the secondary conditions that are out of the ordinary, or null. Most useful first, at most [NOTABLE_MAX]. */
+        fun notableMeta(
+            weather: WeatherApi.WeatherData,
+            texts: Texts = PlTexts,
+            nowMillis: Long = System.currentTimeMillis(),
+            pollen: Boolean = true,
+        ): String? = notableReadouts(weather, texts, nowMillis, pollen)
+            .take(NOTABLE_MAX).takeIf { it.isNotEmpty() }?.joinToString(" · ") { it.plain }
+
+        private fun officialReadout(weather: WeatherApi.WeatherData, texts: Texts): Readout? =
+            weather.official.firstOrNull()?.let {
+                Readout(
+                    MetaGlyph.WARNING, "${it.event.lowercase()} ${it.degree}°", texts.officialShort(it.event, it.degree),
+                    if (it.degree >= 3) MetaTint.CRIMSON else MetaTint.AMBER,
+                )
+            }
+
+        private fun pollenReadout(weather: WeatherApi.WeatherData, texts: Texts): Readout? =
+            Pollen.top(weather.pollen)?.let {
+                Readout(
+                    MetaGlyph.POLLEN, texts.pollenName(it.species) + if (it.veryHigh) "!" else "",
+                    texts.pollenShort(it.species, it.veryHigh), MetaTint.AMBER,
+                )
+            }
+
+        private fun sunReadout(weather: WeatherApi.WeatherData, texts: Texts, nowMillis: Long): Readout? {
             val offset = weather.utcOffsetSeconds ?: return null
             val next = SunEvents.next(weather, WeatherApi.localMinuteIso(nowMillis, offset)) ?: return null
-            return SunEvents.text(next, texts)
+            val glyph = if (next.kind == SunEvents.Kind.SUNRISE) MetaGlyph.SUNRISE else MetaGlyph.SUNSET
+            return Readout(glyph, texts.inMinutes(next.minutes), SunEvents.text(next, texts), MetaTint.AMBER)
         }
+
+        private fun rainReadout(mm: Double, texts: Texts) = Readout(MetaGlyph.DROP, texts.mm(mm), texts.rainAmount(mm), MetaTint.CYAN)
 
         /** The local hour of the forecast's first entry, in the location's own frame. */
         private fun localHour(weather: WeatherApi.WeatherData): Int? =
@@ -329,12 +366,46 @@ data class WidgetContent(
             nowMillis: Long = System.currentTimeMillis(),
             pollen: Boolean = true,
         ): String? = listOfNotNull(
-            officialText(weather, texts),
-            sunEventText(weather, texts, nowMillis),
-            pollenText(weather, texts).takeIf { pollen },
+            officialReadout(weather, texts)?.plain,
+            sunReadout(weather, texts, nowMillis)?.plain,
+            pollenReadout(weather, texts)?.plain.takeIf { pollen },
             fullReadouts(weather, texts),
         )
             .takeIf { it.isNotEmpty() }?.joinToString("  ·  ")
+
+        /**
+         * Every readout the full density shows, as icons: the exceptions first
+         * (official warning, sun, pollen), then feels-like, humidity, wind with its
+         * gusts folded in ("42/71 km/h"), UV and the rain still to come. The widget
+         * keeps as many as fit ([MetaLineArt.layout]).
+         */
+        fun fullMetaReadouts(
+            weather: WeatherApi.WeatherData,
+            texts: Texts = PlTexts,
+            nowMillis: Long = System.currentTimeMillis(),
+            pollen: Boolean = true,
+        ): List<Readout> {
+            val out = mutableListOf<Readout>()
+            officialReadout(weather, texts)?.let { out += it }
+            sunReadout(weather, texts, nowMillis)?.let { out += it }
+            if (pollen) pollenReadout(weather, texts)?.let { out += it }
+            weather.apparentTemperature.takeIf { !it.isNaN() }?.roundToInt()?.let {
+                out += Readout(MetaGlyph.THERMOMETER, "$it°", "$it°")
+            }
+            weather.humidityPercent.takeIf { it >= 0 }?.let { out += Readout(MetaGlyph.DROP_HOLLOW, "$it%", "$it%") }
+            val wind = weather.windSpeedKmh.takeIf { !it.isNaN() }?.roundToInt()
+            val gust = weather.windGustKmh.takeIf { !it.isNaN() }?.roundToInt()
+            val windValue = when {
+                wind != null && gust != null && gust > wind -> "$wind/$gust km/h"
+                wind != null -> "$wind km/h"
+                gust != null -> "$gust km/h"
+                else -> null
+            }
+            windValue?.let { out += Readout(MetaGlyph.WIND, it, it) }
+            todayUv(weather)?.let { out += Readout(MetaGlyph.SUN, "$it", "UV $it", MetaTint.AMBER) }
+            remainingTodayMm(weather)?.takeIf { it >= RainWindow.MIN_SHOWN_MM }?.let { out += rainReadout(it, texts) }
+            return out
+        }
 
         private fun fullReadouts(weather: WeatherApi.WeatherData, texts: Texts): String? = texts.fullMeta(
             feels = weather.apparentTemperature.takeIf { !it.isNaN() }?.roundToInt(),

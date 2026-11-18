@@ -49,6 +49,8 @@ class WidgetConfigureActivity : Activity() {
     private lateinit var densityHint: TextView
     private lateinit var backdropButtons: Map<WidgetBackdrop, TextView>
     private lateinit var backdropHint: TextView
+    private lateinit var appearanceButtons: Map<WidgetAppearance, TextView>
+    private lateinit var appearanceHint: TextView
 
     private lateinit var placesSection: View
     private lateinit var placesContainer: LinearLayout
@@ -450,10 +452,33 @@ class WidgetConfigureActivity : Activity() {
         backdropButtons = mapOf(
             WidgetBackdrop.NONE to findViewById<TextView>(R.id.backdrop_none_btn),
             WidgetBackdrop.CITY to findViewById<TextView>(R.id.backdrop_city_btn),
+            WidgetBackdrop.SCENE to findViewById<TextView>(R.id.backdrop_scene_btn),
         )
         backdropHint = findViewById(R.id.backdrop_hint)
         backdropButtons.forEach { (backdrop, btn) -> btn.setOnClickListener { selectBackdrop(backdrop) } }
         highlightSelectedBackdrop(WidgetPrefs.getBackdrop(this, appWidgetId))
+
+        appearanceButtons = mapOf(
+            WidgetAppearance.DARK to findViewById<TextView>(R.id.appearance_dark_btn),
+            WidgetAppearance.PAPER to findViewById<TextView>(R.id.appearance_paper_btn),
+            WidgetAppearance.AUTO to findViewById<TextView>(R.id.appearance_auto_btn),
+        )
+        appearanceHint = findViewById(R.id.appearance_hint)
+        appearanceButtons.forEach { (a, btn) -> btn.setOnClickListener { selectAppearance(a) } }
+        highlightSelectedAppearance(WidgetPrefs.getAppearance(this, appWidgetId))
+    }
+
+    private fun selectAppearance(appearance: WidgetAppearance) {
+        WidgetPrefs.setAppearance(this, appWidgetId, appearance)
+        highlightSelectedAppearance(appearance)
+        pushWidgetUpdate()
+    }
+
+    private fun highlightSelectedAppearance(selected: WidgetAppearance) {
+        appearanceButtons.forEach { (a, btn) ->
+            btn.setBackgroundColor(if (a == selected) THEME_BTN_SELECTED_BG else THEME_BTN_UNSELECTED_BG)
+        }
+        appearanceHint.text = texts.cfgAppearanceHint(selected)
     }
 
     private fun selectBackdrop(backdrop: WidgetBackdrop) {

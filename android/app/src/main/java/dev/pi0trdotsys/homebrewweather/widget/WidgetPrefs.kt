@@ -66,6 +66,7 @@ object WidgetPrefs {
     private fun transparencyKey(appWidgetId: Int) = "transparency_$appWidgetId"
     private fun densityKey(appWidgetId: Int) = "density_$appWidgetId"
     private fun backdropKey(appWidgetId: Int) = "backdrop_$appWidgetId"
+    private fun appearanceKey(appWidgetId: Int) = "appearance_$appWidgetId"
     private fun minWidthKey(appWidgetId: Int) = "min_width_$appWidgetId"
     private fun minHeightKey(appWidgetId: Int) = "min_height_$appWidgetId"
 
@@ -154,6 +155,7 @@ object WidgetPrefs {
             .remove(transparencyKey(appWidgetId))
             .remove(densityKey(appWidgetId))
             .remove(backdropKey(appWidgetId))
+            .remove(appearanceKey(appWidgetId))
             .remove(minWidthKey(appWidgetId))
             .remove(minHeightKey(appWidgetId))
             .apply()
@@ -197,6 +199,17 @@ object WidgetPrefs {
     fun setDensity(context: Context, appWidgetId: Int, density: WidgetDensity) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putInt(densityKey(appWidgetId), density.storageId).apply()
+    }
+
+    /** Per-widget-instance light/dark look (see [WidgetAppearance]); dark unless chosen. */
+    fun getAppearance(context: Context, appWidgetId: Int): WidgetAppearance {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return WidgetAppearance.fromStorageId(prefs.getInt(appearanceKey(appWidgetId), WidgetAppearance.DEFAULT.storageId))
+    }
+
+    fun setAppearance(context: Context, appWidgetId: Int, appearance: WidgetAppearance) {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        prefs.edit().putInt(appearanceKey(appWidgetId), appearance.storageId).apply()
     }
 
     /** Per-widget-instance background (see [WidgetBackdrop]); off unless chosen, so a widget looks as it always did. */
