@@ -311,7 +311,7 @@ checks three things:
 6. Tag it and push the tag:
 
    ```bash
-   git tag v0.6.0-beta.16 && git push origin v0.6.0-beta.16
+   git tag v0.6.0-beta.17 && git push origin v0.6.0-beta.17
    ```
 
    `.github/workflows/release.yml` then runs the tests, builds and signs the APK with the key
