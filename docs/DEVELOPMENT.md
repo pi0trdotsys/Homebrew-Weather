@@ -125,6 +125,14 @@ alpha, lower with high contrast, rendered at half size so RemoteViews carries li
   frame. Only precipitation animates, so on any other sky the 60 s tick neither renders nor
   sends a bitmap for it. Marks are pure data (`marks`, `bolt`) and tested; the drawing is checked
   in the debug harness.
+- `WidgetBackdrop.LIVE` plays the same scene as a loop (`WidgetScene.loop`, `renderLoop`): 8 frames
+  in a `ViewFlipper` (`widget_scene_flipper`, `autoStart`, `flipInterval` 500 ms) that the *launcher*
+  flips while the widget is on screen, so there is no timer, alarm or wake-up of ours. The loop is
+  seamless by construction (drops fall whole grid heights per loop, flakes sway whole cycles, stars
+  glow whole sine periods; a storm flashes once per loop) and tested for that. Each render adds the
+  frames with `RemoteViews.addView`; the bitmaps are half-size, so the whole set stays small. It is
+  opt-in because a flipping widget costs the launcher some battery, and some launchers may ignore
+  `ViewFlipper`; stars are left out on paper, and the scene is empty on a calm day.
 - The meta line is a bitmap (`MetaLineArt` + `PixelFont`, which covers the Latin alphabet and
   Polish letters; anything else is folded or shown as `?`). `ic_launcher_monochrome` is the themed
   (Android 13+) launcher icon.

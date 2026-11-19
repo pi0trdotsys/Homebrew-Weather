@@ -76,12 +76,15 @@ enum class WidgetTransparency(
  * Per-widget-instance background picture, independent of [WidgetTheme] and
  * [WidgetTransparency]. [CITY] is the "city map": contour lines of the terrain
  * around the place, or a skyline where the land is flat (see [WidgetBackdropArt]);
- * [SCENE] is the weather picture — rain, snow, a storm, a starry night (see [WidgetScene]).
+ * [SCENE] is the weather picture — rain, snow, a storm, a starry night (see [WidgetScene]) —
+ * redrawn once a minute while it precipitates; [LIVE] is the same scene as a short looping
+ * animation the launcher plays by itself (see [WidgetScene.loop]).
  */
 enum class WidgetBackdrop(val storageId: Int) {
     NONE(0),
     CITY(1),
-    SCENE(2);
+    SCENE(2),
+    LIVE(3);
 
     companion object {
         val DEFAULT = NONE

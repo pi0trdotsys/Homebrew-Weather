@@ -1009,3 +1009,6 @@ rozmiaru widgetu (`centerCrop`), więc RemoteViews przenosi mało pamięci.
   tyknięcie) lub gwiazdy w pogodną noc; rusza się tylko przy opadach, na tym samym tyknięciu co
   kursor, więc bez dodatkowych wybudzeń.
 - **Ikona aplikacji** ma wariant monochromatyczny (motywowany).
+- **Tło „na żywo”** (`WidgetBackdrop.LIVE`): ta sama scena w pętli 8 klatek co 500 ms, odtwarzana
+  przez launcher (`ViewFlipper`), bez własnego timera ani alarmu. Deszcz spada, burza błyska raz na
+  pętlę, gwiazdy migoczą. Domyślnie wyłączone (większy pobór baterii przez launcher).

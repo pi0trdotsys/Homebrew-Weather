@@ -93,4 +93,70 @@ class WidgetSceneTest {
         assertTrue(bolt.isNotEmpty())
         assertTrue(bolt.all { it.x in 0 until 80 && it.y in 0 until 40 })
     }
+
+    // ---- the looping scene ----
+
+    private val animatedKinds = listOf(WidgetScene.Kind.RAIN, WidgetScene.Kind.SNOW, WidgetScene.Kind.STORM)
+
+    @Test
+    fun `a loop is seamless - the frame after the last is the first`() {
+        for (kind in animatedKinds + WidgetScene.Kind.STARS) {
+            val n = WidgetScene.LOOP_FRAMES
+            assertEquals(
+                "$kind",
+                WidgetScene.loop(kind, 61, 29, 0, n, 5),
+                WidgetScene.loop(kind, 61, 29, n, n, 5),
+            )
+        }
+    }
+
+    @Test
+    fun `consecutive frames of a moving scene differ`() {
+        for (kind in animatedKinds + WidgetScene.Kind.STARS) {
+            for (f in 0 until WidgetScene.LOOP_FRAMES) {
+                assertNotEquals(
+                    "$kind frame $f",
+                    WidgetScene.loop(kind, 61, 29, f, seed = 5),
+                    WidgetScene.loop(kind, 61, 29, f + 1, seed = 5),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `loop marks stay inside the grid`() {
+        for (kind in animatedKinds + WidgetScene.Kind.STARS) {
+            for (f in 0 until WidgetScene.LOOP_FRAMES) {
+                for (m in WidgetScene.loop(kind, 47, 23, f, seed = 11)) {
+                    assertTrue("$kind $f $m", m.x in 0 until 47 && m.y in 0 until 23)
+                    assertTrue(m.alpha in 1..255)
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `the number of drops is the same in every frame`() {
+        for (kind in animatedKinds) {
+            val counts = (0 until WidgetScene.LOOP_FRAMES).map { WidgetScene.loop(kind, 61, 29, it, seed = 2).size }.toSet()
+            assertEquals("$kind", 1, counts.size)
+        }
+    }
+
+    @Test
+    fun `a storm flashes once per loop, with an afterglow`() {
+        val levels = (0 until WidgetScene.LOOP_FRAMES).map { WidgetScene.loopFlash(WidgetScene.Kind.STORM, it) }
+        assertEquals(1, levels.count { it == 2 })
+        assertEquals(1, levels.count { it == 1 })
+        assertEquals(WidgetScene.LOOP_FRAMES - 2, levels.count { it == 0 })
+        for (kind in listOf(WidgetScene.Kind.RAIN, WidgetScene.Kind.SNOW, WidgetScene.Kind.STARS)) {
+            assertTrue((0 until WidgetScene.LOOP_FRAMES).all { WidgetScene.loopFlash(kind, it) == 0 })
+        }
+    }
+
+    @Test
+    fun `no scene, no loop`() {
+        assertTrue(WidgetScene.loop(WidgetScene.Kind.NONE, 61, 29, 1, seed = 1).isEmpty())
+        assertTrue(WidgetScene.loop(WidgetScene.Kind.RAIN, 3, 3, 1, seed = 1).isEmpty())
+    }
 }

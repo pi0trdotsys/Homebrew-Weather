@@ -45,6 +45,7 @@
 20  ─  paper or terminal             light "paper" for a bright wallpaper, or switch with the sun
 21  ─  icons, not words              wind, UV, pollen, rain, warnings as tiny pixel glyphs
 22  ─  the sky behind the numbers    rain streaks, snow, a flash in a storm, stars at night
+23  ─  ...and it can move            a *live* mode loops it (rain falls, storms flash, stars twinkle)
 ```
 
 <br/>

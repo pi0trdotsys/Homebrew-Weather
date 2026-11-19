@@ -328,6 +328,8 @@ class WidgetPreviewDebugActivity : Activity() {
         )
 
         private val SIZES = listOf(
+            Preview("live scene: storm (dark)", 368, 176, data = Data.STORM, backdrop = WidgetBackdrop.LIVE),
+            Preview("live scene: stars", 368, 176, data = Data.CLEAR_NIGHT, backdrop = WidgetBackdrop.LIVE),
             Preview("paper: everything happening", 368, 176, appearance = WidgetAppearance.PAPER, density = WidgetDensity.FULL),
             Preview("paper: ordinary day, minimal", 368, 120, appearance = WidgetAppearance.PAPER, data = Data.CALM, density = WidgetDensity.MINIMAL),
             Preview("auto by day = paper, with places", 368, 176, appearance = WidgetAppearance.AUTO, places = true),

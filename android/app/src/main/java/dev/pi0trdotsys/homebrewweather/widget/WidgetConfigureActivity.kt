@@ -453,6 +453,7 @@ class WidgetConfigureActivity : Activity() {
             WidgetBackdrop.NONE to findViewById<TextView>(R.id.backdrop_none_btn),
             WidgetBackdrop.CITY to findViewById<TextView>(R.id.backdrop_city_btn),
             WidgetBackdrop.SCENE to findViewById<TextView>(R.id.backdrop_scene_btn),
+            WidgetBackdrop.LIVE to findViewById<TextView>(R.id.backdrop_live_btn),
         )
         backdropHint = findViewById(R.id.backdrop_hint)
         backdropButtons.forEach { (backdrop, btn) -> btn.setOnClickListener { selectBackdrop(backdrop) } }

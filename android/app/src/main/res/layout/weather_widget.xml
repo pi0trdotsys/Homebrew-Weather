@@ -45,6 +45,19 @@
         android:scaleType="centerCrop"
         android:visibility="gone" />
 
+    <!-- The animated weather scene (WidgetScene.loop): a handful of pre-drawn frames that the
+         launcher itself flips through every flipInterval ms while the widget is on screen —
+         no timer, alarm or wake-up of ours. Frames are added at render time
+         (R.layout.widget_scene_frame); GONE and empty unless this widget has the live scene. -->
+    <ViewFlipper
+        android:id="@+id/widget_scene_flipper"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:importantForAccessibility="no"
+        android:autoStart="true"
+        android:flipInterval="500"
+        android:visibility="gone" />
+
     <LinearLayout
         android:id="@+id/widget_content"
         android:layout_width="match_parent"

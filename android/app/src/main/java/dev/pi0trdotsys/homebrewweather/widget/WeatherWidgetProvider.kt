@@ -532,6 +532,26 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             )
         }
 
+        /** The live scene's loop for [weather], or no frames when the sky has none. */
+        private fun sceneFrames(
+            context: Context,
+            weather: WeatherApi.WeatherData,
+            cityName: String,
+            widthDp: Int,
+            heightDp: Int,
+            pal: Palette,
+        ): List<Bitmap> {
+            val kind = WidgetScene.kindOf(Wmo.wmoToKind(weather.currentWeatherCode), weather.isDay)
+            return WidgetScene.renderLoop(
+                context,
+                dpToPx(context, widthDp),
+                dpToPx(context, heightDp),
+                kind,
+                cityName.lowercase().hashCode(),
+                pal,
+            )
+        }
+
         private fun bannerBackground(pal: Palette): Int =
             if (pal.paper) R.drawable.widget_status_banner_bg_paper else R.drawable.widget_status_banner_bg
 
@@ -1123,6 +1143,18 @@ class WeatherWidgetProvider : AppWidgetProvider() {
                     ),
                 )
                 rv.setViewVisibility(R.id.widget_backdrop, View.VISIBLE)
+            } else if (WidgetPrefs.getBackdrop(context, appWidgetId) == WidgetBackdrop.LIVE) {
+                // The live scene: frames the launcher flips through by itself (see WidgetScene.loop).
+                rv.setViewVisibility(R.id.widget_backdrop, View.GONE)
+                val frames = sceneFrames(context, weather, city.name, metrics.widthDp, metrics.heightDp, pal)
+                if (frames.isNotEmpty()) {
+                    frames.forEach { bmp ->
+                        val frameView = RemoteViews(context.packageName, R.layout.widget_scene_frame)
+                        frameView.setImageViewBitmap(R.id.widget_scene_frame_img, bmp)
+                        rv.addView(R.id.widget_scene_flipper, frameView)
+                    }
+                    rv.setViewVisibility(R.id.widget_scene_flipper, View.VISIBLE)
+                }
             } else if (WidgetPrefs.getBackdrop(context, appWidgetId) == WidgetBackdrop.SCENE) {
                 // The weather scene: rain, snow, a storm, or stars. Nothing for a calm day.
                 val scene = sceneBitmap(context, weather, city.name, metrics.widthDp, metrics.heightDp, frame, pal)
