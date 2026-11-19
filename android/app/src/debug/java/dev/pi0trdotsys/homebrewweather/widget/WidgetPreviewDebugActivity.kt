@@ -89,6 +89,9 @@ class WidgetPreviewDebugActivity : Activity() {
                         Data.EVENING -> EVENING
                         Data.STORM -> EVENTFUL_DAY.copy(currentWeatherCode = 95)
                         Data.CLEAR_NIGHT -> CALM_DAY.copy(isDay = false, currentWeatherCode = 0)
+                        Data.SUNNY -> CALM_DAY.copy(currentWeatherCode = 0)
+                        Data.OVERCAST -> CALM_DAY.copy(currentWeatherCode = 3)
+                        Data.FOGGY -> CALM_DAY.copy(currentWeatherCode = 45)
                     },
                 )
 
@@ -202,7 +205,7 @@ class WidgetPreviewDebugActivity : Activity() {
         )
     }
 
-    private enum class Data { CALM, EVENTFUL, EVENING, STORM, CLEAR_NIGHT }
+    private enum class Data { CALM, EVENTFUL, EVENING, STORM, CLEAR_NIGHT, SUNNY, OVERCAST, FOGGY }
 
     private data class Preview(
         val label: String,
@@ -328,6 +331,11 @@ class WidgetPreviewDebugActivity : Activity() {
         )
 
         private val SIZES = listOf(
+            Preview("live scene: sun", 368, 176, data = Data.SUNNY, backdrop = WidgetBackdrop.LIVE),
+            Preview("live scene: partly cloudy", 368, 176, data = Data.CALM, backdrop = WidgetBackdrop.LIVE),
+            Preview("live scene: overcast", 368, 176, data = Data.OVERCAST, backdrop = WidgetBackdrop.LIVE),
+            Preview("live scene: fog", 368, 176, data = Data.FOGGY, backdrop = WidgetBackdrop.LIVE),
+            Preview("live scene: sun on paper", 368, 176, data = Data.SUNNY, appearance = WidgetAppearance.PAPER, backdrop = WidgetBackdrop.LIVE),
             Preview("live scene: storm (dark)", 368, 176, data = Data.STORM, backdrop = WidgetBackdrop.LIVE),
             Preview("live scene: stars", 368, 176, data = Data.CLEAR_NIGHT, backdrop = WidgetBackdrop.LIVE),
             Preview("paper: everything happening", 368, 176, appearance = WidgetAppearance.PAPER, density = WidgetDensity.FULL),

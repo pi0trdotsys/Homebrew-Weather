@@ -541,7 +541,7 @@ class WeatherWidgetProvider : AppWidgetProvider() {
             heightDp: Int,
             pal: Palette,
         ): List<Bitmap> {
-            val kind = WidgetScene.kindOf(Wmo.wmoToKind(weather.currentWeatherCode), weather.isDay)
+            val kind = WidgetScene.liveKindOf(Wmo.wmoToKind(weather.currentWeatherCode), weather.isDay)
             return WidgetScene.renderLoop(
                 context,
                 dpToPx(context, widthDp),

@@ -132,7 +132,11 @@ alpha, lower with high contrast, rendered at half size so RemoteViews carries li
   glow whole sine periods; a storm flashes once per loop) and tested for that. Each render adds the
   frames with `RemoteViews.addView`; the bitmaps are half-size, so the whole set stays small. It is
   opt-in because a flipping widget costs the launcher some battery, and some launchers may ignore
-  `ViewFlipper`; stars are left out on paper, and the scene is empty on a calm day.
+  `ViewFlipper`; stars are left out on paper. Every sky has a scene in this mode (`liveKindOf`): rain,
+  storm, snow, a sun with rays that alternate straight and diagonal and glints, drifting clouds
+  (each row moves one repeat of its shape per loop, so it closes), mist bands, stars (with a passing
+  cloud when partly cloudy). The still *weather* background keeps its old rule: precipitation and
+  stars only.
 - The meta line is a bitmap (`MetaLineArt` + `PixelFont`, which covers the Latin alphabet and
   Polish letters; anything else is folded or shown as `?`). `ic_launcher_monochrome` is the themed
   (Android 13+) launcher icon.

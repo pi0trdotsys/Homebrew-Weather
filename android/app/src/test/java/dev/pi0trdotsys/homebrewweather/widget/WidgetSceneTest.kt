@@ -98,9 +98,15 @@ class WidgetSceneTest {
 
     private val animatedKinds = listOf(WidgetScene.Kind.RAIN, WidgetScene.Kind.SNOW, WidgetScene.Kind.STORM)
 
+    /** Every kind the live scene can draw. */
+    private val liveKinds = animatedKinds + listOf(
+        WidgetScene.Kind.STARS, WidgetScene.Kind.SUN, WidgetScene.Kind.PARTLY,
+        WidgetScene.Kind.PARTLY_NIGHT, WidgetScene.Kind.CLOUD, WidgetScene.Kind.FOG,
+    )
+
     @Test
     fun `a loop is seamless - the frame after the last is the first`() {
-        for (kind in animatedKinds + WidgetScene.Kind.STARS) {
+        for (kind in liveKinds) {
             val n = WidgetScene.LOOP_FRAMES
             assertEquals(
                 "$kind",
@@ -112,7 +118,7 @@ class WidgetSceneTest {
 
     @Test
     fun `consecutive frames of a moving scene differ`() {
-        for (kind in animatedKinds + WidgetScene.Kind.STARS) {
+        for (kind in liveKinds) {
             for (f in 0 until WidgetScene.LOOP_FRAMES) {
                 assertNotEquals(
                     "$kind frame $f",
@@ -125,7 +131,7 @@ class WidgetSceneTest {
 
     @Test
     fun `loop marks stay inside the grid`() {
-        for (kind in animatedKinds + WidgetScene.Kind.STARS) {
+        for (kind in liveKinds) {
             for (f in 0 until WidgetScene.LOOP_FRAMES) {
                 for (m in WidgetScene.loop(kind, 47, 23, f, seed = 11)) {
                     assertTrue("$kind $f $m", m.x in 0 until 47 && m.y in 0 until 23)
@@ -158,5 +164,39 @@ class WidgetSceneTest {
     fun `no scene, no loop`() {
         assertTrue(WidgetScene.loop(WidgetScene.Kind.NONE, 61, 29, 1, seed = 1).isEmpty())
         assertTrue(WidgetScene.loop(WidgetScene.Kind.RAIN, 3, 3, 1, seed = 1).isEmpty())
+    }
+
+    @Test
+    fun `the live scene has something for every weather`() {
+        val kinds = listOf("sun", "partly", "cloud", "fog", "rain", "snow", "thunder")
+        for (day in listOf(true, false)) {
+            for (k in kinds) {
+                assertNotEquals("$k day=$day", WidgetScene.Kind.NONE, WidgetScene.liveKindOf(k, day))
+            }
+        }
+        assertEquals(WidgetScene.Kind.SUN, WidgetScene.liveKindOf("sun", true))
+        assertEquals(WidgetScene.Kind.STARS, WidgetScene.liveKindOf("sun", false))
+        assertEquals(WidgetScene.Kind.PARTLY, WidgetScene.liveKindOf("partly", true))
+        assertEquals(WidgetScene.Kind.PARTLY_NIGHT, WidgetScene.liveKindOf("partly", false))
+        assertEquals(WidgetScene.Kind.CLOUD, WidgetScene.liveKindOf("cloud", false))
+        assertEquals(WidgetScene.Kind.FOG, WidgetScene.liveKindOf("fog", true))
+        assertEquals(WidgetScene.Kind.STORM, WidgetScene.liveKindOf("thunder", false))
+    }
+
+    @Test
+    fun `the still scene is unchanged - calm skies stay empty`() {
+        assertEquals(WidgetScene.Kind.NONE, WidgetScene.kindOf("cloud", true))
+        assertEquals(WidgetScene.Kind.NONE, WidgetScene.kindOf("fog", true))
+        assertEquals(WidgetScene.Kind.NONE, WidgetScene.kindOf("sun", true))
+        assertTrue(WidgetScene.marks(WidgetScene.Kind.CLOUD, 80, 40, 1, 1).isEmpty())
+    }
+
+    @Test
+    fun `clouds, fog and sun draw something in every frame`() {
+        for (kind in listOf(WidgetScene.Kind.SUN, WidgetScene.Kind.PARTLY, WidgetScene.Kind.CLOUD, WidgetScene.Kind.FOG)) {
+            for (f in 0 until WidgetScene.LOOP_FRAMES) {
+                assertTrue("$kind $f", WidgetScene.loop(kind, 130, 114, f, seed = 3).isNotEmpty())
+            }
+        }
     }
 }

@@ -479,7 +479,7 @@ object PlTexts : Texts {
         WidgetBackdrop.NONE -> "// bez tła"
         WidgetBackdrop.CITY -> "// poziomice terenu wokół miasta, a na równinie pikselowy skyline"
         WidgetBackdrop.SCENE -> "// deszcz, śnieg, burza i gwiazdy w tle, tylko gdy coś się dzieje"
-        WidgetBackdrop.LIVE -> "// to samo, ale w ruchu, cały czas (zużywa trochę więcej baterii)"
+        WidgetBackdrop.LIVE -> "// w ruchu przy każdej pogodzie: deszcz, burza, śnieg, słońce, chmury, mgła, gwiazdy (więcej baterii)"
     }
 
     override fun cfgAppearanceHint(a: WidgetAppearance) = when (a) {
@@ -750,7 +750,7 @@ object EnTexts : Texts {
         WidgetBackdrop.NONE -> "// no background"
         WidgetBackdrop.CITY -> "// terrain contours around the city, or a pixel skyline on flat land"
         WidgetBackdrop.SCENE -> "// rain, snow, a storm and stars behind the numbers, only when something is going on"
-        WidgetBackdrop.LIVE -> "// the same, moving all the time (uses a little more battery)"
+        WidgetBackdrop.LIVE -> "// moving in every weather: rain, storm, snow, sun, clouds, fog, stars (a little more battery)"
     }
 
     override fun cfgAppearanceHint(a: WidgetAppearance) = when (a) {

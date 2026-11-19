@@ -33,10 +33,15 @@ import kotlin.math.roundToInt
  */
 object WidgetScene {
 
-    enum class Kind { NONE, RAIN, SNOW, STORM, STARS }
+    enum class Kind {
+        NONE, RAIN, SNOW, STORM, STARS,
 
-    /** A rectangle in grid cells, with how opaque it is (0–255). */
-    data class Mark(val x: Int, val y: Int, val w: Int, val h: Int, val alpha: Int)
+        /** The calmer skies, drawn only by the live scene (see [liveKindOf]). */
+        SUN, PARTLY, PARTLY_NIGHT, CLOUD, FOG,
+    }
+
+    /** A rectangle in grid cells, with how opaque it is (0–255); [tone] 1 draws it in the warm sun colour instead of the scene's own. */
+    data class Mark(val x: Int, val y: Int, val w: Int, val h: Int, val alpha: Int, val tone: Int = 0)
 
     /** A storm flashes on every this-many-th frame (one a few minutes at the 60 s tick). */
     const val FLASH_EVERY = 4
@@ -50,6 +55,19 @@ object WidgetScene {
         weatherKind == "snow" -> Kind.SNOW
         !isDay && (weatherKind == "sun" || weatherKind == "partly") -> Kind.STARS
         else -> Kind.NONE
+    }
+
+    /**
+     * The scene for the *live* (looping) background: every sky gets one — [kindOf]'s, plus a sun
+     * with glinting rays, drifting clouds, and fog, so no weather leaves the widget still. A clear
+     * night is stars; a partly cloudy one, stars and a passing cloud.
+     */
+    fun liveKindOf(weatherKind: String, isDay: Boolean): Kind = when (weatherKind) {
+        "thunder", "rain", "snow" -> kindOf(weatherKind, isDay)
+        "sun" -> if (isDay) Kind.SUN else Kind.STARS
+        "partly" -> if (isDay) Kind.PARTLY else Kind.PARTLY_NIGHT
+        "fog" -> Kind.FOG
+        else -> Kind.CLOUD
     }
 
     /** Whether the scene changes from one tick to the next (and so is worth re-drawing at each). */
@@ -93,7 +111,7 @@ object WidgetScene {
                     out += Mark(rng.nextInt(0, cols), rng.nextInt(0, rows * 3 / 4), 1, 1, rng.nextInt(0x38, 0x99))
                 }
             }
-            Kind.NONE -> Unit
+            Kind.NONE, Kind.SUN, Kind.PARTLY, Kind.PARTLY_NIGHT, Kind.CLOUD, Kind.FOG -> Unit
         }
         return out
     }
@@ -195,9 +213,119 @@ object WidgetScene {
                     out += Mark(x, y, 1, 1, (base * glow).toInt().coerceIn(8, 255))
                 }
             }
+            Kind.SUN -> sun(out, cols, rows, frame, phase, tau, rng, 1.0)
+            Kind.PARTLY -> {
+                sun(out, cols, rows, frame, phase, tau, rng, 0.7)
+                clouds(out, cols, rows, phase, 1, 0x26)
+            }
+            Kind.PARTLY_NIGHT -> {
+                repeat((cols * rows / 140).coerceIn(5, 30)) {
+                    val x = rng.nextInt(0, cols)
+                    val y = rng.nextInt(0, rows * 3 / 4)
+                    val base = rng.nextInt(0x38, 0x80)
+                    val period = rng.nextInt(1, 3)
+                    val offset = rng.nextDouble() * tau
+                    out += Mark(x, y, 1, 1, (base * (0.55 + 0.45 * Math.sin(tau * phase * period + offset))).toInt().coerceIn(8, 255))
+                }
+                clouds(out, cols, rows, phase, 1, 0x2A)
+            }
+            Kind.CLOUD -> clouds(out, cols, rows, phase, 2, 0x2A)
+            Kind.FOG -> fog(out, cols, rows, phase)
             Kind.NONE -> Unit
         }
         return out
+    }
+
+    // Pixel clouds: rows of (start, length) in units, top to bottom.
+    private val CLOUD_BIG = listOf(2 to 4, 1 to 6, 0 to 8)
+    private val CLOUD_SMALL = listOf(1 to 3, 0 to 5)
+
+    /** Adds [m] clipped to the grid (a mark half off the edge is cut, so every mark stays inside). */
+    private fun clipped(out: MutableList<Mark>, cols: Int, rows: Int, x: Int, y: Int, w: Int, h: Int, alpha: Int, tone: Int = 0) {
+        val x0 = max(0, x)
+        val y0 = max(0, y)
+        val x1 = minOf(cols, x + w)
+        val y1 = minOf(rows, y + h)
+        if (x1 > x0 && y1 > y0) out += Mark(x0, y0, x1 - x0, y1 - y0, alpha, tone)
+    }
+
+    /**
+     * [rowCount] rows of drifting clouds. Each row repeats one cloud shape every `spacing` cells and
+     * moves exactly one spacing per loop, so the loop closes; the lower row has a smaller
+     * spacing, so it drifts slower.
+     */
+    private fun clouds(out: MutableList<Mark>, cols: Int, rows: Int, phase: Double, rowCount: Int, alpha: Int) {
+        val unit = max(2, rows / 20)
+        for (row in 0 until rowCount) {
+            val shape = if (row == 0) CLOUD_BIG else CLOUD_SMALL
+            val width = (shape.maxOf { it.first + it.second }) * unit
+            val spacing = max(width * 2, if (row == 0) cols * 2 / 3 else cols / 2)
+            val shift = Math.round(phase * spacing).toInt()
+            val y = rows * (if (row == 0) 12 else 46) / 100
+            var k = -1
+            while (k * spacing - shift < cols) {
+                val x = k * spacing - shift + row * spacing / 3
+                shape.forEachIndexed { r, (start, len) ->
+                    clipped(out, cols, rows, x + start * unit, y + r * unit, len * unit, unit, alpha)
+                }
+                k++
+            }
+        }
+    }
+
+    /** Bands of mist: long dashes that slide along, alternate rows in opposite directions. */
+    private fun fog(out: MutableList<Mark>, cols: Int, rows: Int, phase: Double) {
+        val bands = 6
+        val thick = max(1, rows / 24)
+        for (b in 0 until bands) {
+            val length = max(8, cols / 4 + (b % 3) * (cols / 12))
+            val gap = max(6, cols / 5 + (b % 2) * (cols / 10))
+            val period = length + gap
+            val dir = if (b % 2 == 0) 1 else -1
+            val shift = Math.round(phase * period).toInt() * dir
+            val y = rows * (10 + b * 15) / 100
+            var k = -2
+            while (k * period + shift < cols) {
+                val x = k * period + shift + b * period / 5
+                clipped(out, cols, rows, x, y, length, thick, if (b % 2 == 0) 0x22 else 0x16)
+                k++
+            }
+        }
+    }
+
+    /**
+     * A pixel sun in the top-right: a disc, eight rays that alternate between the straight four and
+     * the diagonal four every frame, and a few warm glints that pulse.
+     */
+    private fun sun(out: MutableList<Mark>, cols: Int, rows: Int, frame: Int, phase: Double, tau: Double, rng: Mulberry32, size: Double) {
+        val r = max(3, (rows * 0.11 * size).toInt())
+        val cx = cols - cols / 7 - r
+        val cy = rows / 5 + r / 2
+        // The disc, one horizontal run per row.
+        for (dy in -r..r) {
+            val half = Math.round(Math.sqrt((r * r - dy * dy).toDouble())).toInt()
+            clipped(out, cols, rows, cx - half, cy + dy, 2 * half + 1, 1, 0x42, 1)
+        }
+        // Rays: alternate straight and diagonal.
+        val gap = 2
+        val len = max(2, r / 2)
+        val straight = Math.floorMod(frame, 2) == 0
+        val dirs = if (straight) listOf(0 to -1, 0 to 1, -1 to 0, 1 to 0) else listOf(-1 to -1, 1 to -1, -1 to 1, 1 to 1)
+        for ((dx, dy) in dirs) {
+            for (i in 0 until len) {
+                val d = r + gap + i
+                clipped(out, cols, rows, cx + dx * d, cy + dy * d, 1, 1, 0x78, 1)
+            }
+        }
+        // Glints across the sky.
+        repeat(6) {
+            val x = rng.nextInt(0, cols)
+            val y = rng.nextInt(0, rows * 2 / 3)
+            val period = rng.nextInt(1, 3)
+            val offset = rng.nextDouble() * tau
+            val a = (0x50 * (0.5 + 0.5 * Math.sin(tau * phase * period + offset))).toInt()
+            if (a > 6) clipped(out, cols, rows, x, y, 1, 1, a, 1)
+        }
     }
 
     /**
@@ -228,10 +356,15 @@ object WidgetScene {
         private val base = when (kind) {
             Kind.RAIN, Kind.STORM -> if (pal.paper) 0x2F7FD0 else 0x55FFFF
             Kind.SNOW -> if (pal.paper) 0x6F9CC4 else 0xDFEFFF
+            Kind.SUN -> if (pal.paper) 0xE59400 else 0xFFB000
+            Kind.PARTLY -> if (pal.paper) 0x8FA0AD else 0xCFE0F0
+            Kind.CLOUD, Kind.PARTLY_NIGHT -> if (pal.paper) 0x6F8294 else 0xC8D8E8
+            Kind.FOG -> if (pal.paper) 0x7D8F87 else 0xA8B8B0
             else -> 0xDDEEFF
         }
         private val boltRgb = if (pal.paper) 0xD98200 else 0xFFD060
         private val washRgb = if (pal.paper) 0xD98200 else 0xFFB000
+        private val sunRgb = if (pal.paper) 0xE59400 else 0xFFB000
 
         /** [flash]: 0 none, 1 afterglow (faint wash), 2 flash (wash and bolt). */
         fun draw(context: Context, marks: List<Mark>, flash: Int, seed: Int): Bitmap {
@@ -247,7 +380,7 @@ object WidgetScene {
                 canvas.drawRect(0f, 0f, w.toFloat(), h.toFloat(), paint)
             }
             for (m in marks) {
-                paint.color = (m.alpha shl 24) or base
+                paint.color = (m.alpha shl 24) or (if (m.tone == 1) sunRgb else base)
                 rect(m)
             }
             if (flash == 2) {

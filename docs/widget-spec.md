@@ -1011,4 +1011,5 @@ rozmiaru widgetu (`centerCrop`), więc RemoteViews przenosi mało pamięci.
 - **Ikona aplikacji** ma wariant monochromatyczny (motywowany).
 - **Tło „na żywo”** (`WidgetBackdrop.LIVE`): ta sama scena w pętli 8 klatek co 500 ms, odtwarzana
   przez launcher (`ViewFlipper`), bez własnego timera ani alarmu. Deszcz spada, burza błyska raz na
-  pętlę, gwiazdy migoczą. Domyślnie wyłączone (większy pobór baterii przez launcher).
+  pętlę, śnieg dryfuje, słońce ma promienie i błyski, chmury płyną, mgła się przesuwa, gwiazdy
+  migoczą — każda pogoda ma swoją scenę. Domyślnie wyłączone (większy pobór baterii przez launcher).
