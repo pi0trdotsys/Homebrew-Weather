@@ -62,6 +62,13 @@ object WidgetPrefs {
     private fun weatherCachePrefix(appWidgetId: Int) = "weather_cache_${appWidgetId}_"
     private fun weatherCacheKey(appWidgetId: Int, city: WidgetCity) =
         weatherCachePrefix(appWidgetId) + Places.cacheKey(city)
+    // When that forecast was written, one key per (widget, place) beside the
+    // cache itself. Its own prefix, not under [weatherCachePrefix]: the cache
+    // blob is parsed as JSON and the two must never be mistaken for each other.
+    // removeCity sweeps it by prefix.
+    private fun weatherStampPrefix(appWidgetId: Int) = "weather_at_${appWidgetId}_"
+    private fun weatherStampKey(appWidgetId: Int, city: WidgetCity) =
+        weatherStampPrefix(appWidgetId) + Places.cacheKey(city)
     private fun themeKey(appWidgetId: Int) = "theme_$appWidgetId"
     private fun transparencyKey(appWidgetId: Int) = "transparency_$appWidgetId"
     private fun densityKey(appWidgetId: Int) = "density_$appWidgetId"
@@ -145,8 +152,9 @@ object WidgetPrefs {
     fun removeCity(context: Context, appWidgetId: Int) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val prefix = weatherCachePrefix(appWidgetId)
+        val stampPrefix = weatherStampPrefix(appWidgetId)
         val edit = prefs.edit()
-        prefs.all.keys.filter { it.startsWith(prefix) }.forEach { edit.remove(it) }
+        prefs.all.keys.filter { it.startsWith(prefix) || it.startsWith(stampPrefix) }.forEach { edit.remove(it) }
         edit.remove(cityKey(appWidgetId))
             .remove(placesKey(appWidgetId))
             .remove(placeIndexKey(appWidgetId))
@@ -249,6 +257,21 @@ object WidgetPrefs {
         prefs.edit().putInt(minHeightKey(appWidgetId), dp).apply()
     }
 
+    /**
+     * Epoch ms at which the cached forecast for [place] was written, or 0 when
+     * there is none or it predates the timestamp (such a cache is still usable,
+     * it just loses to any dated one). Read by [OutdoorExportProvider].
+     */
+    fun getCachedWeatherUpdatedAt(
+        context: Context,
+        appWidgetId: Int,
+        place: WidgetCity? = getCity(context, appWidgetId),
+    ): Long {
+        val city = place ?: return 0L
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getLong(weatherStampKey(appWidgetId, city), 0L)
+    }
+
     /** Last-known-good weather, used as an offline fallback when a refresh fails. */
     fun getCachedWeather(
         context: Context,
@@ -346,6 +369,7 @@ object WidgetPrefs {
         appWidgetId: Int,
         weather: WeatherApi.WeatherData,
         place: WidgetCity? = getCity(context, appWidgetId),
+        nowMillis: Long = System.currentTimeMillis(),
     ) {
         val dailyArr = org.json.JSONArray()
         weather.daily.forEach { entry ->
@@ -416,7 +440,10 @@ object WidgetPrefs {
         }
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val city = place ?: return
-        prefs.edit().putString(weatherCacheKey(appWidgetId, city), o.toString()).apply()
+        prefs.edit()
+            .putString(weatherCacheKey(appWidgetId, city), o.toString())
+            .putLong(weatherStampKey(appWidgetId, city), nowMillis)
+            .apply()
     }
 }
 

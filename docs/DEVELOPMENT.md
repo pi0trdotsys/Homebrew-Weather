@@ -167,6 +167,30 @@ forecasts are keyed per place, so a widget never falls back to another place's
 forecast offline, and switching places renders without firing notifications
 (`WeatherNotifier.primeState` brings the edge-triggered state up to date silently).
 
+### Outdoor temperature for Kropi
+
+`OutdoorExportProvider` is a read-only ContentProvider that hands the user's other app, Kropi
+(`com.kropi.hydration`), the outdoor temperature the widget already has cached. The two apps are
+signed with different keys, so no signature permission is possible: the provider is exported with
+**no permission**, and therefore exposes only numbers. It deliberately carries **no location**: no
+place name, no coordinates, no time zone. Do not add any.
+
+- Authority: `${applicationId}.export`, i.e. `dev.pi0trdotsys.homebrewweather.export` (release) and
+  `dev.pi0trdotsys.homebrewweather.debug.export` (debug).
+- `content://<authority>/outdoor`, `query()` only (insert, update and delete throw
+  `UnsupportedOperationException`); any other URI returns null.
+- One row, columns in this order: `temp_c` (REAL, now, in °C), `max_c` and `min_c` (REAL, today's
+  forecast, NULL if the forecast has no entry for today), `updated_at` (LONG, epoch ms the forecast
+  was cached, 0 for a cache that predates the timestamp).
+- Zero rows (same columns) when there is no widget, no cache or no current temperature.
+- The forecast is rebased to the real clock (`WeatherData.rebasedTo`), so a stale cache does not report
+  last night's value. Among all widgets, the cache written most recently wins
+  (`WidgetPrefs.getCachedWeatherUpdatedAt`; the pure logic is `OutdoorTemperatureExport`).
+
+```bash
+adb shell content query --uri content://dev.pi0trdotsys.homebrewweather.debug.export/outdoor
+```
+
 ### Language
 
 Every native string lives in `Lang.kt` (`PlTexts` / `EnTexts`); every web string in

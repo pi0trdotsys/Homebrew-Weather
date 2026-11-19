@@ -73,6 +73,7 @@ precipitates), an *appearance* choice (dark, light paper, or paper by day and da
 Language, brief and evening times, alert thresholds, tone and what the footer says (a joke, a
 well-being tip, or an event from this day in history) are under **./settings**,
 along with a button that sends one of each notification so you can see them right away.
+It shares only the outdoor temperature with Kropi (the hydration tracker), no location.
 
 > **Updating from beta.11 or earlier?** Uninstall the old version once, then install:
 > beta.12 is signed with a new key, and Android won't replace an app signed with a
