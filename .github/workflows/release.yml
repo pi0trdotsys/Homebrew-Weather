@@ -1,6 +1,6 @@
 # Builds the signed release APK and publishes it as a GitHub release.
 #
-#   git tag v0.6.0-beta.17 && git push origin v0.6.0-beta.17
+#   git tag v0.6.0-beta.18 && git push origin v0.6.0-beta.18
 #
 # On a tag push it runs the unit tests, builds and signs the APK with the key in
 # the repository's Actions secrets, checks it really is signed with *that* key and
