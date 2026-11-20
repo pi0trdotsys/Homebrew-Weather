@@ -15,6 +15,7 @@ import { Welcome } from "@/components/Welcome";
 import { AddWidgetPrompt } from "@/components/AddWidget";
 import { ChannelStatic } from "@/components/fx/ChannelStatic";
 import { pickFooterJoke } from "@/lib/jokes.generated";
+import { dayOfWeek } from "@/lib/line-picker";
 import { pickWellbeingTip } from "@/lib/wellbeing.generated";
 import { wellbeingSituation } from "@/lib/wellbeing";
 import { useOnThisDayLine } from "@/hooks/useOnThisDay";
@@ -251,7 +252,15 @@ function Index() {
     if (!view) return "";
     const kind = wmoToKind(view.current.weather_code);
     const night = view.current.is_day === 0;
-    return pickFooterJoke(tone, lang, kind, night, Math.floor(Date.now() / 3_600_000));
+    return pickFooterJoke(
+      tone,
+      lang,
+      kind,
+      night,
+      Math.floor(Date.now() / 3_600_000),
+      view.current.temperature_2m,
+      dayOfWeek(view.daily.time[0]),
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view?.current.time, view?.current.weather_code, tone, lang]);
 

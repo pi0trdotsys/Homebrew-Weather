@@ -1170,7 +1170,8 @@ class WeatherWidgetProvider : AppWidgetProvider() {
 
             // Seed by current hour so the joke is stable within a refresh cycle but
             // varies across refreshes/hours, matching pickSigma()'s intent.
-            val seed = (System.currentTimeMillis() / (60 * 60 * 1000L)).toInt()
+            // Offset per widget, so two widgets (say two places) don't say the same line at the same hour.
+            val seed = (System.currentTimeMillis() / (60 * 60 * 1000L)).toInt() + Math.floorMod(appWidgetId, 997)
             // Footer voice follows the app-wide tone (see Tone) and language.
             val footer = FooterContent.line(
                 context,

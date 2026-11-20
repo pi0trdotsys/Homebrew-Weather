@@ -57,19 +57,27 @@ writeFileSync(
 import type { WeatherKind } from "./wmo";
 import type { Lang } from "./i18n";
 import type { Tone } from "./settings";
+import { pickJoke } from "./line-picker";
 
 type Pools = Record<string, string[]>;
 
 ${body}
 
-/** Same pick rule as the widget (Jokes.pick): night lines mixed in after dark,
- * index = |seed| % pool size — so a given hour shows the same line in both. */
-export function pickFooterJoke(tone: Tone, lang: Lang, kind: WeatherKind, isNight: boolean, seed: number): string {
+/** Same pick rule as the widget (Jokes.pick, see line-picker.ts): the weather's own pool plus the
+ * night, hot, cold and day-of-week lines that apply, and the next line of a fresh shuffle of
+ * it each round — so no line comes back before the whole pool has been seen. */
+export function pickFooterJoke(
+  tone: Tone,
+  lang: Lang,
+  kind: WeatherKind,
+  isNight: boolean,
+  seed: number,
+  temperature?: number | null,
+  dow?: number | null,
+): string {
   const pools =
     tone === "clean" ? (lang === "en" ? EN_CLEAN : PL_CLEAN) : lang === "en" ? EN_SIGMA : PL_SIGMA;
-  const kindPool = pools[kind] ?? pools.cloud;
-  const pool = isNight ? [...pools.night, ...kindPool] : kindPool;
-  return pool[Math.abs(Math.floor(seed)) % pool.length];
+  return pickJoke(pools, kind, isNight, seed, temperature, dow);
 }
 `,
 );
@@ -98,18 +106,19 @@ writeFileSync(
 // android/app/src/main/java/dev/pi0trdotsys/homebrewweather/widget/WellbeingTips.kt.
 // Do not edit by hand.
 import type { Lang } from "./i18n";
+import { lineIndex } from "./line-picker";
 
 type Pools = Record<string, string[]>;
 
 ${wellbeingBody}
 
-/** Same pick rule as the widget (WellbeingTips.pick): index = |seed| % pool
- * size, the seed being the hour — so a given hour shows the same tip in both.
- * An unknown situation falls back to "calm". */
+/** Same pick rule as the widget (WellbeingTips.pick, see line-picker.ts): the next line of a
+ * fresh shuffle of the pool each round, the seed being the hour. An unknown situation falls
+ * back to "calm". */
 export function pickWellbeingTip(lang: Lang, situationKey: string, seed: number): string {
   const pools = lang === "en" ? WELLBEING_EN : WELLBEING_PL;
   const pool = pools[situationKey] ?? pools.calm;
-  return pool[Math.abs(Math.floor(seed)) % pool.length];
+  return pool[lineIndex(seed, pool.length)];
 }
 `,
 );

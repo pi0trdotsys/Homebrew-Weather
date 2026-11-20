@@ -282,6 +282,11 @@ object FooterContent {
             FooterSource.HISTORY -> OnThisDay.footerLine(context, lang)
             FooterSource.JOKE -> null
         }
-        return text ?: Jokes.pick(tone, lang, kind, isNight, seed)
+        // Hot and cold days and the day of the week have lines of their own, mixed in with the weather's.
+        return text ?: Jokes.pick(
+            tone, lang, kind, isNight, seed,
+            temperature = weather.currentTemperature,
+            dayOfWeek = LinePicker.dayOfWeek(weather.daily.firstOrNull()?.date),
+        )
     }
 }

@@ -231,6 +231,25 @@ bun scripts/gen-jokes.ts
 
 CI fails if `src/lib/jokes.generated.ts` is out of date.
 
+The library is deliberately large (about 500 lines per voice and language: Polish *sigma*, Polish
+*clean*, English *sigma*, English *clean*, plus 180 well-being tips per language). Each weather kind
+and *night* has about 50-60 lines; five contextual pools are mixed in beside the weather's own when
+they apply: `hot` (28 C and up), `cold` (2 C and down), `monday`, `friday` and `weekend`. A hot
+Friday night in the rain draws from five pools at once.
+
+Which line is shown is `LinePicker` (mirrored in `src/lib/line-picker.ts`, cases in
+`testdata/parity/line-picker.json`): every round of `size` hours is a fresh seeded shuffle of the pool,
+so each line is seen once before any returns, in a different order each round, and never twice in
+a row. The old rule (`pool[hour % size]`) brought a 12-line pool back every 12 hours, always at the
+same two hours, which is what made the footer feel doubled. The widget adds a per-widget offset to the
+hour, so two widgets don't say the same thing at once.
+
+Writing new lines: at most 50 characters, no `"`, `\` or `$`, no line twice anywhere in a library
+(`JokeLibraryTest` fails on a repeat, a short pool or a missing context pool), Polish pools in lower
+case, English *clean* in sentence case, English *sigma* in lower case. Vary the shape (imperatives,
+observations, fake log lines, questions) rather than repeating one gag, and keep context pools free of
+any specific weather since they are mixed with every kind.
+
 ### Versioning
 
 `versionName` is read from `package.json`, the same field the dashboard displays

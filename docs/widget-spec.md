@@ -1009,6 +1009,11 @@ rozmiaru widgetu (`centerCrop`), więc RemoteViews przenosi mało pamięci.
   tyknięcie) lub gwiazdy w pogodną noc; rusza się tylko przy opadach, na tym samym tyknięciu co
   kursor, więc bez dodatkowych wybudzeń.
 - **Ikona aplikacji** ma wariant monochromatyczny (motywowany).
+- **Stopka: biblioteka tekstów.** Ok. 500 linii na głos i język (sigma/clean, PL/EN), po ok. 50–60 na
+  rodzaj pogody i noc, a do tego pule kontekstowe domieszane do puli pogody: upał (od 28°C), mróz
+  (do 2°C), poniedziałek, piątek, weekend. Linia nie wraca, dopóki nie przejdzie cała pula: każda
+  runda godzin to nowe losowe przetasowanie (`LinePicker`), a dwa widgety mają przesunięcie, więc nie
+  mówią tego samego naraz. Porady well-being: ok. 20 na sytuację.
 - **Tło „na żywo”** (`WidgetBackdrop.LIVE`): ta sama scena w pętli 8 klatek co 500 ms, odtwarzana
   przez launcher (`ViewFlipper`), bez własnego timera ani alarmu. Deszcz spada, burza błyska raz na
   pętlę, śnieg dryfuje, słońce ma promienie i błyski, chmury płyną, mgła się przesuwa, gwiazdy

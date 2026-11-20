@@ -29,6 +29,7 @@ import { tempColor } from "./temp-color";
 import { cellKey, parseElevations, relief, samplePoints } from "./terrain";
 import { niceStep, segments, smooth, upsample } from "./contours";
 import { buildings, Mulberry32, skylineSeed } from "./skyline";
+import { dayOfWeek, jokeKeys, lineIndex } from "./line-picker";
 
 type Json = any; // eslint-disable-line @typescript-eslint/no-explicit-any
 type Case = { name: string; fn?: string; only?: "kotlin" | "ts"; input: Json; expect: Json };
@@ -258,7 +259,14 @@ const skyline: Record<string, (i: Json) => Json> = {
   buildings: (i) => ({ buildings: buildings(i.seed, i.widthUnits, i.maxHeightUnits) }),
 };
 
+const linePicker: Record<string, (i: Json) => Json> = {
+  index: (i) => ({ indexes: (i.seeds as number[]).map((s) => lineIndex(s, i.size)) }),
+  keys: (i) => ({ keys: jokeKeys(i.kind, i.isNight, i.temperature, i.dayOfWeek) }),
+  dayOfWeek: (i) => ({ dow: dayOfWeek(i.date) }),
+};
+
 const adapters: Record<string, (c: Case) => Json> = {
+  "line-picker": (c) => linePicker[c.fn!](c.input),
   "rain-window": (c) => rainWindow[c.fn!](c.input),
   "severe-weather": (c) => severe(c.input),
   "on-this-day": (c) => onThisDay[c.fn!](c.input),

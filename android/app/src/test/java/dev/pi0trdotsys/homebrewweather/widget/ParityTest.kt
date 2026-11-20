@@ -293,6 +293,29 @@ class ParityTest {
         }
     }
 
+    // ------------------------------------------------------------ 11. footer line picking
+
+    @Test
+    fun `footer line picking`() = run("line-picker") { c ->
+        val input = c.getJSONObject("input")
+        when (c.getString("fn")) {
+            "index" -> {
+                val seeds = input.getJSONArray("seeds")
+                mapOf("indexes" to List(seeds.length()) { LinePicker.index(seeds.getInt(it), input.getInt("size")) })
+            }
+            "keys" -> mapOf(
+                "keys" to LinePicker.jokeKeys(
+                    input.getString("kind"),
+                    input.getBoolean("isNight"),
+                    input.nan("temperature"),
+                    if (input.isNull("dayOfWeek")) null else input.getInt("dayOfWeek"),
+                ),
+            )
+            "dayOfWeek" -> mapOf("dow" to LinePicker.dayOfWeek(if (input.isNull("date")) null else input.getString("date")))
+            else -> error("unknown fn in ${c.getString("name")}")
+        }
+    }
+
     // ------------------------------------------------------------ 10. skyline
 
     @Test
